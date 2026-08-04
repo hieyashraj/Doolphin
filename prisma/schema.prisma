@@ -3,7 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
 }
 
 // --------------------------------------------------------
@@ -210,12 +210,12 @@ model Account {
   type              String
   provider          String
   providerAccountId String
-  refresh_token     String? @db.Text
-  access_token      String? @db.Text
+  refresh_token     String? 
+  access_token      String? 
   expires_at        Int?
   token_type        String?
   scope             String?
-  id_token          String? @db.Text
+  id_token          String? 
   session_state     String?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -338,7 +338,7 @@ model CreditTransaction {
   reservedBefore           Int
   reservedAfter            Int
   reasonCode               String
-  metadata                 String?               @db.Text // JSON
+  metadata                 String?                // JSON
   createdAt                DateTime              @default(now())
   createdByUserId          String?
   createdBySystemComponent String?
@@ -372,9 +372,9 @@ model PreflightQuote {
   workspaceId                       String
   userId                            String
   generationType                    GenerationType
-  requestSnapshot                   String         @db.Text // JSON
-  normalizedAssetSummary            String         @db.Text // JSON
-  routingSnapshot                   String         @db.Text // JSON
+  requestSnapshot                   String          // JSON
+  normalizedAssetSummary            String          // JSON
+  routingSnapshot                   String          // JSON
   selectedModelId                   String
   provider                          String
   providerEndpoint                  String
@@ -386,8 +386,8 @@ model PreflightQuote {
   infrastructureCostEstimateMicroUsd BigInt
   expectedFailureLossMicroUsd       BigInt
   internalCreditsToReserve          Int
-  warnings                          String?        @db.Text // JSON
-  capabilitySummary                 String?        @db.Text // JSON
+  warnings                          String?         // JSON
+  capabilitySummary                 String?         // JSON
   expiresAt                         DateTime
   consumedAt                        DateTime?
   createdAt                         DateTime       @default(now())
@@ -402,10 +402,10 @@ model Creation {
   workflowVersion        String         @default("1.0.0")
   presetId               String
   title                  String?
-  spokenScript           String?        @db.Text
-  prompt                 String?        @db.Text
-  compiledPrompt         String?        @db.Text
-  additionalInstructions String?        @db.Text
+  spokenScript           String?        
+  prompt                 String?        
+  compiledPrompt         String?        
+  additionalInstructions String?        
   ctaText                String?
   numberOfVideos         Int            @default(1)
   status                 CreationStatus @default(DRAFT)
@@ -420,7 +420,7 @@ model Creation {
   cancelledAt            DateTime?
   completedAt            DateTime?
   errorCode              String?
-  safeError              String?        @db.Text
+  safeError              String?        
   version                Int            @default(1)
   appVersion             String         @default("1.0.0")
   gitCommitSha           String?
@@ -453,7 +453,7 @@ model CreationVariant {
   reservedCredits    Int                  @default(0)
   finalArtifactId    String?
   errorCode          String?
-  safeError          String?              @db.Text
+  safeError          String?              
   version            Int                  @default(1)
   createdAt          DateTime             @default(now())
   updatedAt          DateTime             @updatedAt
@@ -491,7 +491,7 @@ model CreationAsset {
   codec               String?
   validationStatus    AssetValidationStatus @default(QUARANTINED)
   validationErrorCode String?
-  validationMetadata  String?               @db.Text // JSON
+  validationMetadata  String?                // JSON
   createdAt           DateTime              @default(now())
   validatedAt         DateTime?
 
@@ -506,12 +506,12 @@ model WorkflowSnapshot {
   workflowType           GenerationType
   workflowVersion        String
   presetId               String
-  stageGraph             String          @db.Text // JSON
-  capabilityRequirements String          @db.Text // JSON
-  assetRoleMapping       String          @db.Text // JSON
-  speechPlan             String          @db.Text // JSON
-  compositionPlan        String          @db.Text // JSON
-  routingInput           String          @db.Text // JSON
+  stageGraph             String           // JSON
+  capabilityRequirements String           // JSON
+  assetRoleMapping       String           // JSON
+  speechPlan             String           // JSON
+  compositionPlan        String           // JSON
+  routingInput           String           // JSON
   createdAt              DateTime        @default(now())
 
   variant                CreationVariant @relation(fields: [creationVariantId], references: [id], onDelete: Cascade)
@@ -535,8 +535,8 @@ model GenerationStage {
   timeoutAt         DateTime?
   attemptCount      Int             @default(0)
   errorCode         String?
-  safeError         String?         @db.Text
-  internalMetadata  String?         @db.Text // JSON
+  safeError         String?         
+  internalMetadata  String?          // JSON
   createdAt         DateTime        @default(now())
   updatedAt         DateTime        @updatedAt
 
@@ -562,13 +562,13 @@ model ProviderJob {
   registryRevision            String
   pricingRevision             String
   adapterVersion              String
-  routingSnapshot             String                @db.Text // JSON
-  capabilitySnapshot          String                @db.Text // JSON
-  sanitizedRequestPayload     String                @db.Text // JSON
-  sanitizedInitialResponse    String?               @db.Text // JSON
-  sanitizedResultPayload      String?               @db.Text // JSON
-  sanitizedResponseHeaders    String?               @db.Text // JSON
-  providerQueueStatusHistory  String?               @db.Text // JSON
+  routingSnapshot             String                 // JSON
+  capabilitySnapshot          String                 // JSON
+  sanitizedRequestPayload     String                 // JSON
+  sanitizedInitialResponse    String?                // JSON
+  sanitizedResultPayload      String?                // JSON
+  sanitizedResponseHeaders    String?                // JSON
+  providerQueueStatusHistory  String?                // JSON
   providerRequestCreatedAt    DateTime?
   submittedAt                 DateTime?
   acceptedAt                  DateTime?
@@ -584,7 +584,7 @@ model ProviderJob {
   billableUnits               Float?
   providerLatencyMs           Int?
   errorCode                   String?
-  safeError                   String?               @db.Text
+  safeError                   String?               
   internalErrorFingerprint    String?
   createdAt                   DateTime              @default(now())
   updatedAt                   DateTime              @updatedAt
@@ -636,7 +636,7 @@ model GeneratedArtifact {
   videoCodec            String?
   audioCodec            String?
   validationStatus      ArtifactValidationStatus @default(PENDING)
-  validationMetadata    String?                  @db.Text // JSON
+  validationMetadata    String?                   // JSON
   reusableFingerprint   String?
   sourceProviderUrlHost String?
   createdAt             DateTime                 @default(now())
@@ -667,7 +667,7 @@ model ArtifactDeliveryCheck {
   checksumVerified             Boolean
   testedAt                     DateTime          @default(now())
   failureCode                  String?
-  evidence                     String?           @db.Text // JSON
+  evidence                     String?            // JSON
 
   artifact                     GeneratedArtifact @relation(fields: [generatedArtifactId], references: [id], onDelete: Cascade)
 }
@@ -678,7 +678,7 @@ model QueueOutbox {
   aggregateType      String
   aggregateId        String
   eventType          String
-  payload            String       @db.Text // JSON
+  payload            String        // JSON
   deterministicJobId String       @unique
   status             OutboxStatus @default(PENDING)
   lockedAt           DateTime?
@@ -686,7 +686,7 @@ model QueueOutbox {
   leaseExpiresAt     DateTime?
   attemptCount       Int          @default(0)
   nextAttemptAt      DateTime?
-  lastError          String?      @db.Text
+  lastError          String?      
   createdAt          DateTime     @default(now())
   dispatchedAt       DateTime?
 }
@@ -706,7 +706,7 @@ model QueueJobRecord {
   workerInstanceId   String?
   lastHeartbeatAt    DateTime?
   errorCode          String?
-  metadata           String?   @db.Text // JSON
+  metadata           String?    // JSON
   createdAt          DateTime  @default(now())
 }
 
@@ -721,8 +721,8 @@ model WebhookEvent {
   payloadHash       String
   signatureStatus   WebhookSignatureStatus  @default(UNVERIFIED)
   processingStatus  WebhookProcessingStatus @default(RECEIVED)
-  payload           String                  @db.Text // JSON
-  sanitizedHeaders  String?                 @db.Text // JSON
+  payload           String                   // JSON
+  sanitizedHeaders  String?                  // JSON
   receivedAt        DateTime                @default(now())
   verifiedAt        DateTime?
   processedAt       DateTime?
@@ -734,7 +734,7 @@ model ModelRegistryRevision {
   id             String   @id @default(cuid())
   revision       String   @unique
   effectiveAt    DateTime @default(now())
-  sourceSnapshot String   @db.Text // JSON
+  sourceSnapshot String    // JSON
   createdAt      DateTime @default(now())
   createdBy      String
 }
@@ -763,13 +763,13 @@ model ModelDeployment {
 model RoutingDecision {
   id                       String          @id @default(cuid())
   creationVariantId        String
-  routingInput             String          @db.Text // JSON
-  eligibleCandidates       String          @db.Text // JSON
-  rejectedCandidates       String          @db.Text // JSON
+  routingInput             String           // JSON
+  eligibleCandidates       String           // JSON
+  rejectedCandidates       String           // JSON
   selectedModelId          String
   selectedProvider         String
   selectedEndpoint         String
-  rankingExplanation       String          @db.Text // JSON
+  rankingExplanation       String           // JSON
   estimatedCostMinMicroUsd BigInt
   estimatedCostMaxMicroUsd BigInt
   createdAt                DateTime        @default(now())
@@ -819,7 +819,7 @@ model AuditEvent {
   entityId     String
   ipHash       String?
   userAgent    String?
-  metadata     String?   @db.Text // JSON
+  metadata     String?    // JSON
   createdAt    DateTime  @default(now())
 
   workspace    Workspace? @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
@@ -836,7 +836,7 @@ model UsageEvent {
   variantId   String?
   modelId     String?
   provider    String?
-  metadata    String?   @db.Text // JSON
+  metadata    String?    // JSON
   createdAt   DateTime  @default(now())
 
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)

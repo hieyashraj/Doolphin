@@ -1,6 +1,12 @@
+import path from "path";
+
+if (!process.env.DATABASE_URL) {
+  process.env.DATABASE_URL = `file:${path.resolve(process.cwd(), "dev.db")}`;
+}
+
 import { PrismaClient } from "@prisma/client";
-import { PrismaPg } from "@prisma/adapter-pg";
-import pg from "pg";
+import { PrismaLibSql } from "@prisma/adapter-libsql";
+import { createClient } from "@libsql/client";
 
 const globalForPrisma = globalThis;
 
@@ -9,16 +15,10 @@ let prismaInstance;
 if (globalForPrisma.prisma) {
   prismaInstance = globalForPrisma.prisma;
 } else {
-  const dbUrl = process.env.DATABASE_URL || "postgresql://postgres:postgres@localhost:5432/doolphin";
-  const pool = new pg.Pool({ connectionString: dbUrl });
-  const adapter = new PrismaPg(pool);
-  
-  try {
-    prismaInstance = new PrismaClient({ adapter });
-  } catch (e) {
-    console.warn("PrismaClient initialization fallback warning:", e.message);
-    prismaInstance = new PrismaClient({ adapter });
-  }
+  const dbUrl = process.env.DATABASE_URL;
+  const libsql = createClient({ url: dbUrl });
+  const adapter = new PrismaLibSql(libsql);
+  prismaInstance = new PrismaClient({ adapter });
 
   if (process.env.NODE_ENV !== "production") {
     globalForPrisma.prisma = prismaInstance;
