@@ -1,7 +1,29 @@
 import { prisma } from "./prisma";
+import { headers } from "next/headers";
+
+import { getServerSession } from "next-auth/next";
+import { authOptions } from "./auth";
 
 export async function getMockSession() {
-  const defaultUserId = "doolphin-default-user";
+  try {
+    const realSession = await getServerSession(authOptions);
+    if (realSession?.user) {
+      return realSession;
+    }
+  } catch (e) {
+    // If NextAuth session check throws outside context, proceed to dev fallback
+  }
+
+  let defaultUserId = "doolphin-default-user";
+  try {
+    const headersList = await headers();
+    const mockUserId = headersList.get('x-mock-user-id');
+    if (mockUserId) {
+      defaultUserId = mockUserId;
+    }
+  } catch (e) {
+    // Ignore error if headers() is called outside request context
+  }
   
   // Ensure the default user exists in the DB
   let user;

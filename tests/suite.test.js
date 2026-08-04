@@ -3,10 +3,10 @@ import assert from "node:assert/strict";
 import crypto from "crypto";
 import { AppError, ERROR_CODES, formatErrorResponse } from "../src/lib/errors.js";
 import { redactSecrets, sanitizeHeaders, validateSsrfTarget } from "../src/lib/security.js";
-import { MODEL_REGISTRY, listProductionModels } from "../src/lib/registry/modelRegistry.js";
-import { ModelRouter } from "../src/lib/router/modelRouter.js";
+import { MODEL_REGISTRY, listProductionModels } from "../src/lib/registry/ModelRegistry.js";
+import { ModelRouter } from "../src/lib/router/ModelRouter.js";
 import { FalProviderAdapter } from "../src/lib/adapters/falAdapter.js";
-import { renderAppStudioVideo, runFfprobe } from "../src/lib/media/ffmpegRunner.js";
+import { renderAppStudioVideo, runFfprobe } from "../src/lib/media/FfmpegRunner.js";
 import fs from "fs";
 
 // ---------------------------------------------------------

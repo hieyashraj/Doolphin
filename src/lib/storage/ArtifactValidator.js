@@ -1,5 +1,5 @@
 import { R2StorageService } from "./r2StorageService.js";
-import { runFfprobe } from "../media/ffmpegRunner.js";
+import { runFfprobe } from "../media/Ffprobe.js";
 import { prisma } from "../prisma.js";
 
 /**

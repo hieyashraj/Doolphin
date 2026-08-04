@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
-import { CreditEscrowService } from "@/lib/billing/creditEscrowService";
+import { CreditEscrowService } from "@/lib/billing/CreditEscrowService";
 import { OutboxDispatcher } from "@/lib/queue/outboxDispatcher";
 import { GenerationWorker } from "@/lib/queue/generationWorker";
 import { prisma } from "@/lib/prisma";

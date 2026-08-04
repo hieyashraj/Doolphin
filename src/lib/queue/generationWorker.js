@@ -1,8 +1,8 @@
 import { prisma } from "../prisma.js";
-import { CreditEscrowService } from "../billing/creditEscrowService.js";
+import { CreditEscrowService } from "../billing/CreditEscrowService.js";
 import { R2StorageService } from "../storage/r2StorageService.js";
-import { ArtifactDeliveryValidator } from "../storage/artifactValidator.js";
-import { renderAppStudioVideo } from "../media/ffmpegRunner.js";
+import { ArtifactDeliveryValidator } from "../storage/ArtifactValidator.js";
+import { renderAppStudioVideo } from "../media/FfmpegRunner.js";
 import fs from "fs";
 
 /**
