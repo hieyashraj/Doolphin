@@ -1,0 +1,188 @@
+
+> open-ai-ugc@0.1.0 build
+> prisma generate && next build
+
+Loaded Prisma config from prisma.config.ts.
+
+Prisma schema loaded from prisma/schema.prisma.
+
+✔ Generated Prisma Client (v7.8.0) to ./node_modules/@prisma/client in 244ms
+
+Start by importing your Prisma Client (See: https://pris.ly/d/importing-client)
+
+
+▲ Next.js 16.2.3 (Turbopack)
+- Environments: .env
+
+  Creating an optimized production build ...
+
+> Build error occurred
+Error: Turbopack build failed with 10 errors:
+./src/lib/queue/generationWorker.js:2:1
+Module not found: Can't resolve '../billing/creditEscrowService.js'
+  [90m1 |[0m [36mimport[0m { prisma } [36mfrom[0m [32m"../prisma.js"[0m;
+[31m[1m>[0m [90m2 |[0m [36mimport[0m { [33mCreditEscrowService[0m } [36mfrom[0m [32m"../billing/creditEscrowService.js"[0m;
+  [90m  |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m3 |[0m [36mimport[0m { [33mR2StorageService[0m } [36mfrom[0m [32m"../storage/r2StorageService.js"[0m;
+  [90m4 |[0m [36mimport[0m { [33mArtifactDeliveryValidator[0m } [36mfrom[0m [32m"../storage/artifactValidator.js"[0m;
+  [90m5 |[0m [36mimport[0m { renderAppStudioVideo } [36mfrom[0m [32m"../media/ffmpegRunner.js"[0m;
+
+
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+./src/lib/queue/generationWorker.js:5:1
+Module not found: Can't resolve '../media/ffmpegRunner.js'
+  [90m3 |[0m [36mimport[0m { [33mR2StorageService[0m } [36mfrom[0m [32m"../storage/r2StorageService.js"[0m;
+  [90m4 |[0m [36mimport[0m { [33mArtifactDeliveryValidator[0m } [36mfrom[0m [32m"../storage/artifactValidator.js"[0m;
+[31m[1m>[0m [90m5 |[0m [36mimport[0m { renderAppStudioVideo } [36mfrom[0m [32m"../media/ffmpegRunner.js"[0m;
+  [90m  |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m6 |[0m [36mimport[0m fs [36mfrom[0m [32m"fs"[0m;
+  [90m7 |[0m
+  [90m8 |[0m /**
+
+
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+./src/lib/queue/generationWorker.js:4:1
+Module not found: Can't resolve '../storage/artifactValidator.js'
+  [90m2 |[0m [36mimport[0m { [33mCreditEscrowService[0m } [36mfrom[0m [32m"../billing/creditEscrowService.js"[0m;
+  [90m3 |[0m [36mimport[0m { [33mR2StorageService[0m } [36mfrom[0m [32m"../storage/r2StorageService.js"[0m;
+[31m[1m>[0m [90m4 |[0m [36mimport[0m { [33mArtifactDeliveryValidator[0m } [36mfrom[0m [32m"../storage/artifactValidator.js"[0m;
+  [90m  |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m5 |[0m [36mimport[0m { renderAppStudioVideo } [36mfrom[0m [32m"../media/ffmpegRunner.js"[0m;
+  [90m6 |[0m [36mimport[0m fs [36mfrom[0m [32m"fs"[0m;
+  [90m7 |[0m
+
+
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+./src/app/api/generations/route.js:4:1
+Module not found: Can't resolve '@/lib/billing/creditEscrowService'
+  [90m2 |[0m [36mimport[0m { getServerSession } [36mfrom[0m [32m"next-auth/next"[0m;
+  [90m3 |[0m [36mimport[0m { authOptions } [36mfrom[0m [32m"@/lib/auth"[0m;
+[31m[1m>[0m [90m4 |[0m [36mimport[0m { [33mCreditEscrowService[0m } [36mfrom[0m [32m"@/lib/billing/creditEscrowService"[0m;
+  [90m  |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m5 |[0m [36mimport[0m { [33mOutboxDispatcher[0m } [36mfrom[0m [32m"@/lib/queue/outboxDispatcher"[0m;
+  [90m6 |[0m [36mimport[0m { [33mGenerationWorker[0m } [36mfrom[0m [32m"@/lib/queue/generationWorker"[0m;
+  [90m7 |[0m [36mimport[0m { prisma } [36mfrom[0m [32m"@/lib/prisma"[0m;
+
+Import map: aliased to relative './src/lib/billing/creditEscrowService' inside of [project]/
+
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+./src/app/api/preflight/route.js:5:1
+Module not found: Can't resolve '@/lib/billing/creditEscrowService'
+  [90m3 |[0m [36mimport[0m { authOptions } [36mfrom[0m [32m"@/lib/auth"[0m;
+  [90m4 |[0m [36mimport[0m { [33mModelRouter[0m } [36mfrom[0m [32m"@/lib/router/modelRouter"[0m;
+[31m[1m>[0m [90m5 |[0m [36mimport[0m { [33mCreditEscrowService[0m } [36mfrom[0m [32m"@/lib/billing/creditEscrowService"[0m;
+  [90m  |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m6 |[0m [36mimport[0m { prisma } [36mfrom[0m [32m"@/lib/prisma"[0m;
+  [90m7 |[0m [36mimport[0m { formatErrorResponse, [33mAppError[0m, [33mERROR_CODES[0m } [36mfrom[0m [32m"@/lib/errors"[0m;
+  [90m8 |[0m
+
+Import map: aliased to relative './src/lib/billing/creditEscrowService' inside of [project]/
+
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+./src/app/api/preflight/route.js:4:1
+Module not found: Can't resolve '@/lib/router/modelRouter'
+  [90m2 |[0m [36mimport[0m { getServerSession } [36mfrom[0m [32m"next-auth/next"[0m;
+  [90m3 |[0m [36mimport[0m { authOptions } [36mfrom[0m [32m"@/lib/auth"[0m;
+[31m[1m>[0m [90m4 |[0m [36mimport[0m { [33mModelRouter[0m } [36mfrom[0m [32m"@/lib/router/modelRouter"[0m;
+  [90m  |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m5 |[0m [36mimport[0m { [33mCreditEscrowService[0m } [36mfrom[0m [32m"@/lib/billing/creditEscrowService"[0m;
+  [90m6 |[0m [36mimport[0m { prisma } [36mfrom[0m [32m"@/lib/prisma"[0m;
+  [90m7 |[0m [36mimport[0m { formatErrorResponse, [33mAppError[0m, [33mERROR_CODES[0m } [36mfrom[0m [32m"@/lib/errors"[0m;
+
+Import map: aliased to relative './src/lib/router/modelRouter' inside of [project]/
+
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+./src/lib/storage/r2StorageService.js:1:1
+Module not found: Can't resolve '@aws-sdk/client-s3'
+[31m[1m>[0m [90m1 |[0m ... { [33mS3Client[0m, [33mPutObjectCommand[0m, [33mGetObjectCommand[0m, [33mHeadObjectCommand[0m } [36mfrom[0m [32m"@aws-sdk/clie...[0m
+  [90m  |[0m    [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m2 |[0m ... { getSignedUrl } [36mfrom[0m [32m"@aws-sdk/s3-request-presigner"[0m;
+  [90m3 |[0m ... fs [36mfrom[0m [32m"fs"[0m;
+  [90m4 |[0m ... crypto [36mfrom[0m [32m"crypto"[0m;
+
+
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+./src/lib/storage/r2StorageService.js:2:1
+Module not found: Can't resolve '@aws-sdk/s3-request-presigner'
+  [90m1 |[0m [36mimport[0m { [33mS3Client[0m, [33mPutObjectCommand[0m, [33mGetObjectCommand[0m, [33mHeadObjectCommand[0m } [36mfrom[0m [32m"@aws-sdk/c...[0m
+[31m[1m>[0m [90m2 |[0m [36mimport[0m { getSignedUrl } [36mfrom[0m [32m"@aws-sdk/s3-request-presigner"[0m;
+  [90m  |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m3 |[0m [36mimport[0m fs [36mfrom[0m [32m"fs"[0m;
+  [90m4 |[0m [36mimport[0m crypto [36mfrom[0m [32m"crypto"[0m;
+  [90m5 |[0m
+
+
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+./src/lib/queue/outboxDispatcher.js:2:1
+Module not found: Can't resolve 'bullmq'
+  [90m1 |[0m [36mimport[0m { prisma } [36mfrom[0m [32m"../prisma.js"[0m;
+[31m[1m>[0m [90m2 |[0m [36mimport[0m { [33mQueue[0m } [36mfrom[0m [32m"bullmq"[0m;
+  [90m  |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m3 |[0m [36mimport[0m [33mRedis[0m [36mfrom[0m [32m"ioredis"[0m;
+  [90m4 |[0m
+  [90m5 |[0m /**
+
+
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+./src/lib/queue/outboxDispatcher.js:3:1
+Module not found: Can't resolve 'ioredis'
+  [90m1 |[0m [36mimport[0m { prisma } [36mfrom[0m [32m"../prisma.js"[0m;
+  [90m2 |[0m [36mimport[0m { [33mQueue[0m } [36mfrom[0m [32m"bullmq"[0m;
+[31m[1m>[0m [90m3 |[0m [36mimport[0m [33mRedis[0m [36mfrom[0m [32m"ioredis"[0m;
+  [90m  |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m4 |[0m
+  [90m5 |[0m /**
+  [90m6 |[0m  * [33mTransactional[0m [33mOutbox[0m [33mDispatcher[0m.
+
+
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+    at <unknown> (./src/lib/queue/generationWorker.js:2:1)
+    at <unknown> (https://nextjs.org/docs/messages/module-not-found)
+    at <unknown> (./src/lib/queue/generationWorker.js:5:1)
+    at <unknown> (https://nextjs.org/docs/messages/module-not-found)
+    at <unknown> (./src/lib/queue/generationWorker.js:4:1)
+    at <unknown> (https://nextjs.org/docs/messages/module-not-found)
+    at <unknown> (./src/app/api/generations/route.js:4:1)
+    at <unknown> (https://nextjs.org/docs/messages/module-not-found)
+    at <unknown> (./src/app/api/preflight/route.js:5:1)
+    at <unknown> (https://nextjs.org/docs/messages/module-not-found)
+    at <unknown> (./src/app/api/preflight/route.js:4:1)
+    at <unknown> (https://nextjs.org/docs/messages/module-not-found)
+    at <unknown> (./src/lib/storage/r2StorageService.js:1:1)
+    at <unknown> (https://nextjs.org/docs/messages/module-not-found)
+    at <unknown> (./src/lib/storage/r2StorageService.js:2:1)
+    at <unknown> (https://nextjs.org/docs/messages/module-not-found)
+    at <unknown> (./src/lib/queue/outboxDispatcher.js:2:1)
+    at <unknown> (https://nextjs.org/docs/messages/module-not-found)
+    at <unknown> (./src/lib/queue/outboxDispatcher.js:3:1)
+    at <unknown> (https://nextjs.org/docs/messages/module-not-found)

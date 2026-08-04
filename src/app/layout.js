@@ -1,15 +1,11 @@
 import "./globals.css";
 import { Providers } from "./providers";
 import Navbar from "../components/Navbar";
-import { Inter } from "next/font/google";
-import config from "@/lib/config";
-
-const inter = Inter({ subsets: ["latin"], display: "swap" });
 
 export const metadata = {
-  title: "Open AI UGC — AI UGC Video Ads (Arcads & MakeUGC Alternative)",
+  title: "Doolphin — Enterprise AI UGC Platform",
   description:
-    "Open AI UGC is an open-source alternative to Arcads and MakeUGC. Generate scroll-stopping AI UGC video ads with realistic AI actors, scripts, and voiceovers — powered by Veo 3.1, Seedance, Grok Video, and more.",
+    "Generate high-performing AI UGC video ads with realistic actors, scripts, and voiceovers — powered by Veo 3.1, Seedance, Grok Video, and more.",
   keywords: [
     "AI UGC",
     "UGC ads",
@@ -24,19 +20,23 @@ export const metadata = {
 };
 
 export default function RootLayout({ children }) {
-  const theme = config?.theme || "slate-indigo";
-
   return (
-    <html lang="en" className="h-full w-full" data-theme={theme}>
-      <body className={`${inter.className} h-full w-full flex flex-col antialiased bg-bg-page text-primary-text overflow-hidden`}>
+    <html lang="en" data-theme="dark" className="h-full w-full dark">
+      <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+      </head>
+      <body className="font-sans h-full w-full flex antialiased text-white overflow-hidden">
         <Providers>
-          <Navbar />
-          <div className="flex-1 flex flex-col overflow-y-auto min-h-0">
-            {children}
+          <div className="liquid-canvas flex h-screen w-screen overflow-hidden text-white">
+            <Navbar />
+            <main className="flex-1 flex flex-col min-h-0 overflow-hidden relative z-10 p-4 md:p-6 pl-0">
+              {children}
+            </main>
           </div>
         </Providers>
       </body>
     </html>
   );
 }
-

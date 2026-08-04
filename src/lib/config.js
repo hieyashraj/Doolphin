@@ -1,5 +1,5 @@
 const config = {
-  appName: "Open AI UGC",
+  appName: "Doolphin",
   auth: {
     google: {
       clientId: process.env.GOOGLE_CLIENT_ID,
@@ -21,7 +21,9 @@ const config = {
     },
   },
   ai: {
-    apiKey: process.env.MUAPIAPP_API_KEY,
+    apiKey: process.env.UGC_API_KEY || process.env.MUAPIAPP_API_KEY,
+    falKey: process.env.FAL_KEY,
+    elevenLabsApiKey: process.env.ELEVENLABS_API_KEY,
     generationCost: 10,
     model: "gpt-4o",
   },

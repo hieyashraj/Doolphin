@@ -7,12 +7,12 @@ import { FaGoogle, FaKey, FaInfoCircle, FaArrowRight } from "react-icons/fa";
 import toast, { Toaster } from "react-hot-toast";
 
 function LoginContent() {
-  const { data: session, status } = useSession();
+  const { status } = useSession();
   const router = useRouter();
   const searchParams = useSearchParams();
   const next = searchParams.get("callbackUrl") || searchParams.get("next") || "/";
 
-  const [activeTab, setActiveTab] = useState("google"); // "google" | "apikey"
+  const [activeTab, setActiveTab] = useState("google");
   const [apiKeyInput, setApiKeyInput] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -57,45 +57,45 @@ function LoginContent() {
   };
 
   return (
-    <div className="min-h-dvh flex items-center justify-center bg-bg-page px-6 text-primary-text select-none">
+    <div className="min-h-screen w-full flex items-center justify-center p-6 text-[#1c2a32] select-none relative">
       <Toaster position="top-right" />
-      <div className="relative bg-bg-card border border-divider w-full max-w-md rounded-xl p-8 space-y-6 shadow-2xl animate-scale-up">
+      <div className="glass-panel w-full max-w-md p-8 space-y-6 shadow-2xl relative z-10">
         <div className="flex flex-col items-center text-center space-y-3">
-          <div className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center text-2xl text-primary font-black shadow-md shadow-primary/15">
-            📹
+          <div className="w-14 h-14 rounded-2xl bg-[#1687f8]/12 border border-[#1687f8]/20 flex items-center justify-center text-2xl text-[#1687f8] font-bold shadow-sm">
+            D
           </div>
-          <h2 className="text-2xl font-black uppercase tracking-tight">Sign In to UGC Creator</h2>
-          <p className="text-xs font-semibold text-secondary-text leading-relaxed px-2">
-            Choose your preferred sign-in method: Google Account or custom MuAPI Key.
+          <h2 className="text-xl font-bold tracking-tight text-[#1c2a32]">Doolphin Enterprise</h2>
+          <p className="text-xs text-[#647985] leading-relaxed">
+            Access Liquid Studio with your Google Account or custom MuAPI key.
           </p>
         </div>
 
         {/* Auth Method Selector Tabs */}
-        <div className="flex bg-bg-page p-1 rounded-lg border border-divider/60">
+        <div className="flex glass-control p-1">
           <button
             type="button"
             onClick={() => setActiveTab("google")}
-            className={`flex-1 py-2 rounded-md text-xs font-bold transition-all flex items-center justify-center gap-2 ${
+            className={`flex-1 py-2 rounded-xl text-xs font-semibold transition-all flex items-center justify-center gap-2 cursor-pointer ${
               activeTab === "google"
-                ? "bg-bg-card text-white shadow-sm border border-divider/40"
-                : "text-secondary-text hover:text-white"
+                ? "bg-white/90 text-[#1687f8] shadow-sm border border-white"
+                : "text-[#647985] hover:text-[#1c2a32]"
             }`}
           >
-            <FaGoogle className="text-red-400" />
+            <FaGoogle className="text-red-500" />
             <span>Google Account</span>
           </button>
 
           <button
             type="button"
             onClick={() => setActiveTab("apikey")}
-            className={`flex-1 py-2 rounded-md text-xs font-bold transition-all flex items-center justify-center gap-2 ${
+            className={`flex-1 py-2 rounded-xl text-xs font-semibold transition-all flex items-center justify-center gap-2 cursor-pointer ${
               activeTab === "apikey"
-                ? "bg-bg-card text-white shadow-sm border border-divider/40"
-                : "text-secondary-text hover:text-white"
+                ? "bg-white/90 text-[#1687f8] shadow-sm border border-white"
+                : "text-[#647985] hover:text-[#1c2a32]"
             }`}
           >
-            <FaKey className="text-amber-400" />
-            <span>Use API Key</span>
+            <FaKey className="text-[#f4ad31]" />
+            <span>API Key</span>
           </button>
         </div>
 
@@ -104,36 +104,34 @@ function LoginContent() {
           <div className="space-y-4 pt-2">
             <button
               onClick={() => signIn("google", { callbackUrl: next })}
-              className="w-full py-3.5 bg-white text-neutral-900 rounded-full text-xs font-bold flex items-center justify-center gap-3 hover:opacity-90 transition-all shadow-md active:scale-[0.98] cursor-pointer"
+              className="w-full glass-btn-secondary py-3 text-xs flex items-center justify-center gap-3 cursor-pointer"
             >
               <FaGoogle className="text-sm text-red-500" />
               <span>Continue with Google</span>
             </button>
-            <p className="text-[11px] text-center text-secondary-text">
+            <p className="text-xs text-center text-[#8da1ab]">
               Uses system credit balance. Ideal for credit pack purchases.
             </p>
           </div>
         ) : (
           <form onSubmit={handleApiKeyLogin} className="space-y-4 pt-2">
             <div className="space-y-1.5">
-              <label className="block text-[11px] uppercase font-bold text-secondary-text tracking-wider">
-                MuAPI Key
+              <label className="block text-[11px] uppercase font-semibold text-[#8da1ab] tracking-wider">
+                MuAPI Secret Key
               </label>
-              <div className="relative">
-                <input
-                  type="password"
-                  value={apiKeyInput}
-                  onChange={(e) => setApiKeyInput(e.target.value)}
-                  placeholder="Enter your mu_... key"
-                  className="w-full bg-bg-page border border-divider rounded-lg px-3.5 py-2.5 text-xs text-white placeholder-secondary-text/50 focus:outline-none focus:border-primary transition-colors"
-                />
-              </div>
+              <input
+                type="password"
+                value={apiKeyInput}
+                onChange={(e) => setApiKeyInput(e.target.value)}
+                placeholder="mu_..."
+                className="w-full glass-control px-3.5 py-2.5 text-xs text-[#1c2a32] placeholder-[#8da1ab]"
+              />
               <div className="flex justify-end">
                 <a
                   href="https://muapi.ai"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-[10px] text-primary hover:underline font-semibold"
+                  className="text-xs text-[#1687f8] hover:underline font-medium"
                 >
                   Get API Key from MuAPI →
                 </a>
@@ -143,22 +141,22 @@ function LoginContent() {
             <button
               type="submit"
               disabled={isSubmitting || !apiKeyInput.trim()}
-              className="w-full py-3 bg-primary hover:bg-primary/90 text-white rounded-full text-xs font-bold flex items-center justify-center gap-2 transition-all shadow-md active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+              className="w-full glass-btn-primary py-3 text-xs flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
             >
               <span>{isSubmitting ? "Authenticating..." : "Sign In with API Key"}</span>
               <FaArrowRight className="text-xs" />
             </button>
 
-            <p className="text-[11px] text-center text-amber-400/90 font-medium">
-              ⚡ Generate UGC videos using your API key. 0 website credits required!
+            <p className="text-xs text-center text-[#1687f8] font-medium">
+              ⚡ Direct access with zero credit consumption.
             </p>
           </form>
         )}
 
-        <div className="flex items-start gap-2.5 bg-primary/5 border border-primary/10 p-3.5 rounded text-[11px] leading-relaxed text-secondary-text">
-          <FaInfoCircle className="text-primary text-xs shrink-0 mt-0.5" />
+        <div className="flex items-start gap-2.5 glass-card p-3.5 text-xs leading-relaxed text-[#647985]">
+          <FaInfoCircle className="text-[#1687f8] text-sm shrink-0 mt-0.5" />
           <span>
-            By signing in, you agree to our Terms of Service. API keys are kept secure and encrypted for generation calls.
+            By signing in, you agree to our Terms of Service. Custom keys are encrypted and stored safely.
           </span>
         </div>
       </div>
@@ -170,8 +168,8 @@ export default function Login() {
   return (
     <Suspense
       fallback={
-        <div className="min-h-dvh flex items-center justify-center bg-bg-page text-primary-text">
-          <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+        <div className="min-h-screen flex items-center justify-center text-[#1c2a32]">
+          <div className="w-8 h-8 border-2 border-[#1687f8] border-t-transparent rounded-full animate-spin" />
         </div>
       }
     >

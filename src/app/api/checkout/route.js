@@ -1,11 +1,10 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth";
+import { getMockSession as getServerSession } from "@/lib/getMockSession";
 import { BillingService } from "@/lib/services/billing";
 
 export async function POST(req) {
   try {
-    const session = await getServerSession(authOptions);
+    const session = await getServerSession();
     if (!session || !session.user) {
       return NextResponse.json({ error: "Unauthorized. Please sign in." }, { status: 401 });
     }

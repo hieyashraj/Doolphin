@@ -1,49 +1,48 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth";
+import { getMockSession as getServerSession } from "@/lib/getMockSession";
+import { saveMediaBuffer } from "@/lib/storage";
 
 export async function POST(req) {
   try {
-    const session = await getServerSession(authOptions);
+    const session = await getServerSession();
 
     if (!session?.user) {
-      return new NextResponse("Unauthorized", { status: 401 });
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const formData = await req.formData();
     const file = formData.get("file");
 
     if (!file) {
-      return new NextResponse("No file provided", { status: 400 });
+      return NextResponse.json({ error: "No file provided" }, { status: 400 });
     }
 
-    const apiKey = process.env.UGC_API_KEY;
-    if (!apiKey) {
-      return new NextResponse("API Key not configured", { status: 500 });
+    // Validate mime type
+    const mimeType = file.type || "image/png";
+    if (!mimeType.startsWith("image/") && !mimeType.startsWith("video/") && !mimeType.startsWith("audio/")) {
+      return NextResponse.json({ error: "Unsupported media file type" }, { status: 400 });
     }
 
-    // Prepare for MuAPI
-    const muapiFormData = new FormData();
-    muapiFormData.append("file", file);
+    const arrayBuffer = await file.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
 
-    const response = await fetch("https://api.muapi.ai/api/v1/upload_file", {
-      method: "POST",
-      headers: {
-        "x-api-key": apiKey,
-      },
-      body: muapiFormData,
+    if (buffer.length === 0) {
+      return NextResponse.json({ error: "File payload is empty" }, { status: 400 });
+    }
+
+    const ext = file.name ? file.name.split('.').pop() : 'png';
+    const filename = `ref_${Date.now()}_${Math.random().toString(36).substring(2, 7)}.${ext}`;
+
+    // Save to durable storage manager
+    const localUrl = await saveMediaBuffer(buffer, filename, "references");
+
+    return NextResponse.json({
+      success: true,
+      url: localUrl
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`MuAPI Upload Failed: ${response.status} ${errorText}`);
-    }
-
-    const data = await response.json();
-    // Expected response format: { url: "...", file_id: "..." }
-    return NextResponse.json(data);
   } catch (error) {
     console.error("[UPLOAD_ERROR]", error);
-    return new NextResponse(error.message || "Internal Error", { status: 500 });
+    return NextResponse.json({ error: error.message || "Upload Failed" }, { status: 500 });
   }
 }

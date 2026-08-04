@@ -1,24 +1,222 @@
 generator client {
-  provider      = "prisma-client-js"
+  provider = "prisma-client-js"
 }
 
 datasource db {
   provider = "postgresql"
 }
 
+// --------------------------------------------------------
+// CANONICAL ENUMS
+// --------------------------------------------------------
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  DELETED
+}
+
+enum WorkspaceStatus {
+  ACTIVE
+  SUSPENDED
+  ARCHIVED
+}
+
+enum WorkspaceRole {
+  OWNER
+  ADMIN
+  MEMBER
+  VIEWER
+}
+
+enum CreditTransactionType {
+  ISSUE
+  RESERVE
+  COMMIT
+  RELEASE
+  REFUND
+  ADJUSTMENT
+}
+
+enum CreditReservationStatus {
+  RESERVED
+  COMMITTED
+  RELEASED
+}
+
+enum GenerationType {
+  PRODUCT_AD
+  APP_STUDIO
+  LEGACY
+}
+
+enum CreationStatus {
+  DRAFT
+  QUEUED
+  PROCESSING
+  PARTIAL_COMPLETED
+  COMPLETED
+  FAILED
+  CANCELLED
+  TIMED_OUT
+}
+
+enum StageStatus {
+  PENDING
+  RUNNING
+  WAITING_PROVIDER
+  COMPLETED
+  FAILED
+  CANCELLED
+  TIMED_OUT
+  SKIPPED
+}
+
+enum MediaType {
+  IMAGE
+  VIDEO
+  AUDIO
+}
+
+enum AssetRole {
+  PRIMARY_PRODUCT
+  PRODUCT_PACKAGING
+  PRODUCT_LOGO
+  PRODUCT_USAGE_REFERENCE
+  ACTOR_REFERENCE
+  APP_PRIMARY_SCREEN
+  APP_SCREEN_RECORDING
+  APP_LOGO
+  MOTION_REFERENCE
+  AUDIO_REFERENCE
+  VOICE_REFERENCE
+  STYLE_REFERENCE
+  LEGACY_REFERENCE
+}
+
+enum AssetValidationStatus {
+  QUARANTINED
+  VALIDATING
+  VALID
+  INVALID
+}
+
+enum ProviderJobStatus {
+  PREPARED
+  SUBMITTING
+  SUBMISSION_UNKNOWN
+  QUEUED
+  PROCESSING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+  TIMED_OUT
+}
+
+enum ProviderBillingStatus {
+  UNKNOWN
+  ESTIMATED
+  BILLED
+  WAIVED
+  DISPUTED
+}
+
+enum ArtifactType {
+  TTS_AUDIO
+  RAW_PROVIDER_VIDEO
+  NATIVE_AUDIO_VIDEO
+  LIP_SYNCED_VIDEO
+  COMPOSED_VIDEO
+  CAPTIONED_VIDEO
+  FINAL_VIDEO
+  THUMBNAIL
+  CAPTION_FILE
+  PROVIDER_RAW_RESULT
+}
+
+enum ArtifactValidationStatus {
+  PENDING
+  VALID
+  INVALID
+}
+
+enum OutboxStatus {
+  PENDING
+  LOCKED
+  DISPATCHED
+  FAILED
+  DEAD_LETTER
+}
+
+enum WebhookSignatureStatus {
+  UNVERIFIED
+  VERIFIED
+  INVALID
+}
+
+enum WebhookProcessingStatus {
+  RECEIVED
+  DUPLICATE
+  PROCESSED
+  IGNORED
+  FAILED
+}
+
+enum SchemaStatus {
+  SCHEMA_UNVERIFIED
+  SCHEMA_VERIFIED
+}
+
+enum PricingStatus {
+  UNVERIFIED
+  VERIFIED
+  STALE
+}
+
+enum OutputStatus {
+  NOT_TESTED
+  POC_FAILED
+  POC_PASSED
+}
+
+enum CircuitState {
+  CLOSED
+  OPEN
+  HALF_OPEN
+}
+
+enum ScopeType {
+  GLOBAL
+  WORKSPACE
+  USER
+  PROVIDER
+  MODEL
+}
+
+enum ActorType {
+  USER
+  ADMIN
+  SYSTEM
+  PROVIDER
+}
+
+// --------------------------------------------------------
+// AUTH.JS & IDENTITY MODELS
+// --------------------------------------------------------
+
 model Account {
-  id                 String  @id @default(cuid())
-  userId             String
-  type               String
-  provider           String
-  providerAccountId  String
-  refresh_token      String?  @db.Text
-  access_token       String?  @db.Text
-  expires_at         Int?
-  token_type         String?
-  scope              String?
-  id_token           String?  @db.Text
-  session_state      String?
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -33,47 +231,627 @@ model Session {
   user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
-model User {
-  id            String    @id @default(cuid())
-  name          String?
-  email         String?   @unique
-  emailVerified DateTime?
-  image         String?
-  credits       Int       @default(10)
-  customApiKey  String?   @db.Text
-  accounts      Account[]
-  sessions      Session[]
-  creations     Creation[]
-}
-
-model Creation {
-  id           String   @id @default(cuid())
-  type         String?  // video or image
-  title        String?
-  prompt       String?  @db.Text
-  url          String?  @db.Text
-  createdAt    DateTime @default(now())
-  userId       String
-  
-  requestId    String?  @unique
-  status       String   @default("processing")
-  error        String?  @db.Text
-
-  // Generation parameters
-  modelId      String?
-  aspectRatio  String?
-  resolution   String?
-  duration     Int?
-  mode         String?
-  inputImages  String?  @db.Text
-  
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-}
-
 model VerificationToken {
   identifier String
   token      String   @unique
   expires    DateTime
 
   @@unique([identifier, token])
+}
+
+// 5.1 User
+model User {
+  id                 String       @id @default(cuid())
+  name               String?
+  email              String?      @unique
+  emailVerified      DateTime?
+  image              String?
+  status             UserStatus   @default(ACTIVE)
+  lastLoginAt        DateTime?
+  defaultWorkspaceId String?
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+
+  // System credentials override (legacy compatibility)
+  customApiKey       String?
+  falKey             String?
+  elevenLabsKey      String?
+
+  accounts           Account[]
+  sessions           Session[]
+  workspaceMembers   WorkspaceMember[]
+  creations          Creation[]
+  assets             CreationAsset[]
+  creditTransactions CreditTransaction[]
+  auditEvents        AuditEvent[]
+  usageEvents        UsageEvent[]
+}
+
+// 5.2 Workspace
+model Workspace {
+  id                      String          @id @default(cuid())
+  name                    String
+  ownerUserId             String
+  status                  WorkspaceStatus @default(ACTIVE)
+  billingPlan             String          @default("starter")
+  timezone                String          @default("UTC")
+  currency                String          @default("USD")
+  dailySpendLimitMicroUsd BigInt          @default(50000000) // $50.00
+  monthlySpendLimitMicroUsd BigInt        @default(500000000) // $500.00
+  createdAt               DateTime        @default(now())
+  updatedAt               DateTime        @updatedAt
+
+  members                 WorkspaceMember[]
+  creditAccount           CreditAccount?
+  creditTransactions      CreditTransaction[]
+  creditReservations      CreditReservation[]
+  creations               Creation[]
+  artifacts               GeneratedArtifact[]
+  providerCostLedgers     ProviderCostLedger[]
+  auditEvents             AuditEvent[]
+  usageEvents             UsageEvent[]
+}
+
+// 5.3 WorkspaceMember
+model WorkspaceMember {
+  id          String        @id @default(cuid())
+  workspaceId String
+  userId      String
+  role        WorkspaceRole @default(MEMBER)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  workspace   Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, userId])
+}
+
+// 5.4 CreditAccount
+model CreditAccount {
+  id                       String    @id @default(cuid())
+  workspaceId              String    @unique
+  availableCredits         Int       @default(100)
+  reservedCredits          Int       @default(0)
+  lifetimeIssuedCredits    Int       @default(100)
+  lifetimeCommittedCredits Int       @default(0)
+  lifetimeReleasedCredits  Int       @default(0)
+  version                  Int       @default(1)
+  createdAt                DateTime  @default(now())
+  updatedAt                DateTime  @updatedAt
+
+  workspace                Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+}
+
+// 5.5 CreditTransaction
+model CreditTransaction {
+  id                       String                @id @default(cuid())
+  workspaceId              String
+  creationId               String?
+  creationVariantId        String?
+  creditReservationId      String?
+  type                     CreditTransactionType
+  amount                   Int
+  idempotencyKey           String                @unique
+  balanceBefore            Int
+  balanceAfter             Int
+  reservedBefore           Int
+  reservedAfter            Int
+  reasonCode               String
+  metadata                 String?               @db.Text // JSON
+  createdAt                DateTime              @default(now())
+  createdByUserId          String?
+  createdBySystemComponent String?
+
+  workspace                Workspace             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user                     User?                 @relation(fields: [createdByUserId], references: [id], onDelete: SetNull)
+}
+
+// 5.6 CreditReservation
+model CreditReservation {
+  id                String                  @id @default(cuid())
+  workspaceId       String
+  creationId        String
+  creationVariantId String
+  amount            Int
+  status            CreditReservationStatus @default(RESERVED)
+  idempotencyKey    String                  @unique
+  version           Int                     @default(1)
+  createdAt         DateTime                @default(now())
+  committedAt       DateTime?
+  releasedAt        DateTime?
+  releaseReason     String?
+
+  workspace         Workspace               @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  variant           CreationVariant         @relation(fields: [creationVariantId], references: [id], onDelete: Cascade)
+}
+
+// 5.7 PreflightQuote
+model PreflightQuote {
+  id                                String         @id @default(cuid())
+  workspaceId                       String
+  userId                            String
+  generationType                    GenerationType
+  requestSnapshot                   String         @db.Text // JSON
+  normalizedAssetSummary            String         @db.Text // JSON
+  routingSnapshot                   String         @db.Text // JSON
+  selectedModelId                   String
+  provider                          String
+  providerEndpoint                  String
+  registryRevision                  String
+  pricingRevision                   String
+  adapterVersion                    String
+  estimatedProviderCostMinMicroUsd  BigInt
+  estimatedProviderCostMaxMicroUsd  BigInt
+  infrastructureCostEstimateMicroUsd BigInt
+  expectedFailureLossMicroUsd       BigInt
+  internalCreditsToReserve          Int
+  warnings                          String?        @db.Text // JSON
+  capabilitySummary                 String?        @db.Text // JSON
+  expiresAt                         DateTime
+  consumedAt                        DateTime?
+  createdAt                         DateTime       @default(now())
+}
+
+// 5.8 Creation
+model Creation {
+  id                     String         @id @default(cuid())
+  workspaceId            String
+  userId                 String
+  generationType         GenerationType
+  workflowVersion        String         @default("1.0.0")
+  presetId               String
+  title                  String?
+  spokenScript           String?        @db.Text
+  prompt                 String?        @db.Text
+  compiledPrompt         String?        @db.Text
+  additionalInstructions String?        @db.Text
+  ctaText                String?
+  numberOfVideos         Int            @default(1)
+  status                 CreationStatus @default(DRAFT)
+  currentStage           String?
+  stageIndex             Int            @default(0)
+  totalStages            Int            @default(1)
+  progressType           String         @default("STAGE_BASED") // STAGE_BASED | MEASURED
+  progressValue          Float          @default(0.0)
+  quoteId                String?
+  idempotencyKey         String
+  timeoutAt              DateTime?
+  cancelledAt            DateTime?
+  completedAt            DateTime?
+  errorCode              String?
+  safeError              String?        @db.Text
+  version                Int            @default(1)
+  appVersion             String         @default("1.0.0")
+  gitCommitSha           String?
+  deploymentId           String?
+  createdAt              DateTime       @default(now())
+  updatedAt              DateTime       @updatedAt
+
+  workspace              Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user                   User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  variants               CreationVariant[]
+  assets                 CreationAsset[]
+
+  @@unique([workspaceId, idempotencyKey])
+}
+
+// 5.9 CreationVariant
+model CreationVariant {
+  id                 String               @id @default(cuid())
+  creationId         String
+  variantIndex       Int
+  status             CreationStatus       @default(QUEUED)
+  currentStage       String?
+  stageIndex         Int                  @default(0)
+  totalStages        Int                  @default(1)
+  progressType       String               @default("STAGE_BASED")
+  progressValue      Float                @default(0.0)
+  timeoutAt          DateTime?
+  cancelledAt        DateTime?
+  completedAt        DateTime?
+  reservedCredits    Int                  @default(0)
+  finalArtifactId    String?
+  errorCode          String?
+  safeError          String?              @db.Text
+  version            Int                  @default(1)
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+
+  creation           Creation             @relation(fields: [creationId], references: [id], onDelete: Cascade)
+  workflowSnapshot   WorkflowSnapshot?
+  stages             GenerationStage[]
+  providerJobs       ProviderJob[]
+  artifacts          GeneratedArtifact[]
+  costLedgers        ProviderCostLedger[]
+  creditReservations CreditReservation[]
+  routingDecisions   RoutingDecision[]
+
+  @@unique([creationId, variantIndex])
+}
+
+// 5.10 CreationAsset
+model CreationAsset {
+  id                  String                @id @default(cuid())
+  creationId          String
+  uploadedByUserId    String
+  role                AssetRole
+  mediaType           MediaType
+  storageKey          String
+  originalFileName    String
+  normalizedFileName  String
+  mimeType            String
+  detectedMimeType    String?
+  fileSizeBytes       BigInt
+  checksumSha256      String
+  width               Int?
+  height              Int?
+  durationMs          Int?
+  frameRate           Float?
+  codec               String?
+  validationStatus    AssetValidationStatus @default(QUARANTINED)
+  validationErrorCode String?
+  validationMetadata  String?               @db.Text // JSON
+  createdAt           DateTime              @default(now())
+  validatedAt         DateTime?
+
+  creation            Creation              @relation(fields: [creationId], references: [id], onDelete: Cascade)
+  user                User                  @relation(fields: [uploadedByUserId], references: [id], onDelete: Cascade)
+}
+
+// 5.11 WorkflowSnapshot
+model WorkflowSnapshot {
+  id                     String          @id @default(cuid())
+  creationVariantId      String          @unique
+  workflowType           GenerationType
+  workflowVersion        String
+  presetId               String
+  stageGraph             String          @db.Text // JSON
+  capabilityRequirements String          @db.Text // JSON
+  assetRoleMapping       String          @db.Text // JSON
+  speechPlan             String          @db.Text // JSON
+  compositionPlan        String          @db.Text // JSON
+  routingInput           String          @db.Text // JSON
+  createdAt              DateTime        @default(now())
+
+  variant                CreationVariant @relation(fields: [creationVariantId], references: [id], onDelete: Cascade)
+}
+
+// 5.12 GenerationStage
+model GenerationStage {
+  id                String          @id @default(cuid())
+  creationVariantId String
+  name              String
+  order             Int
+  status            StageStatus     @default(PENDING)
+  userFacingLabel   String
+  paidStage         Boolean         @default(false)
+  providerJobId     String?
+  idempotencyKey    String
+  inputFingerprint  String
+  startedAt         DateTime?
+  lastHeartbeatAt   DateTime?
+  completedAt       DateTime?
+  timeoutAt         DateTime?
+  attemptCount      Int             @default(0)
+  errorCode         String?
+  safeError         String?         @db.Text
+  internalMetadata  String?         @db.Text // JSON
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  variant           CreationVariant @relation(fields: [creationVariantId], references: [id], onDelete: Cascade)
+  artifacts         GeneratedArtifact[]
+
+  @@unique([creationVariantId, name])
+}
+
+// 5.13 ProviderJob
+model ProviderJob {
+  id                          String                @id @default(cuid())
+  creationVariantId           String
+  generationStageId           String?
+  provider                    String
+  internalModelId             String
+  providerModelVersion        String
+  endpoint                    String
+  providerRequestId           String?
+  status                      ProviderJobStatus     @default(PREPARED)
+  stageIdempotencyKey         String
+  inputFingerprint            String
+  registryRevision            String
+  pricingRevision             String
+  adapterVersion              String
+  routingSnapshot             String                @db.Text // JSON
+  capabilitySnapshot          String                @db.Text // JSON
+  sanitizedRequestPayload     String                @db.Text // JSON
+  sanitizedInitialResponse    String?               @db.Text // JSON
+  sanitizedResultPayload      String?               @db.Text // JSON
+  sanitizedResponseHeaders    String?               @db.Text // JSON
+  providerQueueStatusHistory  String?               @db.Text // JSON
+  providerRequestCreatedAt    DateTime?
+  submittedAt                 DateTime?
+  acceptedAt                  DateTime?
+  lastCheckedAt               DateTime?
+  completedAt                 DateTime?
+  pollCount                   Int                   @default(0)
+  webhookCount                Int                   @default(0)
+  submissionCount             Int                   @default(0)
+  estimatedCostMinMicroUsd    BigInt
+  estimatedCostMaxMicroUsd    BigInt
+  actualCostMicroUsd          BigInt?
+  providerBillingStatus       ProviderBillingStatus @default(UNKNOWN)
+  billableUnits               Float?
+  providerLatencyMs           Int?
+  errorCode                   String?
+  safeError                   String?               @db.Text
+  internalErrorFingerprint    String?
+  createdAt                   DateTime              @default(now())
+  updatedAt                   DateTime              @updatedAt
+
+  variant                     CreationVariant       @relation(fields: [creationVariantId], references: [id], onDelete: Cascade)
+  costLedgers                 ProviderCostLedger[]
+}
+
+// 5.14 ProviderCostLedger
+model ProviderCostLedger {
+  id                       String                @id @default(cuid())
+  workspaceId              String
+  creationId               String
+  creationVariantId        String
+  providerJobId            String
+  provider                 String
+  stageName                String
+  estimatedCostMinMicroUsd BigInt
+  estimatedCostMaxMicroUsd BigInt
+  actualCostMicroUsd       BigInt?
+  providerBillingStatus    ProviderBillingStatus @default(UNKNOWN)
+  providerRequestId        String?
+  billableUnits            Float?
+  pricingRevision          String
+  inputFingerprint         String
+  reconciledAt             DateTime?
+  createdAt                DateTime              @default(now())
+
+  workspace                Workspace             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  job                      ProviderJob           @relation(fields: [providerJobId], references: [id], onDelete: Cascade)
+  variant                  CreationVariant       @relation(fields: [creationVariantId], references: [id], onDelete: Cascade)
+}
+
+// 5.15 GeneratedArtifact
+model GeneratedArtifact {
+  id                    String                   @id @default(cuid())
+  workspaceId           String
+  creationVariantId     String
+  generationStageId     String?
+  type                  ArtifactType
+  storageKey            String
+  checksumSha256        String
+  mimeType              String
+  fileSizeBytes         BigInt
+  width                 Int?
+  height                Int?
+  durationMs            Int?
+  frameRate             Float?
+  videoCodec            String?
+  audioCodec            String?
+  validationStatus      ArtifactValidationStatus @default(PENDING)
+  validationMetadata    String?                  @db.Text // JSON
+  reusableFingerprint   String?
+  sourceProviderUrlHost String?
+  createdAt             DateTime                 @default(now())
+  validatedAt           DateTime?
+
+  workspace             Workspace                @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  variant               CreationVariant          @relation(fields: [creationVariantId], references: [id], onDelete: Cascade)
+  stage                 GenerationStage?         @relation(fields: [generationStageId], references: [id], onDelete: SetNull)
+  deliveryChecks        ArtifactDeliveryCheck[]
+}
+
+// 5.16 ArtifactDeliveryCheck
+model ArtifactDeliveryCheck {
+  id                           String            @id @default(cuid())
+  generatedArtifactId          String
+  objectExists                 Boolean
+  metadataValid                Boolean
+  authorizedRangeGetSucceeded Boolean
+  contentTypeValid             Boolean
+  nonEmpty                     Boolean
+  ffprobeSucceeded             Boolean
+  durationValid                Boolean
+  dimensionsValid              Boolean
+  videoCodecValid              Boolean
+  audioCodecValid              Boolean
+  previewSucceeded             Boolean
+  downloadSucceeded            Boolean
+  checksumVerified             Boolean
+  testedAt                     DateTime          @default(now())
+  failureCode                  String?
+  evidence                     String?           @db.Text // JSON
+
+  artifact                     GeneratedArtifact @relation(fields: [generatedArtifactId], references: [id], onDelete: Cascade)
+}
+
+// 5.17 QueueOutbox
+model QueueOutbox {
+  id                 String       @id @default(cuid())
+  aggregateType      String
+  aggregateId        String
+  eventType          String
+  payload            String       @db.Text // JSON
+  deterministicJobId String       @unique
+  status             OutboxStatus @default(PENDING)
+  lockedAt           DateTime?
+  lockedBy           String?
+  leaseExpiresAt     DateTime?
+  attemptCount       Int          @default(0)
+  nextAttemptAt      DateTime?
+  lastError          String?      @db.Text
+  createdAt          DateTime     @default(now())
+  dispatchedAt       DateTime?
+}
+
+// 5.18 QueueJobRecord
+model QueueJobRecord {
+  id                 String    @id @default(cuid())
+  deterministicJobId String
+  bullmqJobId        String
+  queueName          String
+  workerName         String
+  status             String
+  attemptNumber      Int
+  startedAt          DateTime?
+  completedAt        DateTime?
+  failedAt           DateTime?
+  workerInstanceId   String?
+  lastHeartbeatAt    DateTime?
+  errorCode          String?
+  metadata           String?   @db.Text // JSON
+  createdAt          DateTime  @default(now())
+}
+
+// 5.19 WebhookEvent
+model WebhookEvent {
+  id                String                  @id @default(cuid())
+  provider          String
+  providerRequestId String
+  providerEventId   String?
+  gatewayRequestId  String?
+  eventType         String
+  payloadHash       String
+  signatureStatus   WebhookSignatureStatus  @default(UNVERIFIED)
+  processingStatus  WebhookProcessingStatus @default(RECEIVED)
+  payload           String                  @db.Text // JSON
+  sanitizedHeaders  String?                 @db.Text // JSON
+  receivedAt        DateTime                @default(now())
+  verifiedAt        DateTime?
+  processedAt       DateTime?
+  errorCode         String?
+}
+
+// 5.20 ModelRegistryRevision
+model ModelRegistryRevision {
+  id             String   @id @default(cuid())
+  revision       String   @unique
+  effectiveAt    DateTime @default(now())
+  sourceSnapshot String   @db.Text // JSON
+  createdAt      DateTime @default(now())
+  createdBy      String
+}
+
+// 5.21 ModelDeployment
+model ModelDeployment {
+  id                   String        @id @default(cuid())
+  internalModelId      String        @unique
+  provider             String
+  endpoint             String
+  schemaStatus         SchemaStatus  @default(SCHEMA_UNVERIFIED)
+  pricingStatus        PricingStatus @default(UNVERIFIED)
+  outputStatus         OutputStatus  @default(NOT_TESTED)
+  productionEnabled    Boolean       @default(false)
+  featureFlag          String?
+  circuitState         CircuitState  @default(CLOSED)
+  lastSchemaVerifiedAt DateTime?
+  lastPriceVerifiedAt  DateTime?
+  lastPocAt            DateTime?
+  lastFailureAt        DateTime?
+  consecutiveFailures  Int           @default(0)
+  updatedAt            DateTime      @updatedAt
+}
+
+// 5.22 RoutingDecision
+model RoutingDecision {
+  id                       String          @id @default(cuid())
+  creationVariantId        String
+  routingInput             String          @db.Text // JSON
+  eligibleCandidates       String          @db.Text // JSON
+  rejectedCandidates       String          @db.Text // JSON
+  selectedModelId          String
+  selectedProvider         String
+  selectedEndpoint         String
+  rankingExplanation       String          @db.Text // JSON
+  estimatedCostMinMicroUsd BigInt
+  estimatedCostMaxMicroUsd BigInt
+  createdAt                DateTime        @default(now())
+
+  variant                  CreationVariant @relation(fields: [creationVariantId], references: [id], onDelete: Cascade)
+}
+
+// 5.23 BudgetCounter
+model BudgetCounter {
+  id               String    @id @default(cuid())
+  scopeType        ScopeType
+  scopeId          String
+  dateBucket       String    // e.g. "2026-08-04"
+  spentMicroUsd    BigInt    @default(0)
+  reservedMicroUsd BigInt    @default(0)
+  version          Int       @default(1)
+  updatedAt        DateTime  @updatedAt
+
+  @@unique([scopeType, scopeId, dateBucket])
+}
+
+// 5.24 CircuitBreakerState
+model CircuitBreakerState {
+  id                 String       @id @default(cuid())
+  provider           String
+  internalModelId    String?
+  state              CircuitState @default(CLOSED)
+  openedAt           DateTime?
+  halfOpenedAt       DateTime?
+  failureWindowStart DateTime?
+  requestCount       Int          @default(0)
+  failureCount       Int          @default(0)
+  lastFailureCode    String?
+  updatedAt          DateTime     @updatedAt
+
+  @@unique([provider, internalModelId])
+}
+
+// 5.25 AuditEvent
+model AuditEvent {
+  id           String    @id @default(cuid())
+  workspaceId  String?
+  userId       String?
+  actorType    ActorType @default(USER)
+  action       String
+  entityType   String
+  entityId     String
+  ipHash       String?
+  userAgent    String?
+  metadata     String?   @db.Text // JSON
+  createdAt    DateTime  @default(now())
+
+  workspace    Workspace? @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  user         User?      @relation(fields: [userId], references: [id], onDelete: SetNull)
+}
+
+// 5.26 UsageEvent
+model UsageEvent {
+  id          String    @id @default(cuid())
+  workspaceId String
+  userId      String
+  eventName   String
+  creationId  String?
+  variantId   String?
+  modelId     String?
+  provider    String?
+  metadata    String?   @db.Text // JSON
+  createdAt   DateTime  @default(now())
+
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// 5.27 DeploymentVersion
+model DeploymentVersion {
+  id               String   @id @default(cuid())
+  appVersion       String
+  gitCommitSha     String
+  deploymentId     String   @unique
+  environment      String
+  workerVersion    String
+  registryRevision String
+  pricingRevision  String
+  deployedAt       DateTime @default(now())
 }

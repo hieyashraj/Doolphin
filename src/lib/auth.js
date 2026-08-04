@@ -3,17 +3,23 @@ import GoogleProvider from "next-auth/providers/google";
 import CredentialsProvider from "next-auth/providers/credentials";
 import { prisma } from "./prisma";
 
+const adapterFunc = typeof PrismaAdapter === "function" ? PrismaAdapter : (PrismaAdapter?.PrismaAdapter || PrismaAdapter);
+const getProvider = (p) => (typeof p === "function" ? p : (p?.default || p));
+
+const Google = getProvider(GoogleProvider);
+const Credentials = getProvider(CredentialsProvider);
+
 export const authOptions = {
-  adapter: PrismaAdapter(prisma),
+  adapter: typeof adapterFunc === "function" ? adapterFunc(prisma) : undefined,
   session: {
     strategy: "jwt",
   },
   providers: [
-    GoogleProvider({
-      clientId: process.env.GOOGLE_CLIENT_ID,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+    Google({
+      clientId: process.env.GOOGLE_CLIENT_ID || "placeholder_google_id",
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET || "placeholder_google_secret",
     }),
-    CredentialsProvider({
+    Credentials({
       id: "credentials",
       name: "API Key",
       credentials: {
@@ -72,10 +78,14 @@ export const authOptions = {
         token.id = user.id;
         token.credits = user.credits;
         token.customApiKey = user.customApiKey;
+        token.falKey = user.falKey;
+        token.elevenLabsKey = user.elevenLabsKey;
         token.isApiKeyUser = user.isApiKeyUser || false;
       }
       if (trigger === "update" && session) {
         if (session.customApiKey !== undefined) token.customApiKey = session.customApiKey;
+        if (session.falKey !== undefined) token.falKey = session.falKey;
+        if (session.elevenLabsKey !== undefined) token.elevenLabsKey = session.elevenLabsKey;
         if (session.credits !== undefined) token.credits = session.credits;
       }
       const userId = token.id || token.sub;
@@ -84,11 +94,13 @@ export const authOptions = {
         try {
           const dbUser = await prisma.user.findUnique({
             where: { id: userId },
-            select: { credits: true, customApiKey: true }
+            select: { credits: true, customApiKey: true, falKey: true, elevenLabsKey: true }
           });
           if (dbUser) {
             token.credits = dbUser.credits;
             token.customApiKey = dbUser.customApiKey;
+            token.falKey = dbUser.falKey;
+            token.elevenLabsKey = dbUser.elevenLabsKey;
           }
         } catch (err) {}
       }
@@ -99,7 +111,9 @@ export const authOptions = {
         session.user.id = token.id || token.sub;
         session.user.credits = token.credits;
         session.user.customApiKey = token.customApiKey;
-        session.user.isApiKeyUser = Boolean(token.customApiKey);
+        session.user.falKey = token.falKey;
+        session.user.elevenLabsKey = token.elevenLabsKey;
+        session.user.isApiKeyUser = Boolean(token.customApiKey || token.falKey);
       }
       return session;
     },

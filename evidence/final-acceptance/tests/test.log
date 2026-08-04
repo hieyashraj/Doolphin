@@ -1,0 +1,19 @@
+
+> open-ai-ugc@0.1.0 test
+> node --test tests/**/*.test.js
+
+✔ Unit Test: AppError serialization and formatErrorResponse (0.699958ms)
+✔ Unit Test: Security Redaction removes API keys and headers (1.427958ms)
+✔ Unit Test: SSRF validation blocks private IP ranges and localhost (3.775125ms)
+✔ Unit Test: Model Registry & Router candidate filtering (0.325417ms)
+✔ Webhook Test: Fal Ed25519 Webhook signature verification (0.661084ms)
+✔ Webhook Test: Rejects expired webhook timestamp (0.103334ms)
+✔ App Studio Test: Generates deterministic MP4 video and validates via FFprobe (7.63375ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 105.550209
