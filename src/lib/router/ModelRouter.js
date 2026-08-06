@@ -1,78 +1,72 @@
-import { listProductionModels } from "../registry/modelRegistry.js";
+import { MODEL_CAPABILITIES, validateModelForWorkflow } from "../capabilityMatrix.js";
 import { AppError, ERROR_CODES } from "../errors.js";
 
 /**
- * Model Router for Doolphin Platform.
- * Section 8 Compliance.
+ * Intelligent Model Router for Doolphin Platform.
+ * Enforces native capability rules, automatic model recommendation/substitution, and model locking.
  */
-
 export class ModelRouter {
   static route(routingInput) {
     const {
-      workflowType,
-      preset,
-      duration = 5,
+      workflowType = "PRODUCT_AD",
+      preset = "product",
+      productType = "handheld",
+      duration = 12,
       aspectRatio = "9:16",
-      exactProduct = false,
-      exactScript = false,
-      appUiFidelity = false,
+      requireNativeIntegration = true,
       preferredModelId = null,
+      isModelLocked = false,
     } = routingInput;
 
-    const availableModels = listProductionModels();
-    const eligible = [];
-    const rejected = [];
+    const requestedModelId = preferredModelId || "seedance-2";
+    const requestedCap = MODEL_CAPABILITIES[requestedModelId];
 
-    for (const model of availableModels) {
-      const reasons = [];
+    let selectedModelId = requestedModelId;
+    let autoSubstituted = false;
+    let substitutionReason = null;
 
-      // Duration check
-      if (!model.capabilities.supportedDurations.includes(Number(duration))) {
-        reasons.push(`Duration ${duration}s not supported`);
+    // Check capability of requested model
+    const validation = validateModelForWorkflow({
+      modelId: requestedModelId,
+      workflowType,
+      productType,
+      requireNativeIntegration
+    });
+
+    if (!validation.valid) {
+      if (isModelLocked) {
+        // User explicitly locked model: Do not auto-substitute! Throw pre-generation validation error.
+        throw new AppError(
+          ERROR_CODES.MODEL_CAPABILITY_UNSUPPORTED,
+          `Locked Model '${requestedCap?.name || requestedModelId}' cannot satisfy the requested workflow: ${validation.error} Recommended alternatives: ${validation.recommendedModels?.join(", ")}`
+        );
       }
 
-      // Aspect ratio check
-      if (!model.capabilities.supportedAspectRatios.includes(aspectRatio)) {
-        reasons.push(`Aspect ratio ${aspectRatio} not supported`);
-      }
+      // Selection is unlocked: Auto-recommend / auto-substitute highest capable model
+      const recommendedModelId = validation.recommendedModels?.[0] || "seedance-2";
+      const recommendedCap = MODEL_CAPABILITIES[recommendedModelId];
 
-      // Exact product check
-      if (exactProduct && model.capabilities.productFidelity === "PROMPT_ONLY") {
-        reasons.push("Exact product fidelity unsupported by model");
-      }
-
-      // App UI fidelity check
-      if (appUiFidelity && model.capabilities.appUiPolicy === "GENERATIVE_BROLL_ONLY" && workflowType === "APP_STUDIO") {
-        // App Studio UI must be preserved deterministically; generative model is used for presenter/b-roll
-      }
-
-      if (reasons.length === 0) {
-        eligible.push(model);
-      } else {
-        rejected.push({ modelId: model.internalModelId, reasons });
-      }
+      selectedModelId = recommendedModelId;
+      autoSubstituted = true;
+      substitutionReason = `Automatically upgraded model from '${requestedCap?.name || requestedModelId}' to '${recommendedCap?.name || recommendedModelId}' to support native integration and ${productType} product capabilities.`;
     }
 
-    if (eligible.length === 0) {
-      throw new AppError(
-        ERROR_CODES.MODEL_CAPABILITY_UNSUPPORTED,
-        "No production-enabled AI video model satisfies the given workflow and fidelity criteria."
-      );
-    }
-
-    // Preferred model selection or auto ranking
-    let selected = eligible[0];
-    if (preferredModelId) {
-      const match = eligible.find((m) => m.internalModelId === preferredModelId);
-      if (match) selected = match;
-    }
+    const selectedCap = MODEL_CAPABILITIES[selectedModelId] || MODEL_CAPABILITIES["seedance-2"];
 
     return {
-      selectedModel: selected,
-      eligibleCandidates: eligible.map((m) => m.internalModelId),
-      rejectedCandidates: rejected,
-      estimatedCostMinMicroUsd: selected.costPerUnitMicroUsd,
-      estimatedCostMaxMicroUsd: selected.costPerUnitMicroUsd * BigInt(2),
+      selectedModel: {
+        internalModelId: selectedModelId,
+        provider: selectedCap.provider,
+        name: selectedCap.name,
+        endpoint: selectedCap.provider === "FAL" ? "fal-ai/video-generation" : "https://api.muapi.ai/v1/video/generate"
+      },
+      capability: selectedCap,
+      autoSubstituted,
+      substitutionReason,
+      isModelLocked,
+      estimatedCostMinMicroUsd: BigInt(250000),
+      estimatedCostMaxMicroUsd: BigInt(500000)
     };
   }
 }
+

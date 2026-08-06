@@ -6,6 +6,8 @@ import { FiUser, FiMusic, FiPlus, FiChevronDown, FiHelpCircle } from "react-icon
 export default function VideoMakerForm({
   sceneMotion,
   setSceneMotion,
+  spokenScript,
+  setSpokenScript,
   selectedModel,
   setSelectedModel,
   duration,
@@ -27,19 +29,40 @@ export default function VideoMakerForm({
 }) {
   return (
     <div className="space-y-4 text-xs font-sans text-slate-200">
+      {/* Write your script * */}
+      <div className="space-y-1.5">
+        <label className="block text-xs font-semibold text-slate-300">
+          Write your script <span className="text-red-400">*</span>
+        </label>
+        <div className="relative">
+          <textarea
+            value={spokenScript}
+            onChange={(e) => setSpokenScript(e.target.value)}
+            maxLength={300}
+            rows={3}
+            required
+            placeholder="Write the exact spoken script for the avatar (max 300 chars). Spoken verbatim."
+            className="w-full glass-control p-3 text-xs text-white placeholder-slate-500 focus:border-[#6366f1] focus:ring-1 focus:ring-[#6366f1] transition-all resize-none rounded-xl"
+          />
+          <div className="absolute bottom-2 right-3 text-[10px] text-slate-500 font-mono">
+            {spokenScript ? spokenScript.length : 0}/300
+          </div>
+        </div>
+      </div>
+
       {/* Describe your scene */}
       <div className="space-y-1.5">
         <label className="block text-xs font-semibold text-slate-300">
-          Describe your scene <span className="text-red-400">*</span>
+          Describe your scene (Additional Instructions)
         </label>
         <div className="relative">
           <textarea
             value={sceneMotion}
             onChange={(e) => setSceneMotion(e.target.value)}
             maxLength={1000}
-            rows={4}
-            placeholder="Describe the motion, subject actions, lighting, camera angle..."
-            className="w-full glass-control p-3 text-xs text-white placeholder-slate-500 focus:border-[#0070f3] focus:ring-1 focus:ring-[#0070f3] transition-all resize-none rounded-xl"
+            rows={3}
+            placeholder="Describe motion, camera angles, or delivery overrides (e.g. talking head, voiceover, B-roll)..."
+            className="w-full glass-control p-3 text-xs text-white placeholder-slate-500 focus:border-[#6366f1] focus:ring-1 focus:ring-[#6366f1] transition-all resize-none rounded-xl"
           />
           <div className="absolute bottom-2 right-3 text-[10px] text-slate-500 font-mono">
             {sceneMotion ? sceneMotion.length : 0}/1000
@@ -57,7 +80,7 @@ export default function VideoMakerForm({
               const m = modelsList.find((item) => item.id === e.target.value);
               if (m) setSelectedModel(m);
             }}
-            className="w-full glass-control px-3 py-2.5 text-xs text-white appearance-none focus:border-[#0070f3] focus:ring-1 focus:ring-[#0070f3] cursor-pointer pr-8 rounded-xl"
+            className="w-full glass-control px-3 py-2.5 text-xs text-white appearance-none focus:border-[#6366f1] focus:ring-1 focus:ring-[#6366f1] cursor-pointer pr-8 rounded-xl"
           >
             {modelsList.map((m) => (
               <option key={m.id} value={m.id} className="bg-[#0d0d12] text-white">
@@ -76,7 +99,7 @@ export default function VideoMakerForm({
           <select
             value={duration}
             onChange={(e) => setDuration(e.target.value)}
-            className="w-full glass-control px-3 py-2.5 text-xs text-white appearance-none focus:border-[#0070f3] focus:ring-1 focus:ring-[#0070f3] cursor-pointer pr-8 rounded-xl"
+            className="w-full glass-control px-3 py-2.5 text-xs text-white appearance-none focus:border-[#6366f1] focus:ring-1 focus:ring-[#6366f1] cursor-pointer pr-8 rounded-xl"
           >
             <option value="Auto" className="bg-[#0d0d12]">Auto</option>
             <option value="5" className="bg-[#0d0d12]">5s</option>
@@ -95,8 +118,9 @@ export default function VideoMakerForm({
           <select
             value={resolution}
             onChange={(e) => setResolution(e.target.value)}
-            className="w-full glass-control px-3 py-2.5 text-xs text-white appearance-none focus:border-[#0070f3] focus:ring-1 focus:ring-[#0070f3] cursor-pointer pr-8 rounded-xl"
+            className="w-full glass-control px-3 py-2.5 text-xs text-white appearance-none focus:border-[#6366f1] focus:ring-1 focus:ring-[#6366f1] cursor-pointer pr-8 rounded-xl"
           >
+            <option value="480p" className="bg-[#0d0d12]">480p</option>
             <option value="720p" className="bg-[#0d0d12]">720p</option>
             <option value="1080p" className="bg-[#0d0d12]">1080p</option>
             <option value="4k" className="bg-[#0d0d12]">4k</option>
@@ -112,7 +136,7 @@ export default function VideoMakerForm({
           <select
             value={aspectRatio}
             onChange={(e) => setAspectRatio(e.target.value)}
-            className="w-full glass-control px-3 py-2.5 text-xs text-white appearance-none focus:border-[#0070f3] focus:ring-1 focus:ring-[#0070f3] cursor-pointer pr-8 rounded-xl"
+            className="w-full glass-control px-3 py-2.5 text-xs text-white appearance-none focus:border-[#6366f1] focus:ring-1 focus:ring-[#6366f1] cursor-pointer pr-8 rounded-xl"
           >
             <option value="Auto" className="bg-[#0d0d12]">Auto</option>
             <option value="9:16" className="bg-[#0d0d12]">9:16 (Portrait)</option>

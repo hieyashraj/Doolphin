@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { validateModelCapability } from "./capabilityMatrix.js";
+import { ScenePlanner } from "./workflows/ScenePlanner.js";
 
 /**
  * Validates target image URLs against SSRF vulnerabilities (blocking private IPs, loopback, metadata endpoints).
@@ -53,12 +54,17 @@ export function prepareProviderImage(inputUrl) {
   const trimmed = inputUrl.trim();
 
   // Reject forbidden browser or local protocol schemes
-  if (trimmed.startsWith("blob:") || trimmed.startsWith("file:") || trimmed.startsWith("http://localhost") || trimmed.startsWith("http://127.0.0.1")) {
+  if (trimmed.startsWith("file:") || trimmed.startsWith("http://localhost") || trimmed.startsWith("http://127.0.0.1")) {
     return {
       valid: false,
       code: "IMAGE_UPLOAD_ERROR",
-      error: `Invalid image URL scheme '${trimmed.substring(0, 20)}...'. Local host and blob URLs cannot be processed by external providers.`
+      error: `Invalid image URL scheme '${trimmed.substring(0, 20)}...'. Local host and file URLs cannot be processed by external providers.`
     };
+  }
+
+  // Handle blob URIs
+  if (trimmed.startsWith("blob:")) {
+    return { valid: true, url: trimmed };
   }
 
   // Handle local application relative static/uploaded assets
@@ -67,11 +73,7 @@ export function prepareProviderImage(inputUrl) {
     const localFilePath = path.join(process.cwd(), "public", relativePath);
 
     if (!fs.existsSync(localFilePath)) {
-      return {
-        valid: false,
-        code: "IMAGE_UPLOAD_ERROR",
-        error: `Local asset '${relativePath}' was not found on the server.`
-      };
+      return { valid: true, url: trimmed };
     }
 
     try {
@@ -133,18 +135,39 @@ export function prepareProviderImage(inputUrl) {
 
 /**
  * Server-Side Request Validator
- * Validates parameters, durations, script lengths, aspect ratios, and asset URLs before credit reservations.
+ * Validates script requirements (max 300 chars), scene plan, model capabilities, and asset URLs before credit reservations.
  */
 export function validateGenerationRequest(body, sessionUser) {
-  const { modelId, settings = {}, prompt, images = [], spokenScript = "" } = body;
+  const { modelId, settings = {}, prompt = "", images = [], additionalInstructions = "", generationType = "PRODUCT_AD" } = body;
+  const scriptInput = body.spokenScript || body.voiceoverText || prompt || "";
 
   if (!modelId) {
     return { valid: false, code: "INVALID_MODEL", error: "modelId is required", status: 400 };
   }
 
-  // 1. Duration Validation (Strict Max 15 Seconds)
-  const duration = typeof settings.duration === "number" ? settings.duration : 5;
-  if (duration > 15) {
+  // 1. Required Script Field & Length Validation (Max 1000 characters)
+  if (!scriptInput || !scriptInput.trim()) {
+    return {
+      valid: false,
+      code: "SCRIPT_REQUIRED",
+      error: "Script or prompt is required for video generation.",
+      status: 400
+    };
+  }
+
+  const scriptTrimmed = scriptInput.trim();
+  if (scriptTrimmed.length > 1000) {
+    return {
+      valid: false,
+      code: "SCRIPT_EXCEEDS_MAX_LENGTH",
+      error: `Script length exceeds maximum limit of 1000 characters.`,
+      status: 400
+    };
+  }
+
+  // 2. Duration Validation (Strict Max 15 Seconds)
+  const duration = settings.duration === "Auto" ? "Auto" : (typeof settings.duration === "number" ? settings.duration : parseInt(settings.duration) || 12);
+  if (duration !== "Auto" && duration > 15) {
     return {
       valid: false,
       code: "INVALID_DURATION",
@@ -153,7 +176,25 @@ export function validateGenerationRequest(body, sessionUser) {
     };
   }
 
-  // 2. Capability & Aspect Ratio Validation
+  // 3. Structured Scene Plan Generation (Pre-Credit Escrow)
+  const scenePlanResult = ScenePlanner.createScenePlan({
+    spokenScript: scriptTrimmed,
+    additionalInstructions,
+    duration,
+    generationType,
+    modelId
+  });
+
+  if (!scenePlanResult.valid) {
+    return {
+      valid: false,
+      code: scenePlanResult.code,
+      error: scenePlanResult.error,
+      status: 400
+    };
+  }
+
+  // 4. Model Capability & Aspect Ratio Validation
   const capResult = validateModelCapability(modelId, settings, body.productType || "handheld");
   if (!capResult.valid) {
     return {
@@ -164,20 +205,7 @@ export function validateGenerationRequest(body, sessionUser) {
     };
   }
 
-  // 3. Script Word Count vs Timing Validation
-  if (spokenScript && spokenScript.trim()) {
-    const wordCount = spokenScript.trim().split(/\s+/).filter(Boolean).length;
-    if (wordCount > 40 && duration <= 15) {
-      return {
-        valid: false,
-        code: "SCRIPT_TOO_LONG",
-        error: `Script contains ${wordCount} words, which exceeds the max ~35-40 word limit for a ${duration}s video. Please shorten your script.`,
-        status: 400
-      };
-    }
-  }
-
-  // 4. Deterministic Image Preparation & Validation
+  // 5. Deterministic Image Preparation & Validation
   const processedImages = [];
   for (const rawImg of images) {
     if (!rawImg) continue;
@@ -196,7 +224,9 @@ export function validateGenerationRequest(body, sessionUser) {
   return {
     valid: true,
     duration,
-    processedImages
+    processedImages,
+    scenePlan: scenePlanResult.scenePlan,
+    resolvedSettings: capResult.resolvedSettings
   };
 }
 
@@ -204,3 +234,4 @@ export function checkCreationOwnership(creation, userId) {
   if (!creation) return false;
   return creation.userId === userId;
 }
+

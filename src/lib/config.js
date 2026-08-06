@@ -21,7 +21,7 @@ const config = {
     },
   },
   ai: {
-    apiKey: process.env.UGC_API_KEY || process.env.MUAPIAPP_API_KEY,
+    apiKey: process.env.MUAPI_API_KEY || process.env.UGC_API_KEY,
     falKey: process.env.FAL_KEY,
     elevenLabsApiKey: process.env.ELEVENLABS_API_KEY,
     generationCost: 10,

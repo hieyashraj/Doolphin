@@ -2,20 +2,27 @@ import { execFile } from "child_process";
 import { promisify } from "util";
 import fs from "fs";
 
+import { createRequire } from "module";
+
 const execFileAsync = promisify(execFile);
+const req = createRequire(import.meta.url);
 
 // Pinned binary resolution
-let ffmpegPath = "ffmpeg";
-let ffprobePath = "ffprobe";
+let ffmpegPath = process.env.FFMPEG_PATH || "ffmpeg";
+let ffprobePath = process.env.FFPROBE_PATH || "ffprobe";
 
 try {
-  const ffmpegStatic = (await import("ffmpeg-static")).default;
-  if (ffmpegStatic && fs.existsSync(ffmpegStatic)) ffmpegPath = ffmpegStatic;
+  const ffmpegStatic = req("ffmpeg-static");
+  if (ffmpegStatic && typeof ffmpegStatic === "string" && fs.existsSync(ffmpegStatic)) {
+    ffmpegPath = ffmpegStatic;
+  }
 } catch (e) {}
 
 try {
-  const ffprobeInstaller = (await import("@ffprobe-installer/ffprobe")).default;
-  if (ffprobeInstaller?.path && fs.existsSync(ffprobeInstaller.path)) ffprobePath = ffprobeInstaller.path;
+  const ffprobeInstaller = req("@ffprobe-installer/ffprobe");
+  if (ffprobeInstaller?.path && fs.existsSync(ffprobeInstaller.path)) {
+    ffprobePath = ffprobeInstaller.path;
+  }
 } catch (e) {}
 
 /**

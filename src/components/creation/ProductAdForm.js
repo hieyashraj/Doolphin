@@ -79,17 +79,20 @@ export default function ProductAdForm({
         </button>
       </div>
 
-      {/* Write your script */}
+      {/* Write your script * */}
       <div className="space-y-1.5">
-        <label className="block text-xs font-semibold text-gray-300">Write your script</label>
+        <label className="block text-xs font-semibold text-gray-300">
+          Write your script <span className="text-red-400">*</span>
+        </label>
         <div className="relative">
           <textarea
             value={spokenScript}
             onChange={(e) => setSpokenScript(e.target.value)}
             maxLength={300}
             rows={3}
-            placeholder="What should the actor say? Leave blank to let the scene speak for itself."
-            className="w-full bg-[#1c1c20] border border-white/10 rounded-xl p-3 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 transition-colors resize-none"
+            required
+            placeholder="Write the exact spoken script for your product ad (max 300 chars). Spoken verbatim."
+            className="w-full bg-[#1c1c20] border border-white/10 rounded-xl p-3 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500 transition-colors resize-none"
           />
           <div className="absolute bottom-2 right-3 text-[10px] text-gray-500 font-mono">
             {spokenScript ? spokenScript.length : 0}/300
@@ -109,7 +112,7 @@ export default function ProductAdForm({
             maxLength={1600}
             rows={4}
             placeholder="Any extra details for the AI — product details, brand tone, specific movements..."
-            className="w-full bg-[#1c1c20] border border-white/10 rounded-xl p-3 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 transition-colors resize-none"
+            className="w-full bg-[#1c1c20] border border-white/10 rounded-xl p-3 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500 transition-colors resize-none"
           />
           <div className="absolute bottom-2 right-3 text-[10px] text-gray-500 font-mono">
             {additionalInstructions ? additionalInstructions.length : 0}/1600
@@ -150,11 +153,12 @@ export default function ProductAdForm({
           <select
             value={duration}
             onChange={(e) => setDuration(e.target.value)}
-            className="w-full bg-[#1c1c20] border border-white/10 rounded-xl px-3 py-2.5 text-xs text-white appearance-none focus:outline-none focus:border-blue-500 cursor-pointer pr-8"
+            className="w-full bg-[#1c1c20] border border-white/10 rounded-xl px-3 py-2.5 text-xs text-white appearance-none focus:outline-none focus:border-indigo-500 cursor-pointer pr-8"
           >
-            <option value="12">12s</option>
+            <option value="Auto">Auto</option>
             <option value="5">5s</option>
             <option value="8">8s</option>
+            <option value="12">12s</option>
             <option value="15">15s</option>
           </select>
           <FiChevronDown className="absolute right-3 top-3 text-gray-400 pointer-events-none" size={14} />
@@ -168,8 +172,9 @@ export default function ProductAdForm({
           <select
             value={resolution}
             onChange={(e) => setResolution(e.target.value)}
-            className="w-full bg-[#1c1c20] border border-white/10 rounded-xl px-3 py-2.5 text-xs text-white appearance-none focus:outline-none focus:border-blue-500 cursor-pointer pr-8"
+            className="w-full bg-[#1c1c20] border border-white/10 rounded-xl px-3 py-2.5 text-xs text-white appearance-none focus:outline-none focus:border-indigo-500 cursor-pointer pr-8"
           >
+            <option value="480p">480p</option>
             <option value="720p">720p</option>
             <option value="1080p">1080p</option>
             <option value="4k">4k</option>
@@ -185,7 +190,7 @@ export default function ProductAdForm({
           <select
             value={aspectRatio}
             onChange={(e) => setAspectRatio(e.target.value)}
-            className="w-full bg-[#1c1c20] border border-white/10 rounded-xl pl-8 pr-8 py-2.5 text-xs text-white appearance-none focus:outline-none focus:border-blue-500 cursor-pointer"
+            className="w-full bg-[#1c1c20] border border-white/10 rounded-xl pl-8 pr-8 py-2.5 text-xs text-white appearance-none focus:outline-none focus:border-indigo-500 cursor-pointer"
           >
             <option value="9:16">9:16 (Vertical)</option>
             <option value="16:9">16:9 (Landscape)</option>

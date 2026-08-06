@@ -3,7 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
 }
 
 // --------------------------------------------------------
@@ -46,7 +46,9 @@ enum CreditReservationStatus {
 
 enum GenerationType {
   PRODUCT_AD
+  PRODUCT_STUDIO
   APP_STUDIO
+  VIDEO_STUDIO
   LEGACY
 }
 
@@ -423,10 +425,25 @@ model Creation {
   safeError              String?        
   version                Int            @default(1)
   appVersion             String         @default("1.0.0")
-  gitCommitSha           String?
-  deploymentId           String?
   createdAt              DateTime       @default(now())
   updatedAt              DateTime       @updatedAt
+  modelId                String?
+  provider               String?
+  requestId              String?
+  providerJobId          String?
+  statusUrl              String?
+  responseUrl            String?
+  attemptId              String?
+  aspectRatio            String?
+  resolution             String?
+  duration               Int?
+  mode                   String?
+  inputImages            String?
+  reservedCredits        Int            @default(0)
+  url                    String?
+  error                  String?
+  stage                  String?
+  productInterpretation String?
 
   workspace              Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   user                   User            @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -434,6 +451,9 @@ model Creation {
   assets                 CreationAsset[]
 
   @@unique([workspaceId, idempotencyKey])
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([userId, status])
+  @@index([requestId])
 }
 
 // 5.9 CreationVariant

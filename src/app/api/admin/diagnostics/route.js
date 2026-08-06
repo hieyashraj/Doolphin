@@ -15,13 +15,16 @@ export async function GET(req) {
 
     if (creationId) {
       const creation = await prisma.creation.findUnique({
-        where: { id: creationId },
-        include: { creditLedgers: true }
+        where: { id: creationId }
       });
 
       if (!creation || creation.userId !== session.user.id) {
         return NextResponse.json({ error: "Not Found" }, { status: 404 });
       }
+
+      const creditTransactions = await prisma.creditTransaction.findMany({
+        where: { creationId }
+      });
 
       return NextResponse.json({
         creationId: creation.id,
@@ -37,7 +40,7 @@ export async function GET(req) {
         reservedCredits: creation.reservedCredits,
         attemptId: creation.attemptId,
         idempotencyKey: creation.idempotencyKey,
-        creditLedgers: creation.creditLedgers
+        creditTransactions
       });
     }
 
@@ -60,7 +63,7 @@ export async function GET(req) {
 
     return NextResponse.json({
       environment: process.env.NODE_ENV,
-      hasUgcApiKey: Boolean(process.env.UGC_API_KEY && !process.env.UGC_API_KEY.includes("placeholder")),
+      hasUgcApiKey: Boolean((process.env.MUAPI_API_KEY || process.env.UGC_API_KEY) && !(process.env.MUAPI_API_KEY || process.env.UGC_API_KEY).includes("placeholder")),
       hasFalApiKey: Boolean(process.env.FAL_KEY && !process.env.FAL_KEY.includes("placeholder")),
       creations: recentCreations
     });

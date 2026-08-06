@@ -13,7 +13,7 @@ export async function POST(req) {
       return NextResponse.json({ error: "Missing request_id" }, { status: 400 });
     }
 
-    const creation = await prisma.creation.findUnique({
+    const creation = await prisma.creation.findFirst({
       where: { requestId }
     });
 

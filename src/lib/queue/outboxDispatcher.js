@@ -6,13 +6,16 @@ import { prisma } from "../prisma.js";
  * marks DISPATCHED, or DEAD_LETTER after retry bounds.
  */
 
+import { createRequire } from "module";
+const req = createRequire(import.meta.url);
+
 let generationQueue = null;
 
-async function getGenerationQueue() {
+function getGenerationQueue() {
   if (generationQueue) return generationQueue;
   try {
-    const { Queue } = await import("bullmq");
-    const Redis = (await import("ioredis")).default;
+    const { Queue } = req("bullmq");
+    const Redis = req("ioredis");
     const redisUrl = process.env.REDIS_URL || "redis://127.0.0.1:6379";
     const connection = new Redis(redisUrl, { maxRetriesPerRequest: null, lazyConnect: true });
     generationQueue = new Queue("doolphin-generation-jobs", { connection });

@@ -1,15 +1,28 @@
 import { NextResponse } from "next/server";
-import { getMockSession as getServerSession } from "@/lib/getMockSession";
+import { getServerSession } from "next-auth/next";
+import { authOptions } from "@/lib/auth";
 import Stripe from "stripe";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+function getStripeClient() {
+  const key = process.env.STRIPE_SECRET_KEY;
+  if (!key || key.includes("placeholder")) return null;
+  return new Stripe(key);
+}
 
 export async function POST(req) {
   try {
-    const session = await getServerSession();
+    const session = await getServerSession(authOptions);
 
     if (!session?.user) {
       return new NextResponse("Unauthorized", { status: 401 });
+    }
+
+    const stripe = getStripeClient();
+    if (!stripe) {
+      return NextResponse.json({
+        url: `${process.env.NEXTAUTH_URL || "http://localhost:3000"}/pricing?status=stripe_not_configured`,
+        simulated: true
+      });
     }
 
     const { plan } = await req.json();
@@ -35,8 +48,8 @@ export async function POST(req) {
         },
       ],
       mode: "payment",
-      success_url: `${process.env.NEXTAUTH_URL}/gallery?status=success`,
-      cancel_url: `${process.env.NEXTAUTH_URL}/pricing?status=cancelled`,
+      success_url: `${process.env.NEXTAUTH_URL || "http://localhost:3000"}/gallery?status=success`,
+      cancel_url: `${process.env.NEXTAUTH_URL || "http://localhost:3000"}/pricing?status=cancelled`,
       metadata: {
         userId: session.user.id,
         planName: plan.name,

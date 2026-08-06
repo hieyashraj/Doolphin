@@ -24,7 +24,7 @@ export class ElevenLabsAdapter extends IProviderAdapter {
     return {
       text: request.text || request.spokenScript || "Authentic AI UGC video ad generated with Doolphin.",
       voiceId: request.voiceId || "21m00Tcm4TlvDq8ikWAM", // Default ElevenLabs Rachel voice
-      modelId: request.modelId || "eleven_monolingual_v1"
+      modelId: request.modelId || "eleven_v3"
     };
   }
 
@@ -45,7 +45,7 @@ export class ElevenLabsAdapter extends IProviderAdapter {
       },
       body: JSON.stringify({
         text: payload.text,
-        model_id: payload.modelId || "eleven_monolingual_v1",
+        model_id: payload.modelId || "eleven_v3",
         voice_settings: { stability: 0.5, similarity_boost: 0.75 }
       })
     });

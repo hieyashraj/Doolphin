@@ -1,5 +1,8 @@
 import fs from "fs";
 import crypto from "crypto";
+import { createRequire } from "module";
+
+const req = createRequire(import.meta.url);
 
 /**
  * Cloudflare R2 Storage Service.
@@ -14,11 +17,11 @@ const bucketName = process.env.R2_BUCKET_NAME || "doolphin-staging";
 
 let s3ClientInstance = null;
 
-async function getS3Client() {
+function getS3Client() {
   if (!accessKeyId || !secretAccessKey || !accountId) return null;
   if (s3ClientInstance) return s3ClientInstance;
   try {
-    const { S3Client } = await import("@aws-sdk/client-s3");
+    const { S3Client } = req("@aws-sdk/client-s3");
     s3ClientInstance = new S3Client({
       region: "auto",
       endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
@@ -38,9 +41,9 @@ export class R2StorageService {
     }
     const checksumSha256 = crypto.createHash("sha256").update(data).digest("hex");
 
-    const s3 = await getS3Client();
+    const s3 = getS3Client();
     if (s3) {
-      const { PutObjectCommand } = await import("@aws-sdk/client-s3");
+      const { PutObjectCommand } = req("@aws-sdk/client-s3");
       await s3.send(
         new PutObjectCommand({
           Bucket: bucketName,
@@ -65,10 +68,10 @@ export class R2StorageService {
   }
 
   static async generateSignedUrl({ storageKey, expiresInSeconds = 900, isDownload = false, filename = "video.mp4" }) {
-    const s3 = await getS3Client();
+    const s3 = getS3Client();
     if (s3) {
-      const { GetObjectCommand } = await import("@aws-sdk/client-s3");
-      const { getSignedUrl } = await import("@aws-sdk/s3-request-presigner");
+      const { GetObjectCommand } = req("@aws-sdk/client-s3");
+      const { getSignedUrl } = req("@aws-sdk/s3-request-presigner");
       const command = new GetObjectCommand({
         Bucket: bucketName,
         Key: storageKey,
@@ -83,10 +86,10 @@ export class R2StorageService {
   }
 
   static async checkObjectExists(storageKey) {
-    const s3 = await getS3Client();
+    const s3 = getS3Client();
     if (s3) {
       try {
-        const { HeadObjectCommand } = await import("@aws-sdk/client-s3");
+        const { HeadObjectCommand } = req("@aws-sdk/client-s3");
         const head = await s3.send(
           new HeadObjectCommand({
             Bucket: bucketName,

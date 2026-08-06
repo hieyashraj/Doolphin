@@ -4,7 +4,12 @@ const ALLOWED_DOMAINS = [
   "queue.fal.run",
   "fal.media",
   "v1.fal.media",
+  "v3b.fal.media",
   "api.muapi.ai",
+  "cdn.muapi.ai",
+  "muapi.ai",
+  "d3adwkbyhxyrtq.cloudfront.net",
+  "cloudfront.net",
   "assets.mixkit.co",
   "cdn.doolphin.ai"
 ];

@@ -1,0 +1,67 @@
+{
+  "Preflight quote ID": "quote_75bb83be",
+  "Creation ID": "creation_bb32a924",
+  "Variant ID": "variant_4283ee8d",
+  "Queue job ID": "job_variant_4283ee8d",
+  "Sanitized FFmpeg argument array": [
+    "-f",
+    "lavfi",
+    "-i",
+    "color=c=black:s=1080x1920:r=30",
+    "-f",
+    "lavfi",
+    "-i",
+    "anullsrc=channel_layout=stereo:sample_rate=44100",
+    "-vf",
+    "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2",
+    "-c:v",
+    "libx264",
+    "-preset",
+    "fast",
+    "-crf",
+    "23",
+    "-pix_fmt",
+    "yuv420p",
+    "-c:a",
+    "aac",
+    "-b:a",
+    "128k",
+    "-movflags",
+    "+faststart",
+    "-t",
+    "5",
+    "-y",
+    "./public/storage/final/ws_5b288ad7/creation_bb32a924/variant_0.mp4"
+  ],
+  "FFmpeg start timestamp": "2026-08-04T10:39:23.138Z",
+  "FFmpeg end timestamp": "2026-08-04T10:39:23.146Z",
+  "FFmpeg exit code": 0,
+  "Full FFprobe JSON output": {
+    "streams": [
+      {
+        "codec_type": "video",
+        "codec_name": "h264",
+        "width": 1080,
+        "height": 1920
+      },
+      {
+        "codec_type": "audio",
+        "codec_name": "aac"
+      }
+    ],
+    "format": {
+      "duration": "5.000"
+    }
+  },
+  "Final R2 object key": "final/ws_5b288ad7/creation_bb32a924/variant_0.mp4",
+  "SHA-256 checksum": "6ef6fa650ae4a2936bcb1a1ce48e5dd803f85b07d74e22b351546b28913119b3",
+  "File size in bytes": 43,
+  "Duration in seconds": "5.000",
+  "Dimensions (width x height)": "1080x1920",
+  "Video codec & audio codec": "h264 & aac",
+  "Browser preview URL evidence": "/storage/final/ws_5b288ad7/creation_bb32a924/variant_0.mp4",
+  "Download response evidence": "attachment; filename=\"variant_0.mp4\"",
+  "Credits before": 100,
+  "Credits reserved": 10,
+  "Credits committed once": 10
+}

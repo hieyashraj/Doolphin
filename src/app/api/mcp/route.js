@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getMockSession as getServerSession } from "@/lib/getMockSession";
 import { prisma } from "@/lib/prisma";
+import { CreditEscrowService } from "@/lib/billing/CreditEscrowService";
 
 // MCP JSON-RPC 2.0 Server Endpoint for Claude, Cursor, and AI Agents
 export async function POST(req) {
@@ -132,11 +133,14 @@ export async function POST(req) {
         const creationId = `c_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
 
         try {
+          const workspace = await CreditEscrowService.ensureUserWorkspace(userId);
           await prisma.creation.create({
             data: {
               id: creationId,
+              workspaceId: workspace.id,
               userId,
-              type: "video",
+              generationType: "PRODUCT_AD",
+              presetId: "video_maker",
               title: prompt.slice(0, 50),
               prompt,
               status: "processing",

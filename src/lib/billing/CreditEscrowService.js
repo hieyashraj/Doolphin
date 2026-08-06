@@ -251,4 +251,129 @@ export class CreditEscrowService {
     if (tx) return await execute(tx);
     return await prisma.$transaction(execute);
   }
+
+  /**
+   * Safely releases credits for a Creation (reserves returned to user's workspace credit account).
+   * Idempotent via CreditTransaction idempotencyKey.
+   */
+  static async releaseCreationCredits({ userId, workspaceId, creationId, amount, reason = "JOB_FAILED", idempotencyKey }) {
+    if (!amount || amount <= 0) return null;
+    try {
+      return await prisma.$transaction(async (tx) => {
+        const existingTx = await tx.creditTransaction.findUnique({
+          where: { idempotencyKey },
+        });
+        if (existingTx) return existingTx;
+
+        let targetWorkspaceId = workspaceId;
+        if (!targetWorkspaceId && creationId) {
+          const creation = await tx.creation.findUnique({ where: { id: creationId } });
+          if (creation) targetWorkspaceId = creation.workspaceId;
+        }
+        if (!targetWorkspaceId && userId) {
+          const user = await tx.user.findUnique({ where: { id: userId } });
+          targetWorkspaceId = user?.defaultWorkspaceId;
+        }
+
+        if (!targetWorkspaceId) {
+          console.warn(`[CREDIT_RELEASE_WARN] Workspace not found for user ${userId}, creation ${creationId}`);
+          return null;
+        }
+
+        const account = await tx.creditAccount.findUnique({
+          where: { workspaceId: targetWorkspaceId },
+        });
+
+        if (!account) return null;
+
+        const updatedAccount = await tx.creditAccount.update({
+          where: { id: account.id },
+          data: {
+            availableCredits: account.availableCredits + amount,
+            reservedCredits: Math.max(0, account.reservedCredits - amount),
+            lifetimeReleasedCredits: { increment: amount },
+            version: { increment: 1 },
+          },
+        });
+
+        return await tx.creditTransaction.create({
+          data: {
+            workspaceId: targetWorkspaceId,
+            creationId,
+            type: "RELEASE",
+            amount,
+            idempotencyKey,
+            balanceBefore: account.availableCredits,
+            balanceAfter: updatedAccount.availableCredits,
+            reservedBefore: account.reservedCredits,
+            reservedAfter: updatedAccount.reservedCredits,
+            reasonCode: reason,
+            createdByUserId: userId,
+            createdBySystemComponent: "CreditEscrowService",
+          },
+        });
+      });
+    } catch (err) {
+      console.error("[CREDIT_RELEASE_ERROR]", err.message);
+      return null;
+    }
+  }
+
+  /**
+   * Safely commits reserved credits for a Creation (transfers reserved to committed).
+   * Idempotent via CreditTransaction idempotencyKey.
+   */
+  static async commitCreationCredits({ userId, workspaceId, creationId, amount, idempotencyKey }) {
+    if (!amount || amount <= 0) return null;
+    try {
+      return await prisma.$transaction(async (tx) => {
+        const existingTx = await tx.creditTransaction.findUnique({
+          where: { idempotencyKey },
+        });
+        if (existingTx) return existingTx;
+
+        let targetWorkspaceId = workspaceId;
+        if (!targetWorkspaceId && creationId) {
+          const creation = await tx.creation.findUnique({ where: { id: creationId } });
+          if (creation) targetWorkspaceId = creation.workspaceId;
+        }
+        if (!targetWorkspaceId) return null;
+
+        const account = await tx.creditAccount.findUnique({
+          where: { workspaceId: targetWorkspaceId },
+        });
+
+        if (!account) return null;
+
+        const updatedAccount = await tx.creditAccount.update({
+          where: { id: account.id },
+          data: {
+            reservedCredits: Math.max(0, account.reservedCredits - amount),
+            lifetimeCommittedCredits: { increment: amount },
+            version: { increment: 1 },
+          },
+        });
+
+        return await tx.creditTransaction.create({
+          data: {
+            workspaceId: targetWorkspaceId,
+            creationId,
+            type: "COMMIT",
+            amount,
+            idempotencyKey,
+            balanceBefore: account.availableCredits,
+            balanceAfter: account.availableCredits,
+            reservedBefore: account.reservedCredits,
+            reservedAfter: updatedAccount.reservedCredits,
+            reasonCode: "COMMIT_CREATION_SUCCESS",
+            createdByUserId: userId,
+            createdBySystemComponent: "CreditEscrowService",
+          },
+        });
+      });
+    } catch (err) {
+      console.error("[CREDIT_COMMIT_ERROR]", err.message);
+      return null;
+    }
+  }
 }

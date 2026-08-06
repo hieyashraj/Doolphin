@@ -247,27 +247,40 @@ function HomeContent() {
   useEffect(() => {
     let interval;
     const activeStatuses = ['processing', 'pending', 'starting', 'queued'];
-    if (lastGeneration && activeStatuses.includes(lastGeneration.status)) {
+    if (lastGeneration && activeStatuses.includes(lastGeneration.status?.toLowerCase())) {
       interval = setInterval(async () => {
         try {
           const res = await fetch(`/api/creations/${lastGeneration.id}`);
           if (res.ok && res.headers.get("content-type")?.includes("application/json")) {
             const data = await res.json();
-            if (data && !activeStatuses.includes(data.status)) {
+            if (data && !activeStatuses.includes(data.status?.toLowerCase())) {
               setLastGeneration(data);
               fetchCreations();
               clearInterval(interval);
-            } else if (data && data.status !== lastGeneration.status) {
+            } else if (data && data.status?.toLowerCase() !== lastGeneration.status?.toLowerCase()) {
               setLastGeneration(data);
             }
           }
         } catch (error) {
           console.error("Polling error:", error);
         }
-      }, 3000);
+      }, 5000);
     }
     return () => clearInterval(interval);
   }, [lastGeneration]);
+
+  useEffect(() => {
+    let interval;
+    const activeStatuses = ['processing', 'pending', 'starting', 'queued'];
+    const hasActiveCreations = creations.some(c => activeStatuses.includes(c.status?.toLowerCase()));
+    
+    if (hasActiveCreations) {
+      interval = setInterval(() => {
+        fetchCreations();
+      }, 5000);
+    }
+    return () => clearInterval(interval);
+  }, [creations]);
 
   useEffect(() => {
     if (selectedModel.params) {
@@ -588,53 +601,44 @@ function HomeContent() {
         }} 
       />
 
-      {/* TOP HEADER & SEARCH FIELD */}
-      <header className="px-4 py-3 flex items-center justify-between gap-4 z-20 flex-shrink-0">
-        <div className="glass-control flex-1 max-w-2xl h-11 flex items-center px-4 gap-3 text-sm border border-white/10 bg-[#121217]">
-          <FiSearch size={16} className="text-slate-400 shrink-0" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search actors, presets, templates..."
-            className="w-full bg-transparent border-none outline-none text-white placeholder-slate-400 text-xs font-medium"
-          />
-        </div>
+      {/* FLOATING TOP HEADER FOR NON-STUDIO TABS */}
+      {currentTab !== "video" && (
+        <header className="absolute top-3 right-6 flex items-center justify-end gap-4 z-30 pointer-events-auto">
+          <div className="flex items-center gap-2.5">
+            <button
+              onClick={() => setIsPricingModalOpen(true)}
+              className="bg-[#0070f3] hover:bg-[#1e82f7] text-white font-semibold text-xs px-3.5 py-2 rounded-full flex items-center gap-1.5 shadow-md transition-all active:scale-95 cursor-pointer"
+            >
+              <FiZap size={13} />
+              <span>Upgrade</span>
+              <span className="bg-emerald-400/20 text-emerald-300 text-[9px] font-extrabold px-1.5 py-0.5 rounded-full border border-emerald-400/30">
+                30% OFF
+              </span>
+            </button>
 
-        <div className="flex items-center gap-2.5">
-          <button
-            onClick={() => setIsPricingModalOpen(true)}
-            className="bg-[#0070f3] hover:bg-[#1e82f7] text-white font-semibold text-xs px-3.5 py-2 rounded-full flex items-center gap-1.5 shadow-md transition-all active:scale-95 cursor-pointer"
-          >
-            <FiZap size={13} />
-            <span>Upgrade</span>
-            <span className="bg-emerald-400/20 text-emerald-300 text-[9px] font-extrabold px-1.5 py-0.5 rounded-full border border-emerald-400/30">
-              30% OFF
-            </span>
-          </button>
+            <div className="bg-[#121217] border border-white/10 px-3.5 py-2 rounded-full flex items-center gap-1.5 text-xs font-semibold text-white shadow-sm">
+              <span className="text-[#38bdf8]">💎</span>
+              <span>{session?.user?.credits !== undefined ? session.user.credits : "90"} credits</span>
+            </div>
 
-          <div className="bg-[#121217] border border-white/10 px-3.5 py-2 rounded-full flex items-center gap-1.5 text-xs font-semibold text-white shadow-sm">
-            <span className="text-[#38bdf8]">💎</span>
-            <span>{session?.user?.credits !== undefined ? session.user.credits : "90"} credits</span>
+            <button
+              onClick={() => router.push("/?tab=explore")}
+              className="bg-[#121217] hover:bg-white/10 border border-white/10 text-slate-300 hover:text-white font-semibold text-xs px-3.5 py-2 rounded-full flex items-center gap-1.5 transition-colors cursor-pointer"
+            >
+              <span>🌐</span>
+              <span>Community</span>
+            </button>
+
+            <button
+              onClick={() => router.push("/?tab=library")}
+              className="bg-[#121217] hover:bg-white/10 border border-white/10 text-slate-300 hover:text-white font-semibold text-xs px-3.5 py-2 rounded-full flex items-center gap-1.5 transition-colors cursor-pointer"
+            >
+              <span>📜</span>
+              <span>History</span>
+            </button>
           </div>
-
-          <button
-            onClick={() => router.push("/?tab=explore")}
-            className="bg-[#121217] hover:bg-white/10 border border-white/10 text-slate-300 hover:text-white font-semibold text-xs px-3.5 py-2 rounded-full flex items-center gap-1.5 transition-colors cursor-pointer"
-          >
-            <span>🌐</span>
-            <span>Community</span>
-          </button>
-
-          <button
-            onClick={() => router.push("/?tab=library")}
-            className="bg-[#121217] hover:bg-white/10 border border-white/10 text-slate-300 hover:text-white font-semibold text-xs px-3.5 py-2 rounded-full flex items-center gap-1.5 transition-colors cursor-pointer"
-          >
-            <span>📜</span>
-            <span>History</span>
-          </button>
-        </div>
-      </header>
+        </header>
+      )}
 
       {/* MAIN CONTENT VIEWS */}
       <div className="flex-1 flex overflow-hidden min-h-0 relative z-10">
@@ -758,10 +762,13 @@ function HomeContent() {
 
         {/* VIDEO WORKSPACE STUDIO */}
         {currentTab === "video" && (
-          <div className="flex-1 overflow-hidden min-h-0 bg-black/90 rounded-[24px]">
+          <div className="flex-1 overflow-hidden min-h-0 bg-[#0b0b0e]">
             <CreationHub 
               selectedAvatar={selectedAvatar} 
               onOpenAvatarModal={() => setIsAvatarsModalOpen(true)} 
+              onOpenPricing={() => setIsPricingModalOpen(true)}
+              onNavigateTab={(tab) => router.push(`/?tab=${tab}`)}
+              userCredits={session?.user?.credits}
             />
           </div>
         )}
@@ -805,9 +812,9 @@ function HomeContent() {
                     onClick={() => setSelectedCreation(item)}
                     className="glass-card glass-card-hover aspect-[9/16] overflow-hidden relative cursor-pointer group shadow-lg transition-all duration-150 active:scale-[0.98] border border-white/10"
                   >
-                    {item.status === "completed" ? (
+                    {item.status?.toLowerCase() === "completed" ? (
                       <video src={item.url} className="w-full h-full object-cover" muted loop playsInline />
-                    ) : item.status === "failed" ? (
+                    ) : item.status?.toLowerCase() === "failed" ? (
                       <div className="w-full h-full flex flex-col items-center justify-center p-4 gap-2 text-center bg-red-500/5">
                         <FiAlertCircle className="text-red-400 text-2xl" />
                         <span className="text-xs font-semibold text-red-400">Generation Failed</span>

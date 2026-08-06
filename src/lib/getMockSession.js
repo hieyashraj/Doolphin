@@ -42,8 +42,7 @@ export async function getMockSession() {
           id: defaultUserId,
           name: "Doolphin Admin",
           email: "admin@doolphin.ai",
-          credits: 9999, // default large credit balance
-          customApiKey: process.env.UGC_API_KEY || "",
+          customApiKey: process.env.MUAPI_API_KEY || process.env.MUAPI_API_KEY_SANDBOX || "",
           falKey: process.env.FAL_KEY || "",
           elevenLabsKey: process.env.ELEVENLABS_API_KEY || ""
         }

@@ -30,14 +30,26 @@ function SidebarContent() {
   const router = useRouter();
   
   const currentTab = searchParams.get("tab") || "explore";
-  const [isHovered, setIsHovered] = useState(false);
-  const [isCollapsedManual, setIsCollapsedManual] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [activeSettingsTab, setActiveSettingsTab] = useState("profile"); // profile, billing, notifications, apikeys, mcp
+  const [isCollapsedManual, setIsCollapsedManual] = useState(true);
 
   useEffect(() => {
-    document.documentElement.setAttribute("data-theme", "dark");
+    const savedState = localStorage.getItem("doolphin_sidebar_collapsed");
+    if (savedState !== null) {
+      setIsCollapsedManual(savedState === "true");
+    }
   }, []);
+
+  const toggleSidebar = () => {
+    setIsCollapsedManual((prev) => {
+      const next = !prev;
+      localStorage.setItem("doolphin_sidebar_collapsed", String(next));
+      return next;
+    });
+  };
+
+  const isCollapsed = isCollapsedManual;
 
   // User Profile States
   const [profileName, setProfileName] = useState(session?.user?.name || "Doolphin Creator");
@@ -164,42 +176,53 @@ function SidebarContent() {
     <>
       {/* Riverside-Grade Production Navigation Sidebar */}
       <aside 
-        onMouseEnter={() => !isCollapsedManual && setIsHovered(true)}
-        onMouseLeave={() => !isCollapsedManual && setIsHovered(false)}
-        className={`glass-rail flex flex-col justify-between p-4 h-full flex-shrink-0 z-40 select-none rounded-[24px] transition-all duration-200 ease-out ${
-          (isHovered || !isCollapsedManual) ? "w-60 shadow-2xl" : "w-[72px]"
+        className={`glass-rail flex flex-col justify-between p-4 h-full flex-shrink-0 z-40 select-none rounded-[24px] transition-all duration-300 ease-in-out ${
+          isCollapsed ? "w-[72px]" : "w-60 shadow-2xl"
         }`}
       >
         <div className="w-full flex flex-col gap-6">
-          {/* Riverside Logo Mark & Header */}
-          <div className="flex items-center justify-between px-1 pt-1">
-            <Link 
-              href="/" 
-              className="flex items-center gap-3 group"
-            >
-              <div className="w-8 h-8 rounded-lg bg-white text-black flex items-center justify-center font-black text-lg shadow-md group-hover:scale-105 transition-transform">
-                <span>D</span>
-              </div>
-              {(isHovered || !isCollapsedManual) && (
+          {/* Logo Mark & Header */}
+          {isCollapsed ? (
+            <div className="flex flex-col items-center gap-3 pt-1">
+              <button
+                onClick={toggleSidebar}
+                className="w-10 h-10 rounded-xl flex items-center justify-center text-white/70 hover:text-white hover:bg-white/10 transition-all cursor-pointer bg-white/[0.05] border border-white/10 shadow-sm group"
+                title="Expand Nav Bar"
+              >
+                <FiSidebar size={18} className="group-hover:scale-110 transition-transform text-[#38bdf8]" />
+              </button>
+              <Link 
+                href="/" 
+                className="w-8 h-8 rounded-lg flex items-center justify-center shadow-md hover:scale-105 transition-transform"
+                title="Doolphin Studio"
+              >
+                <img src="/favicon.svg" alt="Doolphin" className="w-8 h-8 object-contain" />
+              </Link>
+            </div>
+          ) : (
+            <div className="flex items-center justify-between px-1 pt-1">
+              <Link 
+                href="/" 
+                className="flex items-center gap-3 group truncate"
+              >
+                <img src="/favicon.svg" alt="Doolphin" className="w-8 h-8 object-contain group-hover:scale-105 transition-transform shrink-0" />
                 <div className="truncate">
                   <h2 className="text-sm font-extrabold text-white tracking-[0.14em] uppercase truncate">Doolphin</h2>
                   <p className="text-[10px] text-white/50 tracking-[0.18em] font-semibold uppercase">Studio</p>
                 </div>
-              )}
-            </Link>
+              </Link>
 
-            {(isHovered || !isCollapsedManual) && (
               <button
-                onClick={() => setIsCollapsedManual(!isCollapsedManual)}
-                className="w-7 h-7 rounded-lg flex items-center justify-center text-white/40 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
-                title="Toggle Sidebar"
+                onClick={toggleSidebar}
+                className="w-8 h-8 rounded-lg flex items-center justify-center text-white/50 hover:text-white hover:bg-white/10 transition-colors cursor-pointer shrink-0"
+                title="Close Nav Bar"
               >
-                <FiSidebar size={16} />
+                <FiSidebar size={18} />
               </button>
-            )}
-          </div>
+            </div>
+          )}
 
-          {/* Navigation Items - Riverside Exact Spacing & Bold Typography */}
+          {/* Navigation Items */}
           <nav className="flex flex-col gap-1.5 w-full">
             {mainNavItems.map((item) => {
               const isActive = currentTab === item.id;
@@ -211,58 +234,64 @@ function SidebarContent() {
                   onClick={item.action}
                   title={item.name}
                   className={`group flex items-center gap-3.5 px-3.5 py-2.5 rounded-xl text-sm transition-all duration-150 cursor-pointer ${
+                    isCollapsed ? "justify-center px-0" : ""
+                  } ${
                     isActive 
                       ? "bg-white/[0.09] text-white font-semibold border border-white/10 shadow-sm" 
                       : "text-[#a1a1aa] hover:text-white hover:bg-white/[0.04]"
                   }`}
                 >
                   <Icon size={20} className={`shrink-0 transition-colors ${isActive ? "text-white" : "text-[#a1a1aa] group-hover:text-white"}`} />
-                  {(isHovered || !isCollapsedManual) && <span className="font-semibold truncate tracking-wide">{item.name}</span>}
+                  {!isCollapsed && <span className="font-semibold truncate tracking-wide">{item.name}</span>}
                 </button>
               );
             })}
           </nav>
         </div>
 
-        {/* Bottom Configuration Controls - Riverside Action Pills */}
+        {/* Bottom Configuration Controls */}
         <div className="w-full pt-4 border-t glass-divider flex flex-col gap-2.5">
-          {(isHovered || !isCollapsedManual) ? (
-            <>
-              <div className="flex items-center gap-2 w-full">
-                <button
-                  onClick={() => router.push("/?tab=video")}
-                  className="flex-1 bg-[#1c1c20] hover:bg-[#27272c] text-white font-semibold text-xs px-3.5 py-2.5 rounded-full border border-white/10 flex items-center justify-center gap-2 shadow-sm transition-all active:scale-95 cursor-pointer"
-                >
-                  <FiZap size={14} className="text-[#1687f8]" />
-                  <span>Open Studio</span>
-                </button>
+          {!isCollapsed ? (
+            <div className="flex items-center gap-2 w-full">
+              <button
+                onClick={() => router.push("/?tab=video")}
+                className="flex-1 bg-[#1c1c20] hover:bg-[#27272c] text-white font-semibold text-xs px-3.5 py-2.5 rounded-full border border-white/10 flex items-center justify-center gap-2 shadow-sm transition-all active:scale-95 cursor-pointer"
+              >
+                <FiZap size={14} className="text-[#1687f8]" />
+                <span>Open Studio</span>
+              </button>
 
-                <button
-                  onClick={() => setIsSettingsModalOpen(false) || setIsSettingsModalOpen(true)}
-                  title="Settings"
-                  className="w-9 h-9 rounded-full bg-[#1c1c20] hover:bg-[#27272c] border border-white/10 flex items-center justify-center text-white relative shadow-sm cursor-pointer transition-all shrink-0"
-                >
-                  <FiSettings size={18} className="text-[#a1a1aa] group-hover:text-white transition-colors" />
-                  {isApiKeyActive ? (
-                    <span 
-                      title="API Keys Live (Dev Mode)"
-                      className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-[#2cbd59] rounded-full border-2 border-black/80 shadow-sm"
-                    />
-                  ) : (
-                    <span 
-                      title="API Keys Missing (Dev Mode)"
-                      className="absolute -top-0.5 -right-0.5 flex h-2.5 w-2.5"
-                    >
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#ff4238] opacity-75" />
-                      <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-[#ff4238] border-2 border-black/80" />
-                    </span>
-                  )}
-                </button>
-              </div>
-
-            </>
+              <button
+                onClick={() => setIsSettingsModalOpen(true)}
+                title="Settings"
+                className="w-9 h-9 rounded-full bg-[#1c1c20] hover:bg-[#27272c] border border-white/10 flex items-center justify-center text-white relative shadow-sm cursor-pointer transition-all shrink-0"
+              >
+                <FiSettings size={18} className="text-[#a1a1aa] group-hover:text-white transition-colors" />
+                {isApiKeyActive ? (
+                  <span 
+                    title="API Keys Live (Dev Mode)"
+                    className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-[#2cbd59] rounded-full border-2 border-black/80 shadow-sm"
+                  />
+                ) : (
+                  <span 
+                    title="API Keys Missing (Dev Mode)"
+                    className="absolute -top-0.5 -right-0.5 flex h-2.5 w-2.5"
+                  >
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#ff4238] opacity-75" />
+                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-[#ff4238] border-2 border-black/80" />
+                  </span>
+                )}
+              </button>
+            </div>
           ) : (
             <div className="flex flex-col gap-2 items-center">
+              <button
+                onClick={() => router.push("/?tab=video")}
+                title="Open Studio"
+                className="w-10 h-10 rounded-xl bg-[#1c1c20] hover:bg-[#27272c] border border-white/10 flex items-center justify-center text-white relative shadow-sm cursor-pointer transition-all active:scale-95"
+              >
+                <FiZap size={18} className="text-[#1687f8]" />
+              </button>
 
               <button
                 onClick={() => setIsSettingsModalOpen(true)}

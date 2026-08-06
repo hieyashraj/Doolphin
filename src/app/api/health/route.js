@@ -13,7 +13,7 @@ export async function GET() {
     }
 
     const falKeyPresent = Boolean((session?.user?.falKey || process.env.FAL_KEY || "").trim());
-    const ugcKeyPresent = Boolean((session?.user?.customApiKey || process.env.UGC_API_KEY || "").trim());
+    const ugcKeyPresent = Boolean((session?.user?.customApiKey || process.env.MUAPI_API_KEY || process.env.UGC_API_KEY || "").trim());
 
     let adapterStatus = "OK";
     let endpoint = "";
