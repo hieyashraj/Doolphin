@@ -159,44 +159,74 @@ export default function CreationHub({
 
   const activePreset = PRESET_MODES.find(m => m.id === activeModeId) || PRESET_MODES[0];
 
-  const handleProductUpload = (e) => {
+  const compressImageIfNeeded = (file, maxWidth = 1024, maxHeight = 1024, quality = 0.82) => {
+    return new Promise((resolve) => {
+      if (!file || typeof file !== "object" || !file.type?.startsWith("image/")) {
+        resolve(null);
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          let width = img.width;
+          let height = img.height;
+          if (width > maxWidth || height > maxHeight) {
+            if (width > height) {
+              height = Math.round((height * maxWidth) / width);
+              width = maxWidth;
+            } else {
+              width = Math.round((width * maxHeight) / height);
+              height = maxHeight;
+            }
+          }
+          const canvas = document.createElement("canvas");
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext("2d");
+          ctx.drawImage(img, 0, 0, width, height);
+          resolve(canvas.toDataURL("image/jpeg", quality));
+        };
+        img.onerror = () => resolve(e.target.result);
+        img.src = e.target.result;
+      };
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handleProductUpload = async (e) => {
     const file = e.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const dataUrl = event.target.result;
+      const dataUrl = await compressImageIfNeeded(file);
+      if (dataUrl) {
         const obj = { id: `prod_${Date.now()}`, preview: dataUrl, url: dataUrl };
         setProductImage(obj);
         setUploadedImages(prev => [obj, ...prev]);
-      };
-      reader.readAsDataURL(file);
+      }
     }
   };
 
-  const handleAppUpload = (e) => {
+  const handleAppUpload = async (e) => {
     const file = e.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const dataUrl = event.target.result;
+      const dataUrl = await compressImageIfNeeded(file);
+      if (dataUrl) {
         const obj = { id: `app_${Date.now()}`, preview: dataUrl, url: dataUrl };
         setAppImage(obj);
         setUploadedImages(prev => [obj, ...prev]);
-      };
-      reader.readAsDataURL(file);
+      }
     }
   };
 
   const handleImageUpload = (e) => {
     const files = Array.from(e.target.files || []);
-    files.forEach(file => {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const dataUrl = event.target.result;
+    files.forEach(async (file) => {
+      const dataUrl = await compressImageIfNeeded(file);
+      if (dataUrl) {
         const obj = { id: Math.random().toString(36).substring(2, 9), preview: dataUrl, url: dataUrl };
         setUploadedImages(prev => [...prev, obj]);
-      };
-      reader.readAsDataURL(file);
+      }
     });
   };
 
@@ -249,10 +279,20 @@ export default function CreationHub({
         body: JSON.stringify(payload)
       });
 
-      const data = await res.json();
+      let data;
+      const contentType = res.headers.get("content-type") || "";
+      if (contentType.includes("application/json")) {
+        data = await res.json();
+      } else {
+        const rawText = await res.text();
+        if (res.status === 413 || rawText.toLowerCase().includes("request entity") || rawText.toLowerCase().includes("too large")) {
+          throw new Error("Payload size exceeds Vercel limit (4.5MB). Please use smaller reference images.");
+        }
+        throw new Error(`Server returned HTTP ${res.status}: ${rawText.substring(0, 120)}`);
+      }
 
       if (!res.ok || !data.success) {
-        throw new Error(data.error || `Generation failed (${data.code || res.status})`);
+        throw new Error(data?.error || `Generation failed (${data?.code || res.status})`);
       }
 
       setGenerationId(data.creationId);
