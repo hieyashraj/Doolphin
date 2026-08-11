@@ -1,10 +1,9 @@
 import { NextResponse } from "next/server";
-import { getMockSession as getRequestSession } from "@/lib/getMockSession";
+import { requireActivatedAccount } from "@/lib/access/authorization";
 import { CreditEscrowService } from "@/lib/billing/CreditEscrowService";
 
 export async function GET() {
-  const session = await getRequestSession();
-  if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  let session; try { const { appUser } = await requireActivatedAccount(); session = { user: { id: appUser.id } }; } catch (error) { return NextResponse.json({ error: error.code || "Activation required" }, { status: error.status || 401 }); }
   try {
     const workspace = await CreditEscrowService.ensureUserWorkspace(session.user.id);
     return NextResponse.json({ workspaceId: workspace.id, availableCredits: workspace.creditAccount.availableCredits, reservedCredits: workspace.creditAccount.reservedCredits });

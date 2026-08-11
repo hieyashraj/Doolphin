@@ -1,8 +1,7 @@
 "use client";
 
-import { SessionProvider } from "next-auth/react";
 import { useEffect } from "react";
-import config from "@/lib/config";
+import { SessionProvider } from "next-auth/react";
 
 export function Providers({ children }) {
   useEffect(() => {
@@ -11,9 +10,7 @@ export function Providers({ children }) {
     }
   }, []);
 
-  return (
-    <SessionProvider>
-      {children}
-    </SessionProvider>
-  );
+  // Retained only while legacy identity records are being reconciled. Server access
+  // decisions use Supabase exclusively.
+  return <SessionProvider>{children}</SessionProvider>;
 }

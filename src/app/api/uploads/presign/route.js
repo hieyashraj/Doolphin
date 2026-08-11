@@ -1,14 +1,13 @@
 import path from "path";
 import { NextResponse } from "next/server";
-import { getMockSession as getRequestSession } from "@/lib/getMockSession";
+import { requireActivatedAccount } from "@/lib/access/authorization";
 import { prisma } from "@/lib/prisma";
 import { R2StorageService } from "@/lib/storage/r2StorageService";
 
 const ALLOWED = new Set(["image/jpeg", "image/png", "image/webp", "video/mp4", "video/quicktime"]);
 
 export async function POST(req) {
-  const session = await getRequestSession();
-  if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  let session; try { const { appUser } = await requireActivatedAccount(); session = { user: { id: appUser.id } }; } catch (error) { return NextResponse.json({ error: error.code || "Activation required" }, { status: error.status || 401 }); }
   if (!R2StorageService.isConfigured()) return NextResponse.json({ directUpload: false });
   const body = await req.json().catch(() => null);
   if (!body || !ALLOWED.has(body.contentType) || !Number.isInteger(body.fileSizeBytes) || !/^[a-f0-9]{64}$/i.test(body.checksumSha256 || "")) return NextResponse.json({ error: "Invalid upload metadata" }, { status: 422 });

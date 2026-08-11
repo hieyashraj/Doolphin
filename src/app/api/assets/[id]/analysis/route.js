@@ -1,7 +1,7 @@
 import crypto from "crypto";
 import { z } from "zod";
 import { NextResponse } from "next/server";
-import { getMockSession as getRequestSession } from "@/lib/getMockSession";
+import { requireActivatedAccount } from "@/lib/access/authorization";
 import { prisma } from "@/lib/prisma";
 import { R2StorageService } from "@/lib/storage/r2StorageService";
 import { CreditEscrowService } from "@/lib/billing/CreditEscrowService";
@@ -51,8 +51,7 @@ async function ownedAsset(id, userId) {
 }
 
 async function handleAnalysisSubmission(_req, { params }) {
-  const session = await getRequestSession();
-  if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  let session; try { const { appUser } = await requireActivatedAccount(); session = { user: { id: appUser.id } }; } catch (error) { return NextResponse.json({ error: error.code || "Activation required" }, { status: error.status || 401 }); }
   const { id } = await params;
   const asset = await ownedAsset(id, session.user.id);
   if (!asset) return NextResponse.json({ error: "Asset not found" }, { status: 404 });

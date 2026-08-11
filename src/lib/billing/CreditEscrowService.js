@@ -8,6 +8,10 @@ import { AppError, ERROR_CODES } from "../errors.js";
  */
 
 export class CreditEscrowService {
+  static async assertLegacyMutationAllowed(workspaceId, db = prisma) {
+    const cutover = await db.ledgerCutover?.findUnique({ where: { workspaceId } });
+    if (cutover && ["FROZEN", "BLOCKED"].includes(cutover.status)) throw new AppError(ERROR_CODES.CREDIT_RESERVATION_FAILED, "Credit balances are temporarily reconciling; no charge was made.", { statusCode: 503 });
+  }
   static async releaseVariantReservations(creationVariantId, reason) {
     const reservations = await prisma.creditReservation.findMany({ where: { creationVariantId } });
     return Promise.all(reservations.map((reservation) => this.releaseCredits({ reservationId: reservation.id, reason })));
@@ -24,6 +28,7 @@ export class CreditEscrowService {
 
   static async chargeImmediate({ workspaceId, amount, idempotencyKey, userId, reasonCode }) {
     return prisma.$transaction(async (tx) => {
+      await this.assertLegacyMutationAllowed(workspaceId, tx);
       const existing = await tx.creditTransaction.findUnique({ where: { idempotencyKey } });
       if (existing) return existing;
       const account = await tx.creditAccount.findUnique({ where: { workspaceId } });
@@ -39,6 +44,7 @@ export class CreditEscrowService {
 
   static async refundImmediate({ workspaceId, amount, idempotencyKey, userId, reasonCode }) {
     return prisma.$transaction(async (tx) => {
+      await this.assertLegacyMutationAllowed(workspaceId, tx);
       const existing = await tx.creditTransaction.findUnique({ where: { idempotencyKey } });
       if (existing) return existing;
       const account = await tx.creditAccount.findUnique({ where: { workspaceId } });
@@ -103,6 +109,7 @@ export class CreditEscrowService {
    */
   static async reserveCredits({ workspaceId, creationId, creationVariantId, amount, idempotencyKey, userId, tx = null }) {
     const execute = async (db) => {
+      await this.assertLegacyMutationAllowed(workspaceId, db);
       // Check existing reservation
       const existingRes = await db.creditReservation.findUnique({
         where: { idempotencyKey },

@@ -1,7 +1,7 @@
 import crypto from "crypto";
 import path from "path";
 import { NextResponse } from "next/server";
-import { getMockSession as getRequestSession } from "@/lib/getMockSession";
+import { requireActivatedAccount } from "@/lib/access/authorization";
 import { R2StorageService } from "@/lib/storage/r2StorageService";
 import { prisma } from "@/lib/prisma";
 import { validateUploadedMedia } from "@/lib/media/uploadValidation";
@@ -19,8 +19,7 @@ function hasValidSignature(buffer, mimeType) {
 }
 
 async function handleUpload(req) {
-  const session = await getRequestSession();
-  if (!session?.user?.id) return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+  let session; try { const { appUser } = await requireActivatedAccount(); session = { user: { id: appUser.id } }; } catch (error) { return NextResponse.json({ success: false, error: error.code || "Activation required" }, { status: error.status || 401 }); }
 
   if (process.env.NODE_ENV === "production" && !R2StorageService.isConfigured()) {
     return NextResponse.json({ success: false, code: "DURABLE_STORAGE_REQUIRED", error: "R2 storage must be configured in production" }, { status: 503 });

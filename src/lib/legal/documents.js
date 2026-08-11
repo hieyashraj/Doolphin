@@ -1,0 +1,9 @@
+import crypto from "crypto";
+export const LEGAL_PLACEHOLDER = /\[(?:Effective Date|Last Updated Date|Full Legal Entity Name)\]|PENDING_APPROVED_LEGAL_COPY/;
+export const LEGAL_DOCUMENTS = {
+  terms: { title: "Doolphin Terms of Service", version: "v1", content: `Effective Date: [Effective Date]\n\nLast Updated: [Last Updated Date]\n\nThese Terms of Service are between you and [Full Legal Entity Name], operating Doolphin. By creating an account, purchasing a subscription, accessing Doolphin, or using the Services, you agree to these Terms and our Privacy Policy.\n\nDoolphin provides AI-powered media creation. You are responsible for reviewing output and for holding all rights, permissions, and consents for material you submit. AI output can be inaccurate, non-unique, or unsuitable for a particular purpose.`, },
+  privacy: { title: "Doolphin Privacy Policy", version: "v1", content: `Effective Date: [Effective Date]\n\nLast Updated: [Last Updated Date]\n\nDoolphin processes account information, billing information, User Content, generated Output, communications, and technical and usage information to provide, secure, and improve the Services. Doolphin does not use private User Content to train its own generative AI models.\n\nAI functionality may use specialist third-party providers only as necessary to fulfil a requested generation. Uploaded files and output may be retained temporarily for processing, delivery, security, and lawful recordkeeping.`, },
+  refund: { title: "Doolphin Refund Policy", version: "v1", content: "PENDING_APPROVED_LEGAL_COPY" },
+};
+export const legalHash = (key) => crypto.createHash("sha256").update(LEGAL_DOCUMENTS[key].content).digest("hex");
+export const hasUnresolvedLegalPlaceholders = () => Object.values(LEGAL_DOCUMENTS).some((doc) => LEGAL_PLACEHOLDER.test(doc.content));

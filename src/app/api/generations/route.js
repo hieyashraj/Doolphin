@@ -1,6 +1,6 @@
 import crypto from "crypto";
 import { NextResponse } from "next/server";
-import { getMockSession as getRequestSession } from "@/lib/getMockSession";
+import { requireActivatedAccount } from "@/lib/access/authorization";
 import { prisma } from "@/lib/prisma";
 import { CreditEscrowService } from "@/lib/billing/CreditEscrowService";
 import { compileCanonicalPrompt } from "@/lib/generation/promptCompiler";
@@ -32,10 +32,7 @@ function mediaTypeFor(asset) {
 }
 
 async function handleGenerationSubmission(req) {
-  const session = await getRequestSession();
-  if (!session?.user?.id) {
-    return NextResponse.json({ success: false, code: "UNAUTHORIZED", error: "Authentication required" }, { status: 401 });
-  }
+  let session; try { const { appUser } = await requireActivatedAccount(); session = { user: { id: appUser.id } }; } catch (error) { return NextResponse.json({ success: false, code: error.code || "UNAUTHORIZED", error: "Activation required" }, { status: error.status || 401 }); }
 
   const body = await req.json().catch(() => null);
   if (!body?.quoteId || !body?.idempotencyKey) {

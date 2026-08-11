@@ -16,6 +16,56 @@ enum UserStatus {
   DELETED
 }
 
+enum ActivationStatus {
+  UNVERIFIED
+  VERIFIED_PAYWALLED
+  ACTIVATED
+  SUSPENDED
+}
+enum SubscriptionStatus {
+  NONE
+  ACTIVE
+  PAST_DUE
+  CANCEL_AT_PERIOD_END
+  CANCELED
+  SUSPENDED
+}
+enum EntitlementStatus {
+  ACTIVE
+  CANCEL_AT_PERIOD_END
+  REVOKED
+  EXPIRED
+  PENDING_REVIEW
+}
+enum BillingInterval {
+  ONE_TIME
+  MONTHLY
+  ANNUAL
+}
+enum CreditLedgerReason {
+  LEGACY_OPENING_BALANCE
+  EXPLORER_GRANT
+  STARTER_MONTHLY_GRANT
+  GROWTH_MONTHLY_GRANT
+  AGENCY_MONTHLY_GRANT
+  TOP_UP
+  GENERATION_SETTLEMENT
+  ADMIN_ADJUSTMENT
+  REFUND_ADJUSTMENT
+}
+enum CreditGrantStatus {
+  PENDING
+  GRANTED
+  STOPPED
+}
+enum LedgerCutoverStatus {
+  PENDING
+  FROZEN
+  RECONCILED
+  BLOCKED
+  ACTIVE
+}
+
 enum WorkspaceStatus {
   ACTIVE
   SUSPENDED
@@ -252,6 +302,12 @@ model User {
   status             UserStatus   @default(ACTIVE)
   lastLoginAt        DateTime?
   defaultWorkspaceId String?
+  supabaseUserId     String?      @unique
+  normalizedEmail    String?      @unique
+  activationStatus   ActivationStatus @default(UNVERIFIED)
+  subscriptionStatus SubscriptionStatus @default(NONE)
+  explorerClaimedAt  DateTime?
+  explorerOrderId    String?      @unique
   createdAt          DateTime     @default(now())
   updatedAt          DateTime     @updatedAt
 
@@ -269,6 +325,155 @@ model User {
   creditTransactions CreditTransaction[]
   auditEvents        AuditEvent[]
   usageEvents        UsageEvent[]
+}
+
+model PricingRevision {
+  id String @id @default(cuid())
+  version String @unique
+  customerListValuePerCreditMicroUsd BigInt
+  netRevenuePerCreditFloorMicroUsd BigInt
+  targetContributionMarginBps Int
+  maxFullyLoadedCostPerCreditMicroUsd BigInt
+  createdAt DateTime @default(now())
+}
+
+model PaymentCostAssumption {
+  id String @id @default(cuid())
+  revisionId String @unique
+  processor String
+  transactionFeeBps Int
+  fixedFeeMicroUsd BigInt
+  createdAt DateTime @default(now())
+}
+
+model PlanDefinition {
+  id String @id @default(cuid())
+  code String @unique
+  name String
+  interval BillingInterval
+  priceMicroUsd BigInt
+  monthlyCredits Int
+  seats Int
+  workspaces Int
+  featuresJson String @default("[]")
+  pricingRevisionId String
+  isActive Boolean @default(true)
+  createdAt DateTime @default(now())
+}
+
+model Entitlement {
+  id String @id @default(cuid())
+  userId String
+  workspaceId String
+  planCode String
+  billingInterval BillingInterval
+  status EntitlementStatus @default(ACTIVE)
+  polarCustomerId String?
+  polarOrderId String? @unique
+  startsAt DateTime
+  endsAt DateTime
+  grantsStoppedAt DateTime?
+  featuresJson String @default("[]")
+  createdAt DateTime @default(now())
+  @@index([userId, workspaceId, status])
+}
+
+model BillingCustomer {
+  id String @id @default(cuid())
+  userId String
+  polarCustomerId String @unique
+  createdAt DateTime @default(now())
+}
+
+model BillingWebhookEvent {
+  id String @id @default(cuid())
+  polarEventId String @unique
+  eventType String
+  payloadJson String
+  processedAt DateTime?
+  createdAt DateTime @default(now())
+}
+
+model CreditLedgerEntry {
+  id String @id @default(cuid())
+  workspaceId String
+  userId String?
+  amount Int
+  reason CreditLedgerReason
+  sourceId String?
+  idempotencyKey String @unique
+  pricingRevisionId String?
+  createdAt DateTime @default(now())
+  @@index([workspaceId, createdAt])
+}
+
+model CreditGrantSchedule {
+  id String @id @default(cuid())
+  entitlementId String
+  workspaceId String
+  userId String
+  periodIndex Int
+  periodStartsAt DateTime
+  dueAt DateTime
+  credits Int
+  status CreditGrantStatus @default(PENDING)
+  idempotencyKey String @unique
+  grantedAt DateTime?
+  stoppedAt DateTime?
+  @@unique([entitlementId, periodIndex])
+  @@index([status, dueAt])
+}
+
+model LedgerCutover {
+  id String @id @default(cuid())
+  workspaceId String @unique
+  status LedgerCutoverStatus @default(PENDING)
+  cutoverAt DateTime?
+  legacyAvailableCredits Int?
+  openingLedgerCredits Int?
+  discrepancyCredits Int?
+  reconciliationJson String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model BlockedEmailDomain {
+  id String @id @default(cuid())
+  domain String @unique
+  reason String
+  source String
+  isActive Boolean @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model AuthRateLimit {
+  id String @id @default(cuid())
+  scope String
+  subjectHash String
+  windowStartsAt DateTime
+  attempts Int @default(0)
+  @@unique([scope, subjectHash, windowStartsAt])
+}
+
+model LegalDocumentVersion {
+  id String @id @default(cuid())
+  documentType String
+  version String
+  contentHash String
+  isCurrent Boolean @default(false)
+  createdAt DateTime @default(now())
+  @@unique([documentType, version])
+}
+
+model LegalConsent {
+  id String @id @default(cuid())
+  userId String
+  supabaseUserId String
+  legalDocumentVersionId String
+  acceptedAt DateTime @default(now())
+  source String
+  @@unique([supabaseUserId, legalDocumentVersionId])
 }
 
 model UploadedAsset {
