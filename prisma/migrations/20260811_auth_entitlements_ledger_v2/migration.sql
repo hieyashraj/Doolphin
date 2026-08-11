@@ -44,6 +44,14 @@ ALTER TABLE "Workspace" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "WorkspaceMember" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "Creation" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "UploadedAsset" ENABLE ROW LEVEL SECURITY;
+-- Financial/provider evidence is exclusively server-accessed. RLS has no
+-- authenticated/anon policies on these tables; Prisma must still authorize.
+ALTER TABLE "CreditAccount" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "CreditTransaction" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "CreditReservation" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "CreationAsset" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "GeneratedArtifact" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "ProviderCostLedger" ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "user_self_read" ON "User" FOR SELECT USING ("supabaseUserId" = auth.uid()::text);
 CREATE POLICY "workspace_member_read" ON "Workspace" FOR SELECT USING (EXISTS (SELECT 1 FROM "WorkspaceMember" wm JOIN "User" u ON u.id = wm."userId" WHERE wm."workspaceId" = "Workspace".id AND u."supabaseUserId" = auth.uid()::text));
 CREATE POLICY "workspace_member_read_members" ON "WorkspaceMember" FOR SELECT USING (EXISTS (SELECT 1 FROM "User" u WHERE u.id = "WorkspaceMember"."userId" AND u."supabaseUserId" = auth.uid()::text));
