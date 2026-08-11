@@ -16,7 +16,7 @@ export async function GET(req, { params }) {
 
     const creation = await prisma.creation.findUnique({
       where: { id },
-      include: { variants: { include: { artifacts: true } } },
+      include: { variants: { where: { status: "COMPLETED" }, include: { artifacts: { where: { type: "FINAL_VIDEO", validationStatus: "VALID" } } } } },
     });
 
     if (!creation) {

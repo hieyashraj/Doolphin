@@ -144,7 +144,7 @@ function SidebarContent() {
     toast.success(`${label} copied to clipboard!`);
   };
 
-  // Nav Items: Presets removed from left nav, Script Studio removed entirely
+  // Nav Items
   const mainNavItems = [
     {
       id: "explore",
@@ -154,7 +154,7 @@ function SidebarContent() {
     },
     {
       id: "video",
-      name: "Video",
+      name: "Video Studio",
       icon: FiZap,
       action: () => router.push("/?tab=video")
     },
@@ -174,10 +174,10 @@ function SidebarContent() {
 
   return (
     <>
-      {/* Riverside-Grade Production Navigation Sidebar */}
+      {/* Wispr Flow Signature Floating Sidebar Rail */}
       <aside 
-        className={`glass-rail flex flex-col justify-between p-4 h-full flex-shrink-0 z-40 select-none rounded-[24px] transition-all duration-300 ease-in-out ${
-          isCollapsed ? "w-[72px]" : "w-60 shadow-2xl"
+        className={`bg-[#FAF8ED] border border-[#111111] flex flex-col justify-between p-3.5 h-full flex-shrink-0 z-40 select-none rounded-[28px] transition-all duration-300 ease-in-out shadow-sm ${
+          isCollapsed ? "w-[76px]" : "w-64 shadow-lg"
         }`}
       >
         <div className="w-full flex flex-col gap-6">
@@ -186,44 +186,46 @@ function SidebarContent() {
             <div className="flex flex-col items-center gap-3 pt-1">
               <button
                 onClick={toggleSidebar}
-                className="w-10 h-10 rounded-xl flex items-center justify-center text-white/70 hover:text-white hover:bg-white/10 transition-all cursor-pointer bg-white/[0.05] border border-white/10 shadow-sm group"
-                title="Expand Nav Bar"
+                className="w-10 h-10 rounded-full flex items-center justify-center text-[#44423D] hover:text-[#111111] hover:bg-[#EFECE1] transition-all cursor-pointer bg-[#EFECE1] border border-[#111111] shadow-sm group"
+                title="Expand Navigation"
               >
-                <FiSidebar size={18} className="group-hover:scale-110 transition-transform text-[#38bdf8]" />
+                <FiSidebar size={18} className="group-hover:scale-110 transition-transform text-[#111111]" />
               </button>
               <Link 
                 href="/" 
-                className="w-8 h-8 rounded-lg flex items-center justify-center shadow-md hover:scale-105 transition-transform"
+                className="w-10 h-10 rounded-xl bg-white border border-[#111111]/20 flex items-center justify-center p-1.5 shadow-sm hover:scale-105 transition-transform"
                 title="Doolphin Studio"
               >
-                <img src="/favicon.svg" alt="Doolphin" className="w-8 h-8 object-contain" />
+                <img src="/favicon.svg" alt="Doolphin" className="w-full h-full object-contain" />
               </Link>
             </div>
           ) : (
-            <div className="flex items-center justify-between px-1 pt-1">
+            <div className="flex items-center justify-between px-2 pt-1">
               <Link 
                 href="/" 
                 className="flex items-center gap-3 group truncate"
               >
-                <img src="/favicon.svg" alt="Doolphin" className="w-8 h-8 object-contain group-hover:scale-105 transition-transform shrink-0" />
+                <div className="w-10 h-10 rounded-xl bg-white border border-[#111111]/20 flex items-center justify-center p-1.5 shadow-sm shrink-0 group-hover:scale-105 transition-transform">
+                  <img src="/favicon.svg" alt="Doolphin" className="w-full h-full object-contain" />
+                </div>
                 <div className="truncate">
-                  <h2 className="text-sm font-extrabold text-white tracking-[0.14em] uppercase truncate">Doolphin</h2>
-                  <p className="text-[10px] text-white/50 tracking-[0.18em] font-semibold uppercase">Studio</p>
+                  <h2 className="text-2xl font-bold text-[#111111] tracking-tight font-serif leading-tight truncate">Doolphin</h2>
+                  <p className="text-[10px] text-[#77746D] font-bold tracking-widest uppercase">AI UGC Studio</p>
                 </div>
               </Link>
 
               <button
                 onClick={toggleSidebar}
-                className="w-8 h-8 rounded-lg flex items-center justify-center text-white/50 hover:text-white hover:bg-white/10 transition-colors cursor-pointer shrink-0"
-                title="Close Nav Bar"
+                className="w-8 h-8 rounded-full flex items-center justify-center text-[#44423D] hover:text-[#111111] hover:bg-[#EFECE1] border border-[#111111] transition-colors cursor-pointer shrink-0 bg-white"
+                title="Collapse Sidebar"
               >
-                <FiSidebar size={18} />
+                <FiSidebar size={17} />
               </button>
             </div>
           )}
 
-          {/* Navigation Items */}
-          <nav className="flex flex-col gap-1.5 w-full">
+          {/* Navigation Items (Wispr Flow Capsule Tabs with text-sm & text-base font-semibold typography scale) */}
+          <nav className="flex flex-col gap-2 w-full">
             {mainNavItems.map((item) => {
               const isActive = currentTab === item.id;
               const Icon = item.icon;
@@ -233,79 +235,74 @@ function SidebarContent() {
                   key={item.id}
                   onClick={item.action}
                   title={item.name}
-                  className={`group flex items-center gap-3.5 px-3.5 py-2.5 rounded-xl text-sm transition-all duration-150 cursor-pointer ${
+                  className={`group flex items-center gap-3 px-4 py-3 rounded-full transition-all duration-150 cursor-pointer ${
                     isCollapsed ? "justify-center px-0" : ""
                   } ${
                     isActive 
-                      ? "bg-white/[0.09] text-white font-semibold border border-white/10 shadow-sm" 
-                      : "text-[#a1a1aa] hover:text-white hover:bg-white/[0.04]"
+                      ? "bg-white text-[#111111] text-base font-semibold border border-[#111111] shadow-sm" 
+                      : "text-[#44423D] hover:text-[#111111] hover:bg-[#EFECE1] text-sm font-medium border border-transparent"
                   }`}
                 >
-                  <Icon size={20} className={`shrink-0 transition-colors ${isActive ? "text-white" : "text-[#a1a1aa] group-hover:text-white"}`} />
-                  {!isCollapsed && <span className="font-semibold truncate tracking-wide">{item.name}</span>}
+                  <Icon size={20} className={`shrink-0 transition-colors ${isActive ? "text-[#111111]" : "text-[#66635C] group-hover:text-[#111111]"}`} />
+                  {!isCollapsed && <span className="truncate tracking-tight">{item.name}</span>}
                 </button>
               );
             })}
           </nav>
         </div>
 
-        {/* Bottom Configuration Controls */}
-        <div className="w-full pt-4 border-t glass-divider flex flex-col gap-2.5">
+        {/* Bottom Wispr Flow Control Bar */}
+        <div className="w-full pt-4 border-t border-[#111111] flex flex-col gap-3">
           {!isCollapsed ? (
-            <div className="flex items-center gap-2 w-full">
+            <div className="flex items-center gap-2.5 w-full">
               <button
                 onClick={() => router.push("/?tab=video")}
-                className="flex-1 bg-[#1c1c20] hover:bg-[#27272c] text-white font-semibold text-xs px-3.5 py-2.5 rounded-full border border-white/10 flex items-center justify-center gap-2 shadow-sm transition-all active:scale-95 cursor-pointer"
+                className="flex-1 bg-[#E6D9FF] hover:bg-[#DBCBFF] text-[#111111] font-semibold text-sm px-4 py-2.5 rounded-full border border-[#111111] flex items-center justify-center gap-2 shadow-sm transition-all active:scale-95 cursor-pointer"
               >
-                <FiZap size={14} className="text-[#1687f8]" />
+                <FiZap size={16} className="text-[#111111]" />
                 <span>Open Studio</span>
               </button>
 
               <button
                 onClick={() => setIsSettingsModalOpen(true)}
                 title="Settings"
-                className="w-9 h-9 rounded-full bg-[#1c1c20] hover:bg-[#27272c] border border-white/10 flex items-center justify-center text-white relative shadow-sm cursor-pointer transition-all shrink-0"
+                className="w-10 h-10 rounded-full bg-white hover:bg-[#F2EFE5] border border-[#111111] flex items-center justify-center text-[#111111] relative shadow-sm cursor-pointer transition-all shrink-0"
               >
-                <FiSettings size={18} className="text-[#a1a1aa] group-hover:text-white transition-colors" />
+                <FiSettings size={18} className="text-[#44423D] hover:text-[#111111]" />
                 {isApiKeyActive ? (
                   <span 
-                    title="API Keys Live (Dev Mode)"
-                    className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-[#2cbd59] rounded-full border-2 border-black/80 shadow-sm"
+                    title="API Keys Configured"
+                    className="absolute -top-0.5 -right-0.5 w-3 h-3 bg-[#064E3B] rounded-full border-2 border-[#111111] shadow-sm"
                   />
                 ) : (
                   <span 
-                    title="API Keys Missing (Dev Mode)"
-                    className="absolute -top-0.5 -right-0.5 flex h-2.5 w-2.5"
+                    title="API Keys Missing"
+                    className="absolute -top-0.5 -right-0.5 flex h-3 w-3"
                   >
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#ff4238] opacity-75" />
-                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-[#ff4238] border-2 border-black/80" />
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#B91C1C] opacity-75" />
+                    <span className="relative inline-flex rounded-full h-3 w-3 bg-[#B91C1C] border-2 border-[#111111]" />
                   </span>
                 )}
               </button>
             </div>
           ) : (
-            <div className="flex flex-col gap-2 items-center">
+            <div className="flex flex-col gap-2.5 items-center">
               <button
                 onClick={() => router.push("/?tab=video")}
                 title="Open Studio"
-                className="w-10 h-10 rounded-xl bg-[#1c1c20] hover:bg-[#27272c] border border-white/10 flex items-center justify-center text-white relative shadow-sm cursor-pointer transition-all active:scale-95"
+                className="w-11 h-11 rounded-full bg-[#E6D9FF] hover:bg-[#DBCBFF] border border-[#111111] flex items-center justify-center text-[#111111] shadow-sm cursor-pointer transition-all active:scale-95"
               >
-                <FiZap size={18} className="text-[#1687f8]" />
+                <FiZap size={20} />
               </button>
 
               <button
                 onClick={() => setIsSettingsModalOpen(true)}
                 title="Settings"
-                className="w-10 h-10 rounded-xl flex items-center justify-center text-[#a1a1aa] hover:text-white hover:bg-white/10 transition-all cursor-pointer relative"
+                className="w-11 h-11 rounded-full flex items-center justify-center text-[#44423D] hover:text-[#111111] hover:bg-[#EFECE1] transition-all cursor-pointer relative bg-white border border-[#111111]"
               >
                 <FiSettings size={20} />
-                {isApiKeyActive ? (
-                  <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-[#2cbd59] rounded-full border-2 border-black/80 shadow-sm" />
-                ) : (
-                  <span className="absolute top-1 right-1 flex h-2.5 w-2.5">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#ff4238] opacity-75" />
-                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-[#ff4238] border-2 border-black/80" />
-                  </span>
+                {isApiKeyActive && (
+                  <span className="absolute top-0 right-0 w-3 h-3 bg-[#064E3B] rounded-full border-2 border-[#111111] shadow-sm" />
                 )}
               </button>
             </div>
@@ -313,36 +310,37 @@ function SidebarContent() {
         </div>
       </aside>
 
-      {/* COMPREHENSIVE SETTINGS MODAL (FAANG STANDARD) */}
+      {/* WISPR FLOW LIGHT SETTINGS MODAL WITH WARM CREAM CARDS & FAANG-GRADE DESIGN */}
       {isSettingsModalOpen && (
-        <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 md:p-6">
           <div 
             onClick={() => setIsSettingsModalOpen(false)}
-            className="absolute inset-0 bg-black/75 backdrop-blur-xl"
+            className="absolute inset-0 bg-[#111111]/40 backdrop-blur-md"
           />
-          <div className="relative w-full max-w-3xl h-[80vh] glass-panel p-6 shadow-2xl flex flex-col overflow-hidden text-white z-10 border border-white/10 bg-[#0d0d12]/90">
+          <div className="relative w-full max-w-3xl h-[85vh] bg-[#FAF8ED] rounded-3xl p-6 md:p-8 shadow-2xl flex flex-col overflow-hidden text-[#111111] z-10 border-2 border-[#111111]">
             
             {/* Modal Header */}
-            <div className="pb-4 border-b glass-divider flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <FiSettings size={18} className="text-[#0070f3]" />
-                <h3 className="text-sm font-bold text-white tracking-wide">Settings & Workspace</h3>
+            <div className="pb-4 border-b border-[#111111] flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-full bg-[#111111] flex items-center justify-center text-white">
+                  <FiSettings size={16} />
+                </div>
+                <h3 className="text-xl font-bold text-[#111111] font-serif tracking-tight">Settings & Workspace</h3>
               </div>
               <button
                 onClick={() => setIsSettingsModalOpen(false)}
-                className="p-1.5 text-slate-400 hover:text-white transition-colors cursor-pointer rounded-lg hover:bg-white/10"
+                className="p-2 text-[#111111] hover:bg-[#EFECE1] border border-[#111111] transition-colors cursor-pointer rounded-full bg-white shadow-sm"
               >
                 <FiX size={18} />
               </button>
             </div>
 
-            {/* Settings Tab Navigation */}
-            <div className="flex border-b glass-divider gap-1.5 py-2.5 overflow-x-auto scrollbar-subtle">
+            {/* Settings Segmented Pill Navigation (Wispr Flow Tabs) */}
+            <div className="flex border border-[#111111] gap-2 py-2 px-2 overflow-x-auto scrollbar-subtle bg-[#EFECE1] rounded-full my-4 shrink-0">
               {[
                 { id: "profile", label: "Profile", icon: FiUser },
                 { id: "billing", label: "Plan & Billing", icon: FiCreditCard },
                 { id: "notifications", label: "Notifications", icon: FiBell },
-                { id: "apikeys", label: "API Keys", icon: FiKey },
                 { id: "mcp", label: "MCP Protocol", icon: FiCpu }
               ].map((tab) => {
                 const Icon = tab.icon;
@@ -351,13 +349,13 @@ function SidebarContent() {
                   <button
                     key={tab.id}
                     onClick={() => setActiveSettingsTab(tab.id)}
-                    className={`px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${
+                    className={`px-4 py-2 rounded-full text-xs md:text-sm font-semibold flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${
                       isActive 
-                        ? "bg-[#0070f3]/20 text-[#38bdf8] border border-[#0070f3]/40 shadow-sm backdrop-blur-md" 
-                        : "text-slate-400 hover:text-white hover:bg-white/5"
+                        ? "bg-white text-[#111111] border border-[#111111] shadow-sm" 
+                        : "text-[#44423D] hover:text-[#111111] hover:bg-white/60 border border-transparent"
                     }`}
                   >
-                    <Icon size={14} />
+                    <Icon size={16} />
                     <span>{tab.label}</span>
                   </button>
                 );
@@ -365,55 +363,57 @@ function SidebarContent() {
             </div>
 
             {/* Settings Tab Contents */}
-            <div className="flex-1 py-5 overflow-y-auto scrollbar-subtle space-y-5">
+            <div className="flex-1 py-2 overflow-y-auto scrollbar-subtle space-y-5">
               
               {/* TAB 1: PROFILE */}
               {activeSettingsTab === "profile" && (
                 <div className="space-y-5">
-                  <div className="glass-card p-5 space-y-4 border border-white/10">
-                    <h4 className="text-xs font-semibold uppercase text-slate-400 tracking-wider">User Information</h4>
-                    <div className="space-y-3">
-                      <div className="space-y-1">
-                        <label className="block text-xs font-semibold text-slate-300">Name</label>
+                  <div className="bg-[#FAF8ED] p-6 rounded-2xl space-y-5 border border-[#111111] shadow-sm">
+                    <h4 className="text-xs font-bold uppercase text-[#44423D] tracking-wider">User Information</h4>
+                    <div className="space-y-4">
+                      <div className="space-y-1.5">
+                        <label className="block text-xs font-bold text-[#111111]">Name</label>
                         <input
                           type="text"
                           value={profileName}
                           onChange={(e) => setProfileName(e.target.value)}
-                          className="w-full glass-control px-3.5 py-2.5 text-xs text-white placeholder-slate-500"
+                          className="w-full bg-[#F2EFE5] border border-[#111111] rounded-xl px-4 py-2.5 text-sm text-[#111111] font-medium"
                         />
                       </div>
-                      <div className="space-y-1">
-                        <label className="block text-xs font-semibold text-slate-300">Email Address</label>
+                      <div className="space-y-1.5">
+                        <label className="block text-xs font-bold text-[#111111]">Email Address</label>
                         <input
                           type="email"
                           value={profileEmail}
                           onChange={(e) => setProfileEmail(e.target.value)}
-                          className="w-full glass-control px-3.5 py-2.5 text-xs text-white placeholder-slate-500"
+                          className="w-full bg-[#F2EFE5] border border-[#111111] rounded-xl px-4 py-2.5 text-sm text-[#111111] font-medium"
                         />
                       </div>
                     </div>
                     <button
                       onClick={handleSaveAllSettings}
                       disabled={savingSettings}
-                      className="glass-btn-primary px-4 py-2 text-xs cursor-pointer"
+                      className="bg-[#E6D9FF] hover:bg-[#DBCBFF] text-[#111111] border border-[#111111] rounded-full px-6 py-2.5 text-xs md:text-sm font-semibold shadow-sm cursor-pointer transition-all"
                     >
                       Save Profile
                     </button>
                   </div>
 
                   {/* Danger Zone */}
-                  <div className="glass-card p-5 space-y-3 border-red-500/30 bg-red-500/5">
-                    <div className="flex items-center gap-2 text-red-400">
-                      <FiAlertTriangle size={16} />
-                      <h4 className="text-xs font-semibold uppercase tracking-wider">Danger Zone</h4>
+                  <div className="bg-[#FEE2E2] p-6 rounded-2xl space-y-3 border border-[#111111] shadow-sm">
+                    <div className="flex items-center gap-2 text-[#991B1B]">
+                      <FiAlertTriangle size={18} />
+                      <h4 className="text-xs font-bold uppercase tracking-wider">Danger Zone</h4>
                     </div>
-                    <p className="text-xs text-slate-400">Deleting your account will remove all saved videos, configurations, and history permanently.</p>
+                    <p className="text-xs text-[#991B1B] font-medium leading-relaxed">
+                      Deleting your account will remove all saved videos, configurations, and history permanently.
+                    </p>
                     <button
                       onClick={handleDeleteAccount}
                       disabled={savingSettings}
-                      className="glass-chip-red px-4 py-2 text-xs font-semibold flex items-center gap-2 cursor-pointer hover:bg-red-500/20"
+                      className="bg-[#B91C1C] hover:bg-[#991B1B] text-white border border-[#111111] px-5 py-2.5 text-xs md:text-sm font-semibold rounded-full flex items-center gap-2 cursor-pointer transition-all shadow-sm"
                     >
-                      <FiTrash2 size={14} />
+                      <FiTrash2 size={16} />
                       <span>Delete Account</span>
                     </button>
                   </div>
@@ -423,34 +423,27 @@ function SidebarContent() {
               {/* TAB 2: PLAN & BILLING */}
               {activeSettingsTab === "billing" && (
                 <div className="space-y-5">
-                  <div className="glass-card p-5 space-y-4 border border-white/10">
+                  <div className="bg-[#FAF8ED] p-6 rounded-2xl space-y-5 border border-[#111111] shadow-sm">
                     <div className="flex items-center justify-between">
                       <div>
-                        <span className="glass-chip-blue px-2.5 py-0.5 text-[10px]">Active Plan</span>
-                        <h4 className="text-lg font-bold text-white mt-1">Doolphin Pro</h4>
+                        <span className="bg-[#064E3B] text-white border border-[#111111] px-3.5 py-1 rounded-full text-xs font-semibold">Active Plan</span>
+                        <h4 className="text-2xl font-serif font-bold text-[#111111] mt-3">Doolphin Pro</h4>
                       </div>
-                      <span className="text-2xl font-bold text-[#38bdf8]">{session?.user?.credits ?? "9,999"} Credits</span>
+                      <span className="text-2xl font-bold text-[#111111] font-serif">{session?.user?.credits ?? "9,999"} Credits</span>
                     </div>
-                    <p className="text-xs text-slate-400">High-volume video generation enabled. Auto-topup available.</p>
+                    <p className="text-sm text-[#44423D] font-medium leading-relaxed">
+                      High-volume video generation enabled. Auto-topup available.
+                    </p>
                     <div className="flex items-center gap-3 pt-2">
                       <button
                         onClick={() => {
                           setIsSettingsModalOpen(false);
                           router.push("/?tab=video");
                         }}
-                        className="glass-btn-primary px-4 py-2 text-xs cursor-pointer"
+                        className="bg-[#E6D9FF] hover:bg-[#DBCBFF] text-[#111111] border border-[#111111] rounded-full px-6 py-2.5 text-xs md:text-sm font-semibold shadow-sm cursor-pointer transition-all"
                       >
                         Upgrade Plan
                       </button>
-                      <a
-                        href="mailto:support@doolphin.ai"
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-xs text-[#38bdf8] font-semibold hover:underline flex items-center gap-1"
-                      >
-                        <span>Need help with billing?</span>
-                        <FiExternalLink size={12} />
-                      </a>
                     </div>
                   </div>
                 </div>
@@ -458,16 +451,16 @@ function SidebarContent() {
 
               {/* TAB 3: NOTIFICATIONS */}
               {activeSettingsTab === "notifications" && (
-                <div className="glass-card p-5 space-y-4 border border-white/10">
+                <div className="bg-[#FAF8ED] p-6 rounded-2xl space-y-5 border border-[#111111] shadow-sm">
                   <div>
-                    <h4 className="text-sm font-semibold text-white">Email Notifications</h4>
-                    <p className="text-xs text-slate-400 mt-1">Control the emails Doolphin sends you about your generations.</p>
+                    <h4 className="text-base font-bold text-[#111111]">Email Notifications</h4>
+                    <p className="text-xs text-[#44423D] font-medium mt-1">Control the emails Doolphin sends you about your generations.</p>
                   </div>
 
-                  <div className="border-t glass-divider pt-4 flex items-start justify-between gap-4">
+                  <div className="border-t border-[#111111] pt-5 flex items-start justify-between gap-4">
                     <div className="space-y-1">
-                      <h5 className="text-xs font-semibold text-white">Generation completion emails</h5>
-                      <p className="text-xs text-slate-400 leading-relaxed">
+                      <h5 className="text-xs font-bold text-[#111111]">Generation completion emails</h5>
+                      <p className="text-xs text-[#44423D] font-medium leading-relaxed">
                         Get an email each time one of your generations finishes, with a link to open it in Doolphin.
                       </p>
                     </div>
@@ -476,120 +469,70 @@ function SidebarContent() {
                         setCompletionEmailEnabled(!completionEmailEnabled);
                         toast.success(completionEmailEnabled ? "Completion emails disabled" : "Completion emails enabled");
                       }}
-                      className={`w-11 h-6 rounded-full transition-colors flex items-center p-1 cursor-pointer ${
-                        completionEmailEnabled ? "bg-[#0070f3]" : "bg-slate-700"
+                      className={`w-12 h-7 rounded-full transition-colors flex items-center p-1 cursor-pointer border border-[#111111] ${
+                        completionEmailEnabled ? "bg-[#064E3B]" : "bg-[#EFECE1]"
                       }`}
                     >
-                      <div className={`w-4 h-4 rounded-full bg-white transition-transform ${completionEmailEnabled ? "translate-x-5" : "translate-x-0"}`} />
+                      <div className={`w-5 h-5 rounded-full bg-white border border-[#111111] transition-transform ${completionEmailEnabled ? "translate-x-5" : "translate-x-0"}`} />
                     </button>
                   </div>
                 </div>
               )}
 
-              {/* TAB 4: FAANG SMART MULTI-KEY PROVIDER MANAGER */}
+              {/* TAB 4: API KEYS */}
               {activeSettingsTab === "apikeys" && (
                 <div className="space-y-4">
-                  <div className="glass-card p-4 border border-white/10">
-                    <h4 className="text-xs font-semibold text-white">Custom Provider Keys</h4>
-                    <p className="text-xs text-slate-400 mt-1">Connect your individual provider keys to generate videos directly from your accounts.</p>
+                  <div className="bg-[#FAF8ED] p-5 rounded-2xl border border-[#111111] shadow-sm">
+                    <h4 className="text-sm font-bold text-[#111111]">Custom Provider Keys</h4>
+                    <p className="text-xs text-[#44423D] font-medium mt-1">Connect your individual provider keys to generate videos directly from your accounts.</p>
                   </div>
 
                   {/* MuAPI Key */}
-                  <div className="glass-card p-4 space-y-2 border border-white/10">
+                  <div className="bg-white p-5 rounded-2xl space-y-3 border border-[#111111] shadow-sm">
                     <div className="flex items-center justify-between">
-                      <span className="text-xs font-semibold text-white">MuAPI Key</span>
-                      <span className={muApiKey ? "glass-chip-green px-2 py-0.5 text-[10px]" : "glass-chip-blue px-2 py-0.5 text-[10px]"}>
+                      <span className="text-xs font-bold text-[#111111]">MuAPI Key</span>
+                      <span className={muApiKey ? "bg-[#064E3B] text-white border border-[#111111] px-3 py-0.5 rounded-full text-xs font-semibold" : "bg-[#EFECE1] text-[#44423D] border border-[#111111] px-3 py-0.5 rounded-full text-xs font-semibold"}>
                         {muApiKey ? "Active" : "Not Configured"}
                       </span>
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex gap-2.5">
                       <input
                         type={showMuKey ? "text" : "password"}
                         value={muApiKey}
                         onChange={(e) => setMuApiKey(e.target.value)}
                         placeholder="mu_..."
-                        className="flex-1 glass-control px-3 py-2 text-xs text-white"
+                        className="flex-1 bg-[#F2EFE5] border border-[#111111] rounded-xl px-4 py-2.5 text-xs md:text-sm text-[#111111] font-medium"
                       />
                       <button
                         onClick={() => setShowMuKey(!showMuKey)}
-                        className="glass-btn-secondary px-3 py-2 text-xs cursor-pointer"
+                        className="bg-white border border-[#111111] px-4 py-2.5 text-xs font-semibold rounded-xl cursor-pointer hover:bg-[#F2EFE5] text-[#111111]"
                       >
                         {showMuKey ? "Hide" : "Show"}
                       </button>
                     </div>
                   </div>
 
-                  {/* Fal.ai API Key */}
-                  <div className="glass-card p-4 space-y-2 border border-white/10">
+                  {/* Fal.ai Key */}
+                  <div className="bg-white p-5 rounded-2xl space-y-3 border border-[#111111] shadow-sm">
                     <div className="flex items-center justify-between">
-                      <span className="text-xs font-semibold text-white">Fal.ai API Key</span>
-                      <span className={falKey ? "glass-chip-green px-2 py-0.5 text-[10px]" : "glass-chip-blue px-2 py-0.5 text-[10px]"}>
+                      <span className="text-xs font-bold text-[#111111]">Fal.ai API Key</span>
+                      <span className={falKey ? "bg-[#064E3B] text-white border border-[#111111] px-3 py-0.5 rounded-full text-xs font-semibold" : "bg-[#EFECE1] text-[#44423D] border border-[#111111] px-3 py-0.5 rounded-full text-xs font-semibold"}>
                         {falKey ? "Active" : "Not Configured"}
                       </span>
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex gap-2.5">
                       <input
                         type={showFalKey ? "text" : "password"}
                         value={falKey}
                         onChange={(e) => setFalKey(e.target.value)}
                         placeholder="Key..."
-                        className="flex-1 glass-control px-3 py-2 text-xs text-white"
+                        className="flex-1 bg-[#F2EFE5] border border-[#111111] rounded-xl px-4 py-2.5 text-xs md:text-sm text-[#111111] font-medium"
                       />
                       <button
                         onClick={() => setShowFalKey(!showFalKey)}
-                        className="glass-btn-secondary px-3 py-2 text-xs cursor-pointer"
+                        className="bg-white border border-[#111111] px-4 py-2.5 text-xs font-semibold rounded-xl cursor-pointer hover:bg-[#F2EFE5] text-[#111111]"
                       >
                         {showFalKey ? "Hide" : "Show"}
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* ElevenLabs API Key */}
-                  <div className="glass-card p-4 space-y-2 border border-white/10">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-semibold text-white">ElevenLabs API Key</span>
-                      <span className={elevenLabsKey ? "glass-chip-green px-2 py-0.5 text-[10px]" : "glass-chip-blue px-2 py-0.5 text-[10px]"}>
-                        {elevenLabsKey ? "Active" : "Not Configured"}
-                      </span>
-                    </div>
-                    <div className="flex gap-2">
-                      <input
-                        type={showElevenKey ? "text" : "password"}
-                        value={elevenLabsKey}
-                        onChange={(e) => setElevenLabsKey(e.target.value)}
-                        placeholder="el_..."
-                        className="flex-1 glass-control px-3 py-2 text-xs text-white"
-                      />
-                      <button
-                        onClick={() => setShowElevenKey(!showElevenKey)}
-                        className="glass-btn-secondary px-3 py-2 text-xs cursor-pointer"
-                      >
-                        {showElevenKey ? "Hide" : "Show"}
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* OpenAI API Key */}
-                  <div className="glass-card p-4 space-y-2 border border-white/10">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-semibold text-white">OpenAI API Key</span>
-                      <span className={openAiKey ? "glass-chip-green px-2 py-0.5 text-[10px]" : "glass-chip-blue px-2 py-0.5 text-[10px]"}>
-                        {openAiKey ? "Active" : "Not Configured"}
-                      </span>
-                    </div>
-                    <div className="flex gap-2">
-                      <input
-                        type={showOpenAiKey ? "text" : "password"}
-                        value={openAiKey}
-                        onChange={(e) => setOpenAiKey(e.target.value)}
-                        placeholder="sk-..."
-                        className="flex-1 glass-control px-3 py-2 text-xs text-white"
-                      />
-                      <button
-                        onClick={() => setShowOpenAiKey(!showOpenAiKey)}
-                        className="glass-btn-secondary px-3 py-2 text-xs cursor-pointer"
-                      >
-                        {showOpenAiKey ? "Hide" : "Show"}
                       </button>
                     </div>
                   </div>
@@ -598,7 +541,7 @@ function SidebarContent() {
                     <button
                       onClick={handleSaveAllSettings}
                       disabled={savingSettings}
-                      className="glass-btn-primary px-5 py-2.5 text-xs cursor-pointer w-full"
+                      className="bg-[#E6D9FF] hover:bg-[#DBCBFF] text-[#111111] border border-[#111111] px-6 py-3 text-xs md:text-sm font-semibold rounded-full cursor-pointer w-full shadow-sm transition-all"
                     >
                       Save API Keys
                     </button>
@@ -606,59 +549,38 @@ function SidebarContent() {
                 </div>
               )}
 
-              {/* TAB 5: MCP (MODEL CONTEXT PROTOCOL) */}
+              {/* TAB 5: MCP PROTOCOL */}
               {activeSettingsTab === "mcp" && (
                 <div className="space-y-4">
-                  <div className="glass-card p-5 space-y-2 border border-white/10">
-                    <div className="flex items-center gap-2">
-                      <FiCpu className="text-[#0070f3]" size={18} />
-                      <h4 className="text-sm font-semibold text-white">Model Context Protocol (MCP)</h4>
+                  <div className="bg-[#FAF8ED] p-6 rounded-2xl space-y-2 border border-[#111111] shadow-sm">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-full bg-[#111111] flex items-center justify-center text-white">
+                        <FiCpu size={16} />
+                      </div>
+                      <h4 className="text-base font-serif font-bold text-[#111111]">Model Context Protocol (MCP)</h4>
                     </div>
-                    <p className="text-xs text-slate-400 leading-relaxed">
-                      Connect Doolphin to Claude, Cursor & other AI tools to generate images & videos, check status, and pull assets programmatically — from your own account and credits.
+                    <p className="text-xs text-[#44423D] font-medium leading-relaxed">
+                      Connect Doolphin to Claude, Cursor & other AI tools to generate images & videos programmatically.
                     </p>
                   </div>
 
-                  <div className="glass-card p-4 space-y-2 border border-white/10">
-                    <label className="block text-xs font-semibold text-slate-400">MCP Endpoint URL</label>
-                    <div className="flex gap-2">
+                  <div className="bg-white p-5 rounded-2xl space-y-3 border border-[#111111] shadow-sm">
+                    <label className="block text-xs font-bold text-[#111111]">MCP Endpoint URL</label>
+                    <div className="flex gap-2.5">
                       <input
                         type="text"
                         readOnly
                         value="https://doolphin.ai/api/mcp"
-                        className="flex-1 glass-control px-3 py-2 text-xs font-mono text-[#38bdf8]"
+                        className="flex-1 bg-[#F2EFE5] border border-[#111111] rounded-xl px-4 py-2.5 text-xs md:text-sm font-mono text-[#111111]"
                       />
                       <button
                         onClick={() => copyToClipboard("https://doolphin.ai/api/mcp", "MCP Endpoint URL")}
-                        className="glass-btn-secondary px-3 py-2 text-xs flex items-center gap-1 cursor-pointer"
+                        className="bg-white border border-[#111111] hover:bg-[#F2EFE5] rounded-xl px-4 py-2.5 text-xs font-semibold flex items-center gap-1.5 cursor-pointer text-[#111111]"
                       >
-                        <FiCopy size={13} />
+                        <FiCopy size={15} />
                         <span>Copy</span>
                       </button>
                     </div>
-                  </div>
-
-                  <div className="glass-card p-4 space-y-2 border border-white/10">
-                    <label className="block text-xs font-semibold text-slate-400">Claude / Cursor Config (`claude_desktop_config.json`)</label>
-                    <pre className="glass-control p-3 text-[11px] font-mono leading-relaxed text-slate-300 overflow-x-auto bg-black/50 border border-white/10">
-{`{
-  "mcpServers": {
-    "doolphin": {
-      "url": "https://doolphin.ai/api/mcp",
-      "headers": {
-        "Authorization": "Bearer doolphin_mcp_token"
-      }
-    }
-  }
-}`}
-                    </pre>
-                    <button
-                      onClick={() => copyToClipboard(`{\n  "mcpServers": {\n    "doolphin": {\n      "url": "https://doolphin.ai/api/mcp"\n    }\n  }\n}`, "MCP Config")}
-                      className="glass-btn-secondary px-3.5 py-1.5 text-xs flex items-center gap-1.5 cursor-pointer mt-2"
-                    >
-                      <FiCopy size={13} />
-                      <span>Copy Config JSON</span>
-                    </button>
                   </div>
                 </div>
               )}
@@ -674,7 +596,7 @@ function SidebarContent() {
 
 export default function Sidebar() {
   return (
-    <Suspense fallback={<aside className="w-16 glass-rail flex flex-col items-center py-5 h-full flex-shrink-0 my-3 ml-3 rounded-[24px]" />}>
+    <Suspense fallback={<aside className="w-16 bg-[#FAF8ED] border border-[#111111] flex flex-col items-center py-5 h-full flex-shrink-0 my-3 ml-3 rounded-[28px]" />}>
       <SidebarContent />
     </Suspense>
   );

@@ -1,145 +1,347 @@
+import crypto from "crypto";
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth";
-import { CreditEscrowService } from "@/lib/billing/CreditEscrowService";
-import { OutboxDispatcher } from "@/lib/queue/outboxDispatcher";
-import { GenerationWorker } from "@/lib/queue/generationWorker";
+import { getMockSession as getRequestSession } from "@/lib/getMockSession";
 import { prisma } from "@/lib/prisma";
-import { formatErrorResponse, AppError, ERROR_CODES } from "@/lib/errors";
+import { CreditEscrowService } from "@/lib/billing/CreditEscrowService";
+import { compileCanonicalPrompt } from "@/lib/generation/promptCompiler";
+import { calculateGenerationQuote, normalizeAndValidateGenerationRequest } from "@/lib/generation/contract";
+import { getProviderAdapter } from "@/lib/adapters";
+import { buildMuapiWebhookUrl } from "@/lib/generation/webhookSecurity";
+import { userFacingGenerationMessage } from "@/lib/generation/statusMessages";
 
-export async function POST(req) {
-  try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
-      throw new AppError(ERROR_CODES.UNAUTHORIZED, "Authentication required", { statusCode: 401 });
-    }
+function publicAssetUrl(url, requestUrl) {
+  if (url.startsWith("https://")) return new URL(url).toString();
+  if (!url.startsWith("/")) throw new Error(`Asset URL '${url}' is not provider-fetchable`);
+  const configuredBase = process.env.WEBHOOK_URL || process.env.NEXTAUTH_URL || new URL(requestUrl).origin;
+  if (process.env.NODE_ENV === "production" && !configuredBase.startsWith("https://")) {
+    throw new Error("Public HTTPS asset URLs are required in production");
+  }
+  return new URL(url, `${configuredBase.replace(/\/$/, "")}/`).toString();
+}
 
-    const body = await req.json();
-    const { quoteId, idempotencyKey, title = "New Generation" } = body;
+function sanitizePayload(payload) {
+  return {
+    ...payload,
+    images_list: payload.images_list?.map((_, index) => `[asset-${index + 1}]`),
+  };
+}
 
-    if (!idempotencyKey) {
-      throw new AppError(ERROR_CODES.IDEMPOTENCY_CONFLICT, "Idempotency key required", { statusCode: 400 });
-    }
+function mediaTypeFor(asset) {
+  if (asset.role === "APP_SCREEN_RECORDING" || asset.mimeType?.startsWith("video/")) return "VIDEO";
+  return "IMAGE";
+}
 
-    const workspace = await CreditEscrowService.ensureUserWorkspace(session.user.id);
+async function handleGenerationSubmission(req) {
+  const session = await getRequestSession();
+  if (!session?.user?.id) {
+    return NextResponse.json({ success: false, code: "UNAUTHORIZED", error: "Authentication required" }, { status: 401 });
+  }
 
-    // Duplicate idempotency check
-    const existingCreation = await prisma.creation.findUnique({
+  const body = await req.json().catch(() => null);
+  if (!body?.quoteId || !body?.idempotencyKey) {
+    return NextResponse.json({ success: false, code: "INVALID_REQUEST", error: "quoteId and idempotencyKey are required" }, { status: 400 });
+  }
+
+  const quote = await prisma.preflightQuote.findUnique({ where: { id: body.quoteId } });
+  if (!quote || quote.userId !== session.user.id) {
+    return NextResponse.json({ success: false, code: "QUOTE_NOT_FOUND", error: "Preflight quote not found" }, { status: 404 });
+  }
+  if (quote.consumedAt) {
+    const existing = await prisma.creation.findFirst({ where: { workspaceId: quote.workspaceId, idempotencyKey: body.idempotencyKey }, include: { variants: true } });
+    if (existing) return NextResponse.json({ success: true, creationId: existing.id, variants: existing.variants, idempotent: true });
+    return NextResponse.json({ success: false, code: "QUOTE_CONSUMED", error: "This preflight quote has already been used" }, { status: 409 });
+  }
+  if (quote.expiresAt <= new Date()) {
+    return NextResponse.json({ success: false, code: "QUOTE_EXPIRED", error: "Preflight quote expired; review the request again" }, { status: 410 });
+  }
+
+  const snapshot = JSON.parse(quote.requestSnapshot);
+  const validation = normalizeAndValidateGenerationRequest(snapshot);
+  if (!validation.valid) {
+    return NextResponse.json({ success: false, code: "SNAPSHOT_INVALID", error: validation.errors[0]?.message, errors: validation.errors }, { status: 422 });
+  }
+  const { request, model } = validation;
+
+  const workspace = await prisma.workspace.findUnique({ where: { id: quote.workspaceId } });
+  if (!workspace || workspace.status !== "ACTIVE") {
+    return NextResponse.json({ success: false, code: "WORKSPACE_UNAVAILABLE", error: "Workspace is unavailable" }, { status: 403 });
+  }
+  const startOfDay = new Date();
+  startOfDay.setUTCHours(0, 0, 0, 0);
+  const todayJobs = await prisma.providerJob.findMany({
+    where: { variant: { creation: { workspaceId: quote.workspaceId } }, submittedAt: { gte: startOfDay }, status: { notIn: ["FAILED", "CANCELLED"] } },
+    select: { actualCostMicroUsd: true, estimatedCostMaxMicroUsd: true }
+  });
+  const spentOrCommitted = todayJobs.reduce((sum, job) => sum + (job.actualCostMicroUsd || job.estimatedCostMaxMicroUsd), BigInt(0));
+  if (spentOrCommitted + quote.estimatedProviderCostMaxMicroUsd > workspace.dailySpendLimitMicroUsd) {
+    return NextResponse.json({ success: false, code: "DAILY_SPEND_LIMIT", error: "Workspace daily provider-spend limit reached; no paid call was made" }, { status: 429 });
+  }
+  // The request snapshot is written by our server during preflight and the
+  // client can submit only its quote id. Re-hashing a freshly normalized copy
+  // caused false mismatches when defaults evolved between the two requests.
+  // Validate the stored model binding instead of rejecting a trusted snapshot.
+  if (quote.selectedModelId !== model.id || quote.provider !== model.provider) {
+    return NextResponse.json({ success: false, code: "SNAPSHOT_INVALID", error: "The saved generation request is inconsistent with its model quote" }, { status: 409 });
+  }
+
+  const compiled = compileCanonicalPrompt(request);
+  const providerImages = compiled.imageUrls.map((url) => publicAssetUrl(url, req.url));
+  const webhookBase = process.env.WEBHOOK_URL || process.env.NEXTAUTH_URL || new URL(req.url).origin;
+  const webhookUrl = buildMuapiWebhookUrl(webhookBase);
+  const adapter = getProviderAdapter("seedance-2");
+  const providerPayload = adapter.formatPayload({
+    prompt: compiled.compiledPrompt,
+    settings: {
+      duration: request.settings.durationSeconds,
+      resolution: request.settings.resolution,
+      aspect_ratio: request.settings.aspectRatio,
+    },
+    images: providerImages,
+    webhookUrl,
+  });
+  const payloadFingerprint = crypto.createHash("sha256").update(JSON.stringify(providerPayload)).digest("hex");
+  const quoteCosts = calculateGenerationQuote(request, model);
+  const perVariantBase = quoteCosts.perVariantGenerationCredits + model.verificationCreditsPerVariant;
+  const variantAmounts = Array.from({ length: request.settings.outputCount }, (_, index) => perVariantBase + (index === 0 ? quoteCosts.analysisCreditsToReserve : 0));
+
+  const existing = await prisma.creation.findUnique({
+    where: { workspaceId_idempotencyKey: { workspaceId: quote.workspaceId, idempotencyKey: body.idempotencyKey } },
+    include: { variants: true },
+  });
+  if (existing) return NextResponse.json({ success: true, creationId: existing.id, variants: existing.variants, idempotent: true });
+
+  const created = await prisma.$transaction(async (tx) => {
+    const activeVariantCount = await tx.creationVariant.count({
       where: {
-        workspaceId_idempotencyKey: {
-          workspaceId: workspace.id,
-          idempotencyKey,
-        },
+        creation: { workspaceId: quote.workspaceId },
+        status: { in: ["QUEUED", "PROCESSING"] },
       },
-      include: { variants: true },
+    });
+    if (activeVariantCount + request.settings.outputCount > 2) {
+      const error = new Error("You already have two videos being created. Please wait for one to finish before starting another.");
+      error.code = "ACTIVE_VIDEO_LIMIT";
+      error.statusCode = 429;
+      throw error;
+    }
+    const quoteClaim = await tx.preflightQuote.updateMany({ where: { id: quote.id, consumedAt: null, expiresAt: { gt: new Date() } }, data: { consumedAt: new Date() } });
+    if (quoteClaim.count !== 1) throw new Error("Preflight quote was consumed concurrently or expired");
+    const creation = await tx.creation.create({
+      data: {
+        workspaceId: quote.workspaceId,
+        userId: session.user.id,
+        generationType: request.studio,
+        workflowVersion: "2.0.0",
+        presetId: request.studio.toLowerCase(),
+        title: `${request.studio.replace("_STUDIO", "").replace("_", " ")} video`,
+        spokenScript: request.script.text,
+        prompt: request.instructions.raw || request.script.text,
+        compiledPrompt: compiled.compiledPrompt,
+        additionalInstructions: request.instructions.raw,
+        numberOfVideos: request.settings.outputCount,
+        status: "QUEUED",
+        currentStage: "provider_submission",
+        totalStages: 4,
+        quoteId: quote.id,
+        idempotencyKey: body.idempotencyKey,
+        timeoutAt: new Date(Date.now() + 25 * 60 * 1000),
+        modelId: model.id,
+        provider: model.provider,
+        aspectRatio: request.settings.aspectRatio,
+        resolution: request.settings.resolution,
+        duration: request.settings.durationSeconds,
+        inputImages: JSON.stringify(compiled.roleMap.map(({ url, ...item }) => item)),
+        reservedCredits: quote.internalCreditsToReserve,
+      },
     });
 
-    if (existingCreation) {
-      return NextResponse.json({
-        success: true,
-        creation: existingCreation,
-        isDuplicate: true,
-      });
-    }
-
-    // Quote validation
-    let quote = null;
-    if (quoteId) {
-      quote = await prisma.preflightQuote.findUnique({ where: { id: quoteId } });
-      if (quote && quote.userId !== session.user.id) {
-        throw new AppError(ERROR_CODES.FORBIDDEN, "Quote ownership mismatch", { statusCode: 403 });
-      }
-      if (quote && quote.consumedAt) {
-        throw new AppError(ERROR_CODES.IDEMPOTENCY_CONFLICT, "Quote already consumed", { statusCode: 400 });
-      }
-    }
-
-    const creditsToReserve = quote?.internalCreditsToReserve || 10;
-    const generationType = quote?.generationType || body.generationType || "APP_STUDIO";
-    const presetId = body.presetId || "app_demo";
-
-    // Perform Creation & Credit Reservation Transaction
-    const result = await prisma.$transaction(async (tx) => {
-      // 1. Create Creation
-      const creation = await tx.creation.create({
+    for (const asset of request.assets) {
+      await tx.creationAsset.create({
         data: {
-          workspaceId: workspace.id,
-          userId: session.user.id,
-          generationType,
-          presetId,
-          title,
-          idempotencyKey,
-          quoteId: quote?.id,
-          status: "QUEUED",
+          creationId: creation.id,
+          uploadedByUserId: session.user.id,
+          role: asset.role,
+          mediaType: mediaTypeFor(asset),
+          storageKey: asset.storageKey || asset.url,
+          originalFileName: asset.originalFileName || `${asset.alias}.${mediaTypeFor(asset) === "VIDEO" ? "mp4" : "png"}`,
+          normalizedFileName: asset.originalFileName || `${asset.assetId}.${mediaTypeFor(asset) === "VIDEO" ? "mp4" : "png"}`,
+          mimeType: asset.mimeType || (mediaTypeFor(asset) === "VIDEO" ? "video/mp4" : "image/png"),
+          detectedMimeType: asset.mimeType || null,
+          fileSizeBytes: BigInt(asset.fileSizeBytes || 0),
+          width: asset.width || null,
+          height: asset.height || null,
+          durationMs: asset.durationMs || null,
+          codec: asset.codec || null,
+          checksumSha256: asset.checksumSha256 || crypto.createHash("sha256").update(asset.assetId).digest("hex"),
+          validationStatus: "VALID",
+          validationMetadata: JSON.stringify({ alias: asset.alias, groupId: asset.groupId || null, analysis: asset.analysis || null }),
+          validatedAt: new Date(),
         },
       });
+    }
 
-      // 2. Create CreationVariant
+    const variants = [];
+    for (let index = 0; index < request.settings.outputCount; index += 1) {
       const variant = await tx.creationVariant.create({
         data: {
           creationId: creation.id,
-          variantIndex: 0,
+          variantIndex: index,
           status: "QUEUED",
-          reservedCredits: creditsToReserve,
+          currentStage: "provider_submission",
+          totalStages: 4,
+          timeoutAt: new Date(Date.now() + 25 * 60 * 1000),
+          reservedCredits: variantAmounts[index],
         },
       });
-
-      // 3. Reserve Credits
+      await tx.workflowSnapshot.create({
+        data: {
+          creationVariantId: variant.id,
+          workflowType: request.studio,
+          workflowVersion: "2.0.0",
+          presetId: request.studio.toLowerCase(),
+          stageGraph: JSON.stringify(["provider_submission", "provider_generation", "quality_verification", "delivery"]),
+          capabilityRequirements: JSON.stringify({ modelId: model.id, locked: true }),
+          assetRoleMapping: JSON.stringify(compiled.roleMap.map(({ url, ...item }) => item)),
+          speechPlan: JSON.stringify({ script: request.script, delivery: request.instructions.confirmedDelivery, nativeAudio: true }),
+          compositionPlan: JSON.stringify({ studio: request.studio, assets: compiled.compositionAssets.map((asset) => asset.assetId) }),
+          routingInput: JSON.stringify({ endpoint: model.endpoint, payloadFingerprint, variantIndex: index, variationPolicy: "provider_stochastic_no_seed_field" }),
+        },
+      });
       await CreditEscrowService.reserveCredits({
-        workspaceId: workspace.id,
+        workspaceId: quote.workspaceId,
         creationId: creation.id,
         creationVariantId: variant.id,
-        amount: creditsToReserve,
-        idempotencyKey: `res_${creation.id}_v0`,
+        amount: quoteCosts.perVariantGenerationCredits,
+        idempotencyKey: `reserve_generation_${creation.id}_${index}`,
         userId: session.user.id,
         tx,
       });
-
-      // 4. Create QueueOutbox row
-      const outbox = await tx.queueOutbox.create({
+      await CreditEscrowService.reserveCredits({
+        workspaceId: quote.workspaceId,
+        creationId: creation.id,
+        creationVariantId: variant.id,
+        amount: model.verificationCreditsPerVariant + (index === 0 ? quoteCosts.analysisCreditsToReserve : 0),
+        idempotencyKey: `reserve_verification_${creation.id}_${index}`,
+        userId: session.user.id,
+        tx,
+      });
+      const providerJob = await tx.providerJob.create({
+        data: {
+          creationVariantId: variant.id,
+          provider: model.provider,
+          internalModelId: model.id,
+          providerModelVersion: "2.0-fast",
+          endpoint: model.endpoint,
+          status: "PREPARED",
+          stageIdempotencyKey: `provider_${variant.id}`,
+          inputFingerprint: payloadFingerprint,
+          registryRevision: model.capabilityRevision,
+          pricingRevision: model.pricingRevision,
+          adapterVersion: model.adapterVersion,
+          routingSnapshot: quote.routingSnapshot,
+          capabilitySnapshot: quote.capabilitySummary || "{}",
+          sanitizedRequestPayload: JSON.stringify(sanitizePayload(providerPayload)),
+          estimatedCostMinMicroUsd: BigInt(quoteCosts.perVariantGenerationCredits * 10000),
+          estimatedCostMaxMicroUsd: BigInt((quoteCosts.perVariantGenerationCredits + model.verificationCreditsPerVariant) * 10000),
+        },
+      });
+      await tx.queueOutbox.create({
         data: {
           aggregateType: "CREATION_VARIANT",
           aggregateId: variant.id,
-          eventType: "GENERATE_VARIANT",
-          payload: JSON.stringify({
-            creationId: creation.id,
-            variantId: variant.id,
-            workspaceId: workspace.id,
-            workflowType: generationType,
-          }),
-          deterministicJobId: `job_${variant.id}`,
-        },
+          eventType: "SUBMIT_MUAPI_SEEDANCE",
+          payload: JSON.stringify({ providerJobId: providerJob.id, quoteId: quote.id }),
+          deterministicJobId: `submit_muapi_${variant.id}`,
+          status: "PENDING"
+        }
       });
+      variants.push({ variant, providerJob });
+    }
 
-      // 5. Mark Quote consumed
-      if (quote) {
-        await tx.preflightQuote.update({
-          where: { id: quote.id },
-          data: { consumedAt: new Date() },
-        });
+    return { creation, variants };
+  }, { isolationLevel: "Serializable" });
+
+  const apiKey = process.env.MUAPI_API_KEY;
+  if (!apiKey || apiKey.includes("placeholder")) {
+    for (const item of created.variants) {
+      await CreditEscrowService.releaseVariantReservations(item.variant.id, "PROVIDER_NOT_CONFIGURED");
+      await prisma.creationVariant.update({ where: { id: item.variant.id }, data: { status: "FAILED", errorCode: "PROVIDER_NOT_CONFIGURED", safeError: userFacingGenerationMessage("FAILED", "PROVIDER_NOT_CONFIGURED") } });
+    }
+    await prisma.creation.update({ where: { id: created.creation.id }, data: { status: "FAILED", errorCode: "PROVIDER_NOT_CONFIGURED", safeError: userFacingGenerationMessage("FAILED", "PROVIDER_NOT_CONFIGURED") } });
+    return NextResponse.json({ success: false, code: "PROVIDER_NOT_CONFIGURED", error: userFacingGenerationMessage("FAILED", "PROVIDER_NOT_CONFIGURED"), creationId: created.creation.id }, { status: 503 });
+  }
+
+  const submissionResults = [];
+  for (const item of created.variants) {
+    await prisma.providerJob.update({ where: { id: item.providerJob.id }, data: { status: "SUBMITTING", submissionCount: { increment: 1 } } });
+    try {
+      const response = await fetch(model.endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-api-key": apiKey },
+        body: JSON.stringify(providerPayload),
+        signal: AbortSignal.timeout(30000),
+      });
+      const raw = await response.text();
+      let result = {};
+      try { result = JSON.parse(raw); } catch {}
+      if (!response.ok) {
+        const rejection = new Error(`MuAPI rejected submission (${response.status}): ${raw.slice(0, 300)}`);
+        rejection.knownRejected = true;
+        throw rejection;
       }
+      if (!result.request_id) throw new Error("MuAPI response did not confirm a request id");
+      await prisma.$transaction([
+        prisma.providerJob.update({
+          where: { id: item.providerJob.id },
+          data: { status: "QUEUED", providerRequestId: result.request_id, submittedAt: new Date(), acceptedAt: new Date(), sanitizedInitialResponse: JSON.stringify({ request_id: result.request_id, status: result.status || "processing" }) },
+        }),
+        prisma.creationVariant.update({ where: { id: item.variant.id }, data: { status: "PROCESSING", currentStage: "provider_generation" } }),
+        prisma.queueOutbox.update({ where: { deterministicJobId: `submit_muapi_${item.variant.id}` }, data: { status: "DISPATCHED" } }),
+      ]);
+      submissionResults.push({ variantId: item.variant.id, requestId: result.request_id, status: "PROCESSING" });
+    } catch (error) {
+      if (error.knownRejected) {
+        await CreditEscrowService.releaseVariantReservations(item.variant.id, "PROVIDER_SUBMISSION_REJECTED");
+        await prisma.$transaction([
+          prisma.providerJob.update({ where: { id: item.providerJob.id }, data: { status: "FAILED", errorCode: "PROVIDER_SUBMISSION_REJECTED", safeError: error.message } }),
+          prisma.creationVariant.update({ where: { id: item.variant.id }, data: { status: "FAILED", errorCode: "PROVIDER_SUBMISSION_REJECTED", safeError: userFacingGenerationMessage("FAILED", "PROVIDER_SUBMISSION_REJECTED") } }),
+          prisma.queueOutbox.update({ where: { deterministicJobId: `submit_muapi_${item.variant.id}` }, data: { status: "DEAD_LETTER", attemptCount: { increment: 1 }, lastError: error.message } }),
+        ]);
+        submissionResults.push({ variantId: item.variant.id, status: "FAILED", error: error.message });
+      } else {
+        await prisma.$transaction([
+          prisma.providerJob.update({ where: { id: item.providerJob.id }, data: { status: "SUBMISSION_UNKNOWN", errorCode: "PROVIDER_SUBMISSION_UNKNOWN", safeError: "Provider submission could not be confirmed" } }),
+          prisma.creationVariant.update({ where: { id: item.variant.id }, data: { status: "QUEUED", currentStage: "provider_submission" } }),
+          prisma.queueOutbox.update({ where: { deterministicJobId: `submit_muapi_${item.variant.id}` }, data: { status: "FAILED", attemptCount: { increment: 1 }, nextAttemptAt: new Date(Date.now() + 60_000), lastError: error.message } }),
+        ]);
+        submissionResults.push({ variantId: item.variant.id, status: "QUEUED" });
+      }
+    }
+  }
 
-      return { creation, variant, outbox };
-    });
+  const successful = submissionResults.filter((result) => ["PROCESSING", "QUEUED"].includes(result.status));
+  await prisma.creation.update({
+    where: { id: created.creation.id },
+    data: {
+      status: successful.length ? "PROCESSING" : "FAILED",
+      currentStage: successful.length ? "provider_generation" : "failed",
+      requestId: successful[0]?.requestId || null,
+      errorCode: successful.length ? null : "PROVIDER_SUBMISSION_REJECTED",
+      safeError: successful.length ? null : userFacingGenerationMessage("FAILED", "PROVIDER_SUBMISSION_REJECTED"),
+    },
+  });
 
-    // Trigger Outbox Dispatcher
-    await OutboxDispatcher.dispatchPendingJobs();
+  return NextResponse.json({
+    success: successful.length > 0,
+    creationId: created.creation.id,
+    variants: submissionResults,
+  }, { status: successful.length ? 202 : 502 });
+}
 
-    // Trigger Generation Worker asynchronously for immediate execution in local/staging environment
-    GenerationWorker.processJob({
-      creationId: result.creation.id,
-      variantId: result.variant.id,
-      workspaceId: workspace.id,
-      workflowType: generationType,
-    }).catch((e) => console.error("Async worker background error:", e.message));
-
-    return NextResponse.json({
-      success: true,
-      creation: result.creation,
-      variant: result.variant,
-    });
-  } catch (err) {
-    const { status, body } = formatErrorResponse(err);
-    return NextResponse.json(body, { status });
+export async function POST(req) {
+  try { return await handleGenerationSubmission(req); }
+  catch (error) {
+    console.error("[GENERATION_SUBMISSION_INTERNAL_ERROR]", error);
+    if (error?.code && error?.statusCode) return NextResponse.json({ success: false, code: error.code, error: error.message }, { status: error.statusCode });
+    return NextResponse.json({ success: false, code: "SUBMISSION_UNAVAILABLE", error: "Generation submission is temporarily unavailable" }, { status: 503 });
   }
 }

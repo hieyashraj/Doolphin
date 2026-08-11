@@ -7,7 +7,8 @@ import { CreditEscrowService } from "@/lib/billing/CreditEscrowService";
 export async function POST(req) {
   try {
     const session = await getServerSession();
-    const userId = session?.user?.id || "doolphin-default-user";
+    if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const userId = session.user.id;
     const body = await req.json();
 
     // Standard MCP / JSON-RPC structure
@@ -47,21 +48,6 @@ export async function POST(req) {
         result: {
           tools: [
             {
-              name: "generate_video",
-              description: "Generate an AI UGC video ad using Doolphin models (Grok Video, Veo 3.1, Seedance 2, Kling 3.0)",
-              inputSchema: {
-                type: "object",
-                properties: {
-                  prompt: { type: "string", description: "The spoken script or scene motion prompt for the video" },
-                  modelId: { type: "string", description: "Model ID: grok-video, veo-3-1, seedance-2, fal-kling-3-std, happy-horse", default: "grok-video" },
-                  duration: { type: "number", description: "Duration in seconds (3 to 15)", default: 6 },
-                  aspectRatio: { type: "string", description: "Aspect ratio: 9:16, 16:9, 1:1", default: "9:16" },
-                  resolution: { type: "string", description: "Resolution: 480p, 720p, 1080p", default: "720p" }
-                },
-                required: ["prompt"]
-              }
-            },
-            {
               name: "check_generation_status",
               description: "Check the rendering status and fetch the video asset URL for a creation ID",
               inputSchema: {
@@ -100,12 +86,7 @@ export async function POST(req) {
       const { name, arguments: toolArgs } = params || {};
 
       if (name === "get_account_balance") {
-        let user = null;
-        try {
-          user = await prisma.user.findUnique({ where: { id: userId } });
-        } catch {
-          user = null;
-        }
+        const workspace = await CreditEscrowService.ensureUserWorkspace(userId);
 
         return NextResponse.json({
           jsonrpc: "2.0",
@@ -115,8 +96,8 @@ export async function POST(req) {
               {
                 type: "text",
                 text: JSON.stringify({
-                  credits: user?.credits ?? 9999,
-                  customApiKeyConfigured: Boolean(user?.customApiKey || user?.falKey),
+                  credits: workspace.creditAccount.availableCredits,
+                  providerMode: "platform-managed",
                   userId
                 }, null, 2)
               }
@@ -126,71 +107,22 @@ export async function POST(req) {
       }
 
       if (name === "generate_video") {
-        const { prompt, modelId = "grok-video", duration = 6, aspectRatio = "9:16", resolution = "720p" } = toolArgs || {};
-        
-        const attemptId = `mcp_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-        
-        const creationId = `c_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-
-        try {
-          const workspace = await CreditEscrowService.ensureUserWorkspace(userId);
-          await prisma.creation.create({
-            data: {
-              id: creationId,
-              workspaceId: workspace.id,
-              userId,
-              generationType: "PRODUCT_AD",
-              presetId: "video_maker",
-              title: prompt.slice(0, 50),
-              prompt,
-              status: "processing",
-              modelId,
-              aspectRatio,
-              duration,
-              resolution,
-              idempotencyKey: attemptId
-            }
-          });
-        } catch (err) {
-          console.warn("MCP creation save fallback:", err.message);
-        }
-
         return NextResponse.json({
           jsonrpc: "2.0",
           id,
-          result: {
-            content: [
-              {
-                type: "text",
-                text: JSON.stringify({
-                  success: true,
-                  creationId,
-                  status: "processing",
-                  message: `Video generation started for model '${modelId}'. Use check_generation_status with creationId '${creationId}' to retrieve output URL.`
-                }, null, 2)
-              }
-            ]
-          }
+          error: { code: -32010, message: "Direct MCP generation is disabled until the client supports GenerationRequestV1 assets and interactive preflight approval." }
         });
       }
 
       if (name === "check_generation_status") {
         const { creationId } = toolArgs || {};
-        let creation = null;
-
-        try {
-          creation = await prisma.creation.findUnique({ where: { id: creationId } });
-        } catch {
-          creation = null;
-        }
+        const creation = await prisma.creation.findFirst({ where: { id: creationId, userId } });
 
         if (!creation) {
           return NextResponse.json({
             jsonrpc: "2.0",
             id,
-            result: {
-              content: [{ type: "text", text: JSON.stringify({ status: "completed", url: "https://assets.mixkit.co/videos/preview/mixkit-girl-holding-a-pink-cosmetic-flask-41586-large.mp4", message: "Sample asset output" }) }]
-            }
+            error: { code: -32004, message: "Creation not found" }
           });
         }
 
@@ -204,7 +136,6 @@ export async function POST(req) {
                 creationId: creation.id,
                 status: creation.status,
                 stage: creation.stage,
-                url: creation.url,
                 prompt: creation.prompt,
                 modelId: creation.modelId
               }, null, 2)
@@ -215,17 +146,7 @@ export async function POST(req) {
 
       if (name === "list_creations") {
         const { limit = 10 } = toolArgs || {};
-        let list = [];
-
-        try {
-          list = await prisma.creation.findMany({
-            where: { userId },
-            orderBy: { createdAt: "desc" },
-            take: limit
-          });
-        } catch {
-          list = [];
-        }
+        const list = await prisma.creation.findMany({ where: { userId }, orderBy: { createdAt: "desc" }, take: Math.min(50, Math.max(1, Number(limit) || 10)), select: { id: true, title: true, generationType: true, status: true, currentStage: true, modelId: true, createdAt: true } });
 
         return NextResponse.json({
           jsonrpc: "2.0",
@@ -267,6 +188,6 @@ export async function GET() {
     status: "ok",
     name: "Doolphin MCP Server",
     protocol: "MCP JSON-RPC 2.0",
-    docs: "Connect Claude Desktop or Cursor to https://doolphin.ai/api/mcp to run AI video generations programmatically."
+    docs: "Authenticated status and history tools are available. Generation requires the interactive GenerationRequestV1 preflight flow."
   });
 }

@@ -3,11 +3,11 @@
 import { FiEdit3 } from "react-icons/fi";
 
 export default function PresetHeaderCard({ preset, onChangeClick }) {
-  const title = preset?.name?.toUpperCase() || "VIDEO STUDIO";
+  const title = preset?.name || "Video Studio";
   const isVideo = preset?.image && (preset.image.endsWith(".mp4") || preset.image.endsWith(".webm"));
 
   return (
-    <div className="relative w-full h-32 rounded-2xl overflow-hidden bg-[#18181b] border border-white/10 shadow-lg group shrink-0">
+    <div className="relative w-full h-36 rounded-2xl overflow-hidden bg-white border border-[#111111]/15 shadow-sm group shrink-0">
       {preset?.image ? (
         isVideo ? (
           <video
@@ -29,8 +29,8 @@ export default function PresetHeaderCard({ preset, onChangeClick }) {
           />
         )
       ) : (
-        <div className="w-full h-full bg-gradient-to-r from-purple-900/40 via-blue-900/40 to-slate-900/60 flex items-center justify-center">
-          <span className="text-2xl font-extrabold text-white/30 tracking-wider">
+        <div className="w-full h-full bg-[#EFECE1] flex items-center justify-center">
+          <span className="text-2xl font-serif font-bold text-[#111111]/30 tracking-wider">
             {title}
           </span>
         </div>
@@ -40,21 +40,21 @@ export default function PresetHeaderCard({ preset, onChangeClick }) {
       <button
         onClick={onChangeClick}
         type="button"
-        className="absolute top-2.5 right-2.5 z-20 bg-black/50 hover:bg-black/80 backdrop-blur-md text-white text-xs font-semibold px-3 py-1 rounded-full border border-white/20 flex items-center gap-1.5 shadow-md transition-all active:scale-95 cursor-pointer hover:border-white/40"
+        className="absolute top-3 right-3 z-20 bg-white/90 hover:bg-white text-[#111111] text-sm font-semibold px-3.5 py-1.5 rounded-full border border-[#111111]/20 flex items-center gap-1.5 shadow-sm transition-all active:scale-95 cursor-pointer"
       >
-        <FiEdit3 size={12} className="text-white" />
+        <FiEdit3 size={14} className="text-[#111111]" />
         <span>Change</span>
       </button>
 
       {/* Title directly over bottom-left of image */}
-      <div className="absolute bottom-3 left-3 z-20">
-        <h3 className="text-sm font-extrabold text-white tracking-wider uppercase drop-shadow-md">
+      <div className="absolute bottom-3 left-3.5 z-20">
+        <h3 className="text-lg font-serif font-bold text-white tracking-wide drop-shadow-md">
           {title}
         </h3>
       </div>
 
       {/* Dark gradient overlay for visual contrast */}
-      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-black/30 pointer-events-none z-10" />
+      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent pointer-events-none z-10" />
     </div>
   );
 }

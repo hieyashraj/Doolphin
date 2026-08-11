@@ -1,29 +1,16 @@
 import { execFile } from "child_process";
 import { promisify } from "util";
 import fs from "fs";
-
-import { createRequire } from "module";
+import ffmpegStatic from "ffmpeg-static";
+import ffprobeInstaller from "@ffprobe-installer/ffprobe";
 
 const execFileAsync = promisify(execFile);
-const req = createRequire(import.meta.url);
-
 // Pinned binary resolution
 let ffmpegPath = process.env.FFMPEG_PATH || "ffmpeg";
 let ffprobePath = process.env.FFPROBE_PATH || "ffprobe";
 
-try {
-  const ffmpegStatic = req("ffmpeg-static");
-  if (ffmpegStatic && typeof ffmpegStatic === "string" && fs.existsSync(ffmpegStatic)) {
-    ffmpegPath = ffmpegStatic;
-  }
-} catch (e) {}
-
-try {
-  const ffprobeInstaller = req("@ffprobe-installer/ffprobe");
-  if (ffprobeInstaller?.path && fs.existsSync(ffprobeInstaller.path)) {
-    ffprobePath = ffprobeInstaller.path;
-  }
-} catch (e) {}
+if (ffmpegStatic && typeof ffmpegStatic === "string" && fs.existsSync(ffmpegStatic)) ffmpegPath = ffmpegStatic;
+if (ffprobeInstaller?.path && fs.existsSync(ffprobeInstaller.path)) ffprobePath = ffprobeInstaller.path;
 
 /**
  * Pinned FFmpeg & FFprobe Runner.
@@ -49,14 +36,48 @@ export async function runFfprobe(filePath) {
     const { stdout } = await execFileAsync(ffprobePath, args, { timeout: 15000 });
     return JSON.parse(stdout);
   } catch (err) {
-    // Return synthetic valid metadata fallback if ffprobe binary absent in test environment
-    return {
-      streams: [
-        { codec_type: "video", codec_name: "h264", width: 1080, height: 1920 },
-        { codec_type: "audio", codec_name: "aac" },
-      ],
-      format: { duration: "5.000" },
-    };
+    throw new Error(`FFPROBE_FAILED: ${err.message}`);
+  }
+}
+
+export async function extractVerificationFrames(filePath, outputDirectory, frameCount = 4) {
+  fs.mkdirSync(outputDirectory, { recursive: true });
+  const pattern = `${outputDirectory}/frame_%02d.jpg`;
+  const args = ["-v", "error", "-i", filePath, "-vf", `fps=1/3,scale=480:-2`, "-frames:v", String(frameCount), "-q:v", "3", "-y", pattern];
+  try {
+    await execFileAsync(ffmpegPath, args, { timeout: 30000 });
+  } catch (error) {
+    throw new Error(`KEYFRAME_EXTRACTION_FAILED: ${error.message}`);
+  }
+  return fs.readdirSync(outputDirectory).filter((name) => /^frame_\d+\.jpg$/.test(name)).sort().map((name) => `${outputDirectory}/${name}`);
+}
+
+export async function composeExactBroll({ baseVideoPath, brollInputs, outputPath, durationSeconds, width, height }) {
+  if (!brollInputs.length) return baseVideoPath;
+  const args = ["-v", "error", "-i", baseVideoPath];
+  for (const input of brollInputs) {
+    if (input.isVideo) args.push("-stream_loop", "-1", "-i", input.path);
+    else args.push("-loop", "1", "-i", input.path);
+  }
+  const segmentLength = Math.max(0.6, Math.min(2, durationSeconds * 0.55 / brollInputs.length));
+  const firstStart = Math.max(0.8, durationSeconds * 0.25);
+  const filters = [];
+  let previous = "0:v";
+  brollInputs.forEach((input, index) => {
+    const start = firstStart + index * segmentLength;
+    const end = Math.min(durationSeconds - 0.5, start + segmentLength);
+    const prepared = `b${index}`;
+    const output = `v${index}`;
+    filters.push(`[${index + 1}:v]scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,setpts=PTS-STARTPTS+${start}/TB[${prepared}]`);
+    filters.push(`[${previous}][${prepared}]overlay=0:0:enable='between(t,${start},${end})':eof_action=pass[${output}]`);
+    previous = output;
+  });
+  args.push("-filter_complex", filters.join(";"), "-map", `[${previous}]`, "-map", "0:a?", "-c:v", "libx264", "-preset", "fast", "-crf", "18", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", "-t", String(durationSeconds), "-y", outputPath);
+  try {
+    await execFileAsync(ffmpegPath, args, { timeout: 120000 });
+    return outputPath;
+  } catch (error) {
+    throw new Error(`HYBRID_COMPOSITION_FAILED: ${error.message}`);
   }
 }
 
@@ -122,14 +143,6 @@ export async function renderAppStudioVideo({
       stderr,
     };
   } catch (err) {
-    // If system/pinned binary is missing, create valid MP4 fixture for environment validation
-    fs.mkdirSync(`./public/storage/${outputPath.substring(0, outputPath.lastIndexOf("/"))}`, { recursive: true });
-    fs.writeFileSync(outputPath, Buffer.from("FTYP_MP4_VALID_DUMMY_HEADER_DATA_1234567890"));
-    return {
-      sanitizedCmd,
-      outputPath,
-      stdout: "Synthetic render completed",
-      stderr: "",
-    };
+    throw new Error(`APP_STUDIO_RENDER_FAILED: ${err.message}`);
   }
 }

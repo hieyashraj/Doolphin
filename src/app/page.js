@@ -138,6 +138,42 @@ const AVATARS = [
   { id: "tracey", name: "Tracey", image: "/avatars/Tracey E1.png" }
 ];
 
+const FEATURED_MODES = [
+  {
+    id: "video-studio",
+    title: "Video Studio →",
+    badge: "UGC Video Engine",
+    cover: "/studios/video_studio.jpg",
+    tab: "video",
+    desc: "Turn scripts & photos into high-converting video ads."
+  },
+  {
+    id: "image-maker",
+    title: "Image Maker",
+    badge: "AI Avatars & Visuals",
+    cover: "/avatars/Andrew E1.png",
+    tab: "avatars",
+    comingSoon: true,
+    desc: "Browse high-resolution realistic AI video avatars."
+  },
+  {
+    id: "product-ad",
+    title: "Product Ad →",
+    badge: "E-Commerce Studio",
+    cover: "/studios/product_studio.jpg",
+    tab: "video",
+    desc: "Studio-grade product commercials & showcases."
+  },
+  {
+    id: "app-studio",
+    title: "App Studio →",
+    badge: "SaaS & App Walkthrough",
+    cover: "/studios/app_studio.jpg",
+    tab: "video",
+    desc: "Engaging product walkthroughs & app promos."
+  }
+];
+
 const MOCK_COMMUNITY = [
   { id: "e1", title: "Beauty & Skincare Unboxing", prompt: "Female UGC creator holding green serum box packaging close to camera, natural indoor lighting", url: "/explore/Explore 01.mp4", aspect: "9:16" },
   { id: "e2", title: "Tech & Mobile Reaction", prompt: "Glasses creator looking at smartphone with expressive reaction, aesthetic room setup", url: "/explore/Explore 02.mp4", aspect: "9:16" },
@@ -150,10 +186,10 @@ const MOCK_COMMUNITY = [
 ];
 
 const PRICING_PLANS = [
-  { id: "basic", name: "Basic Pack", price: "$5", credits: 100, description: "Perfect for testing custom prompts and exploring styles." },
-  { id: "standard", name: "Standard Pack", price: "$10", credits: 250, description: "Ideal for regular creators wanting high resolution outputs." },
-  { id: "pro", name: "Professional Pack", price: "$20", credits: 600, description: "Designed for power users demanding batch exports.", popular: true },
-  { id: "business", name: "Business Pack", price: "$50", credits: 2000, description: "Maximum value pack for agency workflows." }
+  { id: "basic", name: "Basic Pack", price: "$5", credits: 100, description: "Perfect for testing custom prompts and exploring styles.", polarProductId: process.env.NEXT_PUBLIC_POLAR_PRODUCT_BASIC || "" },
+  { id: "standard", name: "Standard Pack", price: "$10", credits: 250, description: "Ideal for regular creators wanting high resolution outputs.", polarProductId: process.env.NEXT_PUBLIC_POLAR_PRODUCT_STANDARD || "" },
+  { id: "pro", name: "Professional Pack", price: "$20", credits: 600, description: "Designed for power users demanding batch exports.", popular: true, polarProductId: process.env.NEXT_PUBLIC_POLAR_PRODUCT_PRO || "" },
+  { id: "business", name: "Business Pack", price: "$50", credits: 2000, description: "Maximum value pack for agency workflows.", polarProductId: process.env.NEXT_PUBLIC_POLAR_PRODUCT_BUSINESS || "" }
 ];
 
 function calculateScriptDuration(text) {
@@ -170,7 +206,7 @@ function HomeContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   
-  const currentTab = searchParams.get("tab") || "video";
+  const currentTab = searchParams.get("tab") || "explore";
   
   const [selectedModel, setSelectedModel] = useState(MODELS[0]);
   const [selectedPreset, setSelectedPreset] = useState(null);
@@ -201,30 +237,9 @@ function HomeContent() {
   const [isAvatarsModalOpen, setIsAvatarsModalOpen] = useState(false);
   const [isPricingModalOpen, setIsPricingModalOpen] = useState(false);
   const [loadingCheckoutPlan, setLoadingCheckoutPlan] = useState(null);
-  const [workspaceFilter, setWorkspaceFilter] = useState("all");
-  const [uploadingAvatar, setUploadingAvatar] = useState(false);
-  const [uploadingProduct, setUploadingProduct] = useState(false);
   const [selectedExploreVideo, setSelectedExploreVideo] = useState(null);
-  const [isExploreMuted, setIsExploreMuted] = useState(false);
   
-  const fileInputRef = useRef(null);
-  const productInputRef = useRef(null);
   const isSubmittingRef = useRef(false);
-
-  const scriptWordCount = spokenScript.trim() ? spokenScript.trim().split(/\s+/).filter(Boolean).length : 0;
-  const recommendedDuration = calculateScriptDuration(spokenScript);
-
-  useEffect(() => {
-    if (spokenScript.trim()) {
-      setModelSettings((prev) => {
-        const currentDur = typeof prev.duration === "number" ? prev.duration : 5;
-        if (currentDur < recommendedDuration) {
-          return { ...prev, duration: recommendedDuration };
-        }
-        return prev;
-      });
-    }
-  }, [spokenScript, recommendedDuration]);
 
   const fetchCreations = async () => {
     try {
@@ -244,317 +259,23 @@ function HomeContent() {
     fetchCreations();
   }, [lastGeneration]);
 
-  useEffect(() => {
-    let interval;
-    const activeStatuses = ['processing', 'pending', 'starting', 'queued'];
-    if (lastGeneration && activeStatuses.includes(lastGeneration.status?.toLowerCase())) {
-      interval = setInterval(async () => {
-        try {
-          const res = await fetch(`/api/creations/${lastGeneration.id}`);
-          if (res.ok && res.headers.get("content-type")?.includes("application/json")) {
-            const data = await res.json();
-            if (data && !activeStatuses.includes(data.status?.toLowerCase())) {
-              setLastGeneration(data);
-              fetchCreations();
-              clearInterval(interval);
-            } else if (data && data.status?.toLowerCase() !== lastGeneration.status?.toLowerCase()) {
-              setLastGeneration(data);
-            }
-          }
-        } catch (error) {
-          console.error("Polling error:", error);
-        }
-      }, 5000);
-    }
-    return () => clearInterval(interval);
-  }, [lastGeneration]);
-
-  useEffect(() => {
-    let interval;
-    const activeStatuses = ['processing', 'pending', 'starting', 'queued'];
-    const hasActiveCreations = creations.some(c => activeStatuses.includes(c.status?.toLowerCase()));
-    
-    if (hasActiveCreations) {
-      interval = setInterval(() => {
-        fetchCreations();
-      }, 5000);
-    }
-    return () => clearInterval(interval);
-  }, [creations]);
-
-  useEffect(() => {
-    if (selectedModel.params) {
-      const defaults = {};
-      Object.keys(selectedModel.params).forEach((key) => {
-        if (key === "mode") return;
-        let defVal = selectedModel.params[key].default || selectedModel.params[key].options?.[0] || "";
-        if (key === "duration" && typeof defVal === "number") {
-          defVal = Math.min(defVal, 15);
-        }
-        defaults[key] = defVal;
-      });
-      setModelSettings(defaults);
-    }
-  }, [selectedModel]);
-
-  const updateSetting = (key, value) => {
-    setModelSettings((prev) => ({ ...prev, [key]: value }));
-  };
-
-  const getRequiredCredits = () => {
-    const duration = typeof modelSettings.duration === "number" ? Math.min(modelSettings.duration, 15) : 5;
-    const resolution = modelSettings.resolution || "";
-
-    if (selectedModel.id === "grok-video") {
-      const rate = resolution === "1080p" ? 15 : resolution === "720p" ? 10 : 5;
-      return duration * rate;
-    }
-    if (selectedModel.id === "veo-3-1") {
-      let rate = 500;
-      if (resolution === "1080p") rate = 650;
-      else if (resolution === "4k") rate = 740;
-      return duration * rate;
-    }
-    if (selectedModel.id === "happy-horse") return duration * 36;
-    if (selectedModel.id === "seedance-2") return duration * 50;
-    return 10;
-  };
-
-  const handleSelectPreset = (preset) => {
-    setSelectedPreset(preset);
-    let compiledPrompt = preset.prompt;
-    if (selectedAvatar) {
-      compiledPrompt = compiledPrompt.replace(/\[Avatar\]/g, selectedAvatar.name);
-    }
-    if (productImage) {
-      compiledPrompt = compiledPrompt.replace(/\[Target Product\]/g, "Attached Product").replace(/\[Brand\]/g, "Attached Product");
-    }
-    setSpokenScript(compiledPrompt.slice(0, 300));
-    setSceneMotion(`Studio tracking ${preset.name} motion`);
-
-    const recDur = calculateScriptDuration(compiledPrompt);
-    const targetDur = Math.max(recDur, Math.min(preset.defaultDuration || 15, 15));
-
-    setModelSettings((prev) => ({
-      ...prev,
-      duration: targetDur,
-      aspect_ratio: preset.defaultAspect || prev.aspect_ratio || "9:16"
-    }));
-
-    setIsPresetsModalOpen(false);
-    toast.success(`Preset "${preset.name}" selected`);
-  };
-
   const handleSelectAvatar = async (avatar) => {
     setSelectedAvatar(avatar);
     setIsAvatarsModalOpen(false);
-    setUploadingAvatar(true);
-
-    try {
-      const blobRes = await fetch(avatar.image);
-      const blob = await blobRes.blob();
-      const file = new File([blob], `${avatar.id}.png`, { type: "image/png" });
-
-      const formData = new FormData();
-      formData.append("file", file);
-
-      const response = await fetch('/api/upload', {
-        method: 'POST',
-        body: formData
-      });
-
-      if (!response.ok) throw new Error("Avatar upload failed");
-
-      const data = await response.json();
-      
-      const newImg = {
-        id: `avatar_${avatar.id}`,
-        preview: avatar.image,
-        url: data.url,
-        status: 'ready',
-        isAvatar: true
-      };
-
-      setUploadedImages(prev => [newImg, ...prev.filter(p => !p.isAvatar)]);
-    } catch (err) {
-      const newImg = {
-        id: `avatar_${avatar.id}`,
-        preview: avatar.image,
-        url: avatar.image,
-        status: 'ready',
-        isAvatar: true
-      };
-      setUploadedImages(prev => [newImg, ...prev.filter(p => !p.isAvatar)]);
-    } finally {
-      setUploadingAvatar(false);
-    }
-  };
-
-  const handleProductUpload = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    setUploadingProduct(true);
-    const localPreview = URL.createObjectURL(file);
-    
-    try {
-      const formData = new FormData();
-      formData.append("file", file);
-
-      const response = await fetch('/api/upload', {
-        method: 'POST',
-        body: formData
-      });
-
-      if (!response.ok) throw new Error("Upload failed");
-
-      const data = await response.json();
-      
-      const prodObj = {
-        id: `product_${Date.now()}`,
-        preview: localPreview,
-        url: data.url,
-        file
-      };
-
-      setProductImage(prodObj);
-      setUploadedImages(prev => [prodObj, ...prev.filter(p => p.id !== prodObj.id)]);
-    } catch (err) {
-      setProductImage({
-        id: `product_${Date.now()}`,
-        preview: localPreview,
-        url: localPreview
-      });
-    } finally {
-      setUploadingProduct(false);
-    }
-  };
-
-  const handleImageUpload = async (e) => {
-    const files = Array.from(e.target.files);
-    if (uploadedImages.length + files.length > 7) {
-      alert("Maximum 7 reference images allowed.");
-      return;
-    }
-
-    const newImages = files.map(file => ({
-      id: Math.random().toString(36).substr(2, 9),
-      file,
-      preview: URL.createObjectURL(file),
-      status: 'uploading'
-    }));
-
-    setUploadedImages(prev => [...prev, ...newImages]);
-
-    for (const img of newImages) {
-      try {
-        const formData = new FormData();
-        formData.append("file", img.file);
-
-        const response = await fetch('/api/upload', {
-          method: 'POST',
-          body: formData
-        });
-
-        if (!response.ok) throw new Error("Upload failed");
-
-        const data = await response.json();
-        
-        setUploadedImages(prev => prev.map(p => 
-          p.id === img.id ? { ...p, status: 'ready', url: data.url } : p
-        ));
-      } catch (error) {
-        setUploadedImages(prev => prev.map(p => 
-          p.id === img.id ? { ...p, status: 'error' } : p
-        ));
-      }
-    }
-  };
-
-  const removeImage = (id) => {
-    if (productImage?.id === id) setProductImage(null);
-    setUploadedImages(prev => prev.filter(img => img.id !== id));
-  };
-
-  const handleGenerate = async () => {
-    if (isSubmittingRef.current || isGenerating) return;
-
-    const fullPrompt = spokenScript.trim() || sceneMotion.trim();
-
-    if (!fullPrompt) {
-      toast.error("Please add a script or visual motion prompt.");
-      return;
-    }
-    if (spokenScript.length > 300) {
-      toast.error("Script must be capped to max 300 characters.");
-      return;
-    }
-
-    isSubmittingRef.current = true;
-    setIsGenerating(true);
-
-    const attemptId = `att_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-    const currentSettings = { ...modelSettings };
-    if (typeof currentSettings.duration === "number") {
-      currentSettings.duration = Math.min(currentSettings.duration, 15);
-    }
-
-    const compiledGenerationPrompt = `${sceneMotion ? `Visual Motion: ${sceneMotion}. ` : ""}${spokenScript ? `Script: ${spokenScript}` : ""}`.trim().slice(0, 300);
-
-    try {
-      const response = await fetch('/api/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          idempotencyKey: attemptId,
-          modelId: selectedModel.id,
-          prompt: compiledGenerationPrompt,
-          settings: currentSettings,
-          images: uploadedImages.filter(img => img.status === 'ready').map(img => img.url),
-          generateVoiceover: Boolean(spokenScript.trim()),
-          voiceoverVoice,
-          voiceoverText: spokenScript.trim().slice(0, 300),
-          avatarName: selectedAvatar ? selectedAvatar.name : "Actor",
-          productName: productImage ? "Product" : "Product",
-          presetCategory: selectedPreset ? selectedPreset.category : ""
-        })
-      });
-
-      const data = await response.json().catch(() => null);
-
-      if (!response.ok || !data?.success) {
-        setLastGeneration({
-          id: `err_${Date.now()}`,
-          status: 'failed',
-          error: data?.error || "Request failed",
-          prompt: compiledGenerationPrompt
-        });
-        toast.error(data?.error || "Generation failed");
-        return;
-      }
-
-      setLastGeneration({
-        id: data.creationId,
-        status: 'processing',
-        stage: data.stage || 'queued',
-        prompt: compiledGenerationPrompt
-      });
-      toast.success("Generation started!");
-    } catch (error) {
-      toast.error(error.message || "Failed to start generation");
-    } finally {
-      setIsGenerating(false);
-      isSubmittingRef.current = false;
-    }
   };
 
   const handleCheckoutPlan = async (planId) => {
     setLoadingCheckoutPlan(planId);
     try {
-      const res = await fetch("/api/stripe/checkout", {
+      const selectedPlan = PRICING_PLANS.find((p) => p.id === planId);
+      const res = await fetch("/api/checkout/polar", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ planId }),
+        body: JSON.stringify({
+          productId: selectedPlan?.polarProductId || planId,
+          planId,
+          credits: selectedPlan?.credits
+        }),
       });
       const data = await res.json();
       if (data?.url) {
@@ -577,53 +298,45 @@ function HomeContent() {
     return matchesCategory && matchesSearch;
   });
 
-  const currentAspect = modelSettings.aspect_ratio || "9:16";
-  const getAspectClass = () => {
-    if (currentAspect === "16:9") return "aspect-video max-w-lg";
-    if (currentAspect === "1:1") return "aspect-square max-w-sm";
-    if (currentAspect === "2:3" || currentAspect === "3:4") return "aspect-[3/4] max-w-sm";
-    return "aspect-[9/16] max-w-xs";
-  };
-
   return (
-    <div className="h-full w-full flex flex-col overflow-hidden relative font-sans text-white bg-black">
+    <div className="h-full w-full flex flex-col overflow-hidden relative font-sans text-[#111111] bg-[#FAF8ED]">
       <Toaster 
         position="top-right" 
         toastOptions={{ 
           duration: 2500,
           style: { 
-            background: 'rgba(13, 13, 18, 0.95)', 
-            color: '#ffffff', 
-            border: '1px solid rgba(255, 255, 255, 0.15)',
-            backdropFilter: 'blur(20px)',
-            boxShadow: '0 12px 34px rgba(0, 0, 0, 0.6)'
+            background: '#FFFFFF', 
+            color: '#111111', 
+            border: '1px solid rgba(17, 17, 17, 0.15)',
+            borderRadius: '9999px',
+            boxShadow: '0 8px 30px rgba(17, 17, 17, 0.08)'
           } 
         }} 
       />
 
       {/* FLOATING TOP HEADER FOR NON-STUDIO TABS */}
       {currentTab !== "video" && (
-        <header className="absolute top-3 right-6 flex items-center justify-end gap-4 z-30 pointer-events-auto">
-          <div className="flex items-center gap-2.5">
+        <header className="absolute top-4 right-6 flex items-center justify-end gap-3 z-30 pointer-events-auto">
+          <div className="flex items-center gap-3">
             <button
               onClick={() => setIsPricingModalOpen(true)}
-              className="bg-[#0070f3] hover:bg-[#1e82f7] text-white font-semibold text-xs px-3.5 py-2 rounded-full flex items-center gap-1.5 shadow-md transition-all active:scale-95 cursor-pointer"
+              className="bg-[#E6D9FF] hover:bg-[#DBCBFF] text-[#111111] border border-[#111111] font-semibold text-sm px-4.5 py-2.5 rounded-full flex items-center gap-2 shadow-sm transition-all active:scale-95 cursor-pointer"
             >
-              <FiZap size={13} />
+              <FiZap size={15} />
               <span>Upgrade</span>
-              <span className="bg-emerald-400/20 text-emerald-300 text-[9px] font-extrabold px-1.5 py-0.5 rounded-full border border-emerald-400/30">
+              <span className="bg-[#064E3B] text-white text-xs font-bold px-2 py-0.5 rounded-full">
                 30% OFF
               </span>
             </button>
 
-            <div className="bg-[#121217] border border-white/10 px-3.5 py-2 rounded-full flex items-center gap-1.5 text-xs font-semibold text-white shadow-sm">
-              <span className="text-[#38bdf8]">💎</span>
+            <div className="bg-white border border-[#111111]/15 px-4 py-2.5 rounded-full flex items-center gap-2 text-sm font-semibold text-[#111111] shadow-sm">
+              <span className="text-[#111111]">💎</span>
               <span>{session?.user?.credits !== undefined ? session.user.credits : "90"} credits</span>
             </div>
 
             <button
               onClick={() => router.push("/?tab=explore")}
-              className="bg-[#121217] hover:bg-white/10 border border-white/10 text-slate-300 hover:text-white font-semibold text-xs px-3.5 py-2 rounded-full flex items-center gap-1.5 transition-colors cursor-pointer"
+              className="bg-white hover:bg-[#F2EFE5] border border-[#111111]/15 text-[#55534E] hover:text-[#111111] font-semibold text-sm px-4.5 py-2.5 rounded-full flex items-center gap-2 transition-colors cursor-pointer shadow-sm"
             >
               <span>🌐</span>
               <span>Community</span>
@@ -631,7 +344,7 @@ function HomeContent() {
 
             <button
               onClick={() => router.push("/?tab=library")}
-              className="bg-[#121217] hover:bg-white/10 border border-white/10 text-slate-300 hover:text-white font-semibold text-xs px-3.5 py-2 rounded-full flex items-center gap-1.5 transition-colors cursor-pointer"
+              className="bg-white hover:bg-[#F2EFE5] border border-[#111111]/15 text-[#55534E] hover:text-[#111111] font-semibold text-sm px-4.5 py-2.5 rounded-full flex items-center gap-2 transition-colors cursor-pointer shadow-sm"
             >
               <span>📜</span>
               <span>History</span>
@@ -643,72 +356,124 @@ function HomeContent() {
       {/* MAIN CONTENT VIEWS */}
       <div className="flex-1 flex overflow-hidden min-h-0 relative z-10">
         
-        {/* EXPLORE TAB */}
+        {/* EXPLORE TAB (WISPR FLOW DESIGN LANGUAGE) */}
         {currentTab === "explore" && (
-          <div className="flex-1 overflow-y-auto px-6 py-6 md:px-8 space-y-6 scrollbar-subtle">
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-              <button
-                onClick={() => router.push("/?tab=video")}
-                className="glass-card glass-card-hover p-5 text-left cursor-pointer group relative overflow-hidden transition-all duration-150 active:scale-[0.98] border border-white/10"
-              >
-                <div className="w-10 h-10 rounded-2xl bg-[#0070f3]/20 text-[#38bdf8] border border-[#0070f3]/40 flex items-center justify-center mb-3 group-hover:bg-[#0070f3]/30 transition-colors">
-                  <FiVideo size={20} />
-                </div>
-                <h3 className="text-sm font-bold text-white mb-1">Video Studio</h3>
-                <p className="text-xs text-slate-400 leading-relaxed">Create video ads with actors and scripts.</p>
-              </button>
-
-              {[
-                { title: "Avatars", desc: "Browse high-resolution video actors.", icon: FiUser, tab: "avatars" },
-                { title: "Product Studio", desc: "Attach and showcase product photos.", icon: FiBox, tab: "video" },
-                { title: "My Creations", desc: "Review your generated video media.", icon: FiLayers, tab: "library" }
-              ].map((card, i) => (
-                <button
-                  key={i}
-                  onClick={() => router.push(`/?tab=${card.tab}`)}
-                  className="glass-card glass-card-hover p-5 text-left cursor-pointer group relative overflow-hidden transition-all duration-150 active:scale-[0.98] border border-white/10"
-                >
-                  <div className="w-10 h-10 rounded-2xl bg-white/5 text-slate-300 border border-white/10 flex items-center justify-center mb-3 group-hover:text-[#38bdf8] group-hover:border-[#0070f3]/40 transition-colors">
-                    <card.icon size={20} />
-                  </div>
-                  <h3 className="text-sm font-bold text-white mb-1">{card.title}</h3>
-                  <p className="text-xs text-slate-400 leading-relaxed">{card.desc}</p>
-                </button>
-              ))}
-            </div>
-
-            {/* Showcase Feed */}
-            <div className="space-y-4 pt-2">
-              <div className="border-b glass-divider pb-3 flex items-center justify-between">
+          <div className="flex-1 overflow-y-auto px-3 py-6 md:px-5 space-y-12 scrollbar-subtle relative w-full">
+            
+            {/* 1. TOP SECTION: FEATURED MODE CARDS GRID */}
+            <div className="space-y-5 w-full">
+              <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-2 border-b border-[#111111]/10 pb-3">
                 <div>
-                  <h2 className="text-sm font-bold text-white tracking-wide">Showcase</h2>
-                  <p className="text-xs text-slate-400">High-converting AI UGC video ads</p>
+                  <span className="text-xs font-bold tracking-[0.2em] uppercase text-[#77746D]">
+                    CREATION MODES
+                  </span>
+                  <h2 className="text-2xl sm:text-3xl font-serif font-bold text-[#111111] tracking-tight">
+                    Featured Studio Modes
+                  </h2>
                 </div>
+                <p className="text-sm text-[#55534E] font-medium">
+                  Select a studio mode to generate AI videos
+                </p>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+                {FEATURED_MODES.map((mode) => {
+                  const isComingSoon = mode.comingSoon;
+                  return (
+                    <div
+                      key={mode.id}
+                      onClick={() => {
+                        if (!isComingSoon) router.push(`/?tab=${mode.tab}`);
+                      }}
+                      className={`relative h-80 sm:h-96 md:h-[400px] rounded-2xl md:rounded-[28px] border border-[#111111]/15 overflow-hidden group shadow-sm bg-white flex flex-col justify-between transition-all duration-300 ${
+                        isComingSoon 
+                          ? "cursor-not-allowed select-none" 
+                          : "cursor-pointer hover:shadow-xl hover:border-[#111111]/35 active:scale-[0.98]"
+                      }`}
+                    >
+                      {/* Cover Image */}
+                      <img
+                        src={mode.cover}
+                        alt={mode.title}
+                        className={`absolute inset-0 w-full h-full object-cover transition-transform duration-500 ease-out ${
+                          isComingSoon ? "grayscale-[15%]" : "group-hover:scale-105"
+                        }`}
+                      />
+
+                      {/* Dark Gradient Overlay */}
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/40 to-black/10" />
+
+                      {/* Top Badges */}
+                      <div className="relative z-10 p-4 sm:p-5 flex flex-wrap items-center justify-between gap-1.5">
+                        <span className="inline-block text-xs sm:text-sm font-semibold text-white/90 bg-black/50 backdrop-blur-md px-3.5 py-1.5 rounded-full border border-white/20 shadow-sm">
+                          {mode.badge}
+                        </span>
+                        {isComingSoon && (
+                          <span className="inline-block text-xs font-bold text-[#111111] bg-[#E6D9FF] px-3 py-1 rounded-full border border-[#111111] shadow-md uppercase tracking-wider">
+                            Coming Soon
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Bottom White Serif Title */}
+                      <div className="relative z-10 p-5 sm:p-6">
+                        <h3 className={`font-serif text-2xl sm:text-3xl md:text-[32px] font-bold text-white tracking-tight flex items-center justify-between gap-1 transition-transform duration-200 leading-tight ${
+                          isComingSoon ? "" : "group-hover:translate-x-1.5"
+                        }`}>
+                          <span>{mode.title}</span>
+                          {isComingSoon && (
+                            <span className="text-xs font-sans font-semibold text-white/70 bg-white/20 backdrop-blur-sm px-2.5 py-1 rounded-full border border-white/20">
+                              Soon
+                            </span>
+                          )}
+                        </h3>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* 2. BOTTOM SECTION: COMMUNITY SHOWCASE GRID */}
+            <div className="space-y-5 w-full pt-4">
+              <div className="space-y-1.5 border-b border-[#111111]/10 pb-4">
+                <h2 className="text-2xl sm:text-3xl font-serif font-extrabold tracking-widest text-[#111111] uppercase">
+                  COMMUNITY
+                </h2>
+                <p className="text-sm sm:text-base text-[#55534E] font-medium">
+                  Images and videos from our community
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5 sm:gap-6">
                 {MOCK_COMMUNITY.map((item) => (
                   <div
                     key={item.id}
-                    onClick={() => {
-                      setSelectedExploreVideo(item);
-                      setIsExploreMuted(false);
-                    }}
-                    className="glass-card glass-card-hover aspect-[9/16] overflow-hidden group relative shadow-lg cursor-pointer rounded-2xl border border-white/10"
+                    onClick={() => setSelectedExploreVideo(item)}
+                    className="bg-white aspect-[9/16] overflow-hidden group relative shadow-sm cursor-pointer rounded-2xl md:rounded-3xl border border-[#111111]/15 hover:border-[#111111]/35 hover:shadow-xl transition-all duration-200"
                   >
                     <video
                       src={item.url}
-                      className="w-full h-full object-cover"
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 ease-out"
                       autoPlay
                       muted
                       loop
                       playsInline
                     />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-transparent p-4 flex flex-col justify-end opacity-0 group-hover:opacity-100 transition-opacity duration-150">
-                      <p className="text-white text-xs font-semibold leading-snug mb-1">{item.title || item.prompt}</p>
-                      <span className="text-[10px] text-slate-300 font-medium flex items-center gap-1">
-                        <FiMaximize2 size={12} /> Click to watch with audio
-                      </span>
+
+                    {/* Dark Gradient Overlay */}
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/35 to-transparent p-5 flex flex-col justify-end opacity-90 group-hover:opacity-100 transition-opacity duration-200">
+                      <h4 className="text-white text-xl sm:text-2xl font-serif font-bold leading-tight mb-3">
+                        {item.title || item.prompt}
+                      </h4>
+                      <div className="flex items-center justify-between text-xs text-white/90 font-medium pt-2 border-t border-white/20">
+                        <span className="flex items-center gap-1.5 bg-white/20 backdrop-blur-md px-3 py-1 rounded-full text-xs font-semibold text-white">
+                          <FiMaximize2 size={13} /> Watch Video
+                        </span>
+                        <span className="text-xs uppercase font-bold tracking-wider text-white/70">
+                          {item.aspect || "9:16"}
+                        </span>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -719,15 +484,15 @@ function HomeContent() {
 
         {/* AVATARS TAB */}
         {currentTab === "avatars" && (
-          <div className="flex-1 overflow-y-auto px-6 py-6 md:px-8 space-y-6 scrollbar-subtle">
-            <div className="flex items-center justify-between border-b glass-divider pb-4">
+          <div className="flex-1 overflow-y-auto px-6 py-8 md:px-12 space-y-8 scrollbar-subtle">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#111111]/10 pb-5">
               <div>
-                <h2 className="text-lg font-bold text-white">Avatars</h2>
-                <p className="text-xs text-slate-400">Select from our curated actors</p>
+                <h2 className="text-2xl sm:text-3xl font-serif font-bold text-[#111111]">AI Avatars</h2>
+                <p className="text-sm sm:text-base text-[#55534E] mt-0.5">Select from our realistic video avatars</p>
               </div>
               <button
                 onClick={() => router.push("/?tab=video")}
-                className="glass-btn-primary px-4 py-2 text-xs cursor-pointer transition-transform active:scale-95"
+                className="bg-[#E6D9FF] text-[#111111] border border-[#111111] px-6 py-2.5 rounded-full text-sm font-semibold hover:bg-[#DBCBFF] cursor-pointer transition-colors shadow-sm self-start sm:self-auto"
               >
                 Launch Video Studio
               </button>
@@ -741,18 +506,18 @@ function HomeContent() {
                     handleSelectAvatar(avatar);
                     router.push("/?tab=video");
                   }}
-                  className="glass-card glass-card-hover aspect-[3/4] overflow-hidden cursor-pointer relative group flex flex-col justify-between p-3 transition-all duration-150 active:scale-[0.98] border border-white/10"
+                  className="bg-white aspect-[3/4] overflow-hidden cursor-pointer relative group flex flex-col justify-between p-3 rounded-2xl md:rounded-3xl border border-[#111111]/15 shadow-sm hover:border-[#111111]/30 hover:shadow-md transition-all duration-200 active:scale-[0.98]"
                 >
-                  <img src={avatar.image} className="absolute inset-0 w-full h-full object-cover rounded-xl" />
+                  <img src={avatar.image} className="absolute inset-0 w-full h-full object-cover rounded-xl md:rounded-2xl" />
                   <div className="relative z-10 flex justify-end">
                     {selectedAvatar?.id === avatar.id && (
-                      <span className="w-6 h-6 rounded-full bg-[#0070f3] text-white flex items-center justify-center text-xs shadow-md border border-white/20">
-                        <FiCheck />
+                      <span className="w-7 h-7 rounded-full bg-[#064E3B] text-white flex items-center justify-center text-xs shadow-md">
+                        <FiCheck size={16} />
                       </span>
                     )}
                   </div>
-                  <div className="relative z-10 glass-panel p-2 text-center rounded-xl bg-black/70 backdrop-blur-md border border-white/10">
-                    <span className="text-xs font-semibold text-white">{avatar.name}</span>
+                  <div className="relative z-10 p-2.5 text-center rounded-xl md:rounded-2xl bg-white/95 backdrop-blur-md border border-[#111111]/15 shadow-sm">
+                    <span className="text-sm font-semibold text-[#111111]">{avatar.name}</span>
                   </div>
                 </div>
               ))}
@@ -762,7 +527,7 @@ function HomeContent() {
 
         {/* VIDEO WORKSPACE STUDIO */}
         {currentTab === "video" && (
-          <div className="flex-1 overflow-hidden min-h-0 bg-[#0b0b0e]">
+          <div className="flex-1 overflow-hidden min-h-0 bg-[#FAF8ED]">
             <CreationHub 
               selectedAvatar={selectedAvatar} 
               onOpenAvatarModal={() => setIsAvatarsModalOpen(true)} 
@@ -775,65 +540,65 @@ function HomeContent() {
 
         {/* MY LIBRARY TAB */}
         {currentTab === "library" && (
-          <div className="flex-1 overflow-y-auto px-6 py-6 md:px-8 space-y-6 scrollbar-subtle select-none">
-            <header className="border-b glass-divider pb-4 flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+          <div className="flex-1 overflow-y-auto px-6 py-8 md:px-12 space-y-8 scrollbar-subtle select-none">
+            <header className="border-b border-[#111111]/10 pb-5 flex flex-col sm:flex-row sm:items-end justify-between gap-4">
               <div>
-                <h2 className="text-lg font-bold text-white">My Creations</h2>
-                <p className="text-xs text-slate-400">Browse and download your generated videos</p>
+                <h2 className="text-2xl sm:text-3xl font-serif font-bold text-[#111111]">My Creations</h2>
+                <p className="text-sm sm:text-base text-[#55534E] mt-0.5">Browse and download your generated videos</p>
               </div>
             </header>
 
             {isLoadingCreations ? (
               <div className="py-24 flex flex-col items-center justify-center gap-3">
-                <FiLoader className="text-3xl text-[#38bdf8] animate-spin" />
-                <span className="text-xs text-slate-400 animate-pulse">Loading creations...</span>
+                <FiLoader className="text-3xl text-[#111111] animate-spin" />
+                <span className="text-sm text-[#55534E] font-medium animate-pulse">Loading creations...</span>
               </div>
             ) : creations.length === 0 ? (
               <div className="py-24 flex flex-col items-center justify-center text-center space-y-4">
-                <div className="w-16 h-16 rounded-2xl glass-card flex items-center justify-center text-slate-400 border border-white/10">
+                <div className="w-16 h-16 rounded-2xl bg-white flex items-center justify-center text-[#55534E] border border-[#111111]/15 shadow-sm">
                   <FiVideo size={28} />
                 </div>
                 <div className="space-y-1">
-                  <h3 className="text-sm font-semibold text-white">No creations yet</h3>
-                  <p className="text-xs text-slate-400 max-w-sm">Your completed video media will appear here.</p>
+                  <h3 className="text-lg font-serif font-bold text-[#111111]">No creations yet</h3>
+                  <p className="text-sm text-[#55534E] max-w-sm">Your completed video media will appear here.</p>
                 </div>
                 <button
                   onClick={() => router.push("/?tab=video")}
-                  className="glass-btn-primary px-6 py-2.5 text-xs cursor-pointer transition-transform active:scale-95"
+                  className="bg-[#E6D9FF] text-[#111111] border border-[#111111] px-6 py-3 rounded-full text-sm font-semibold hover:bg-[#DBCBFF] cursor-pointer shadow-sm transition-colors"
                 >
                   Create First Video
                 </button>
               </div>
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5 sm:gap-6">
                 {creations.map((item) => (
                   <div
                     key={item.id}
                     onClick={() => setSelectedCreation(item)}
-                    className="glass-card glass-card-hover aspect-[9/16] overflow-hidden relative cursor-pointer group shadow-lg transition-all duration-150 active:scale-[0.98] border border-white/10"
+                    className="bg-white aspect-[9/16] overflow-hidden relative cursor-pointer group shadow-sm rounded-2xl md:rounded-3xl border border-[#111111]/15 hover:border-[#111111]/35 hover:shadow-lg transition-all"
                   >
                     {item.status?.toLowerCase() === "completed" ? (
                       <video src={item.url} className="w-full h-full object-cover" muted loop playsInline />
                     ) : item.status?.toLowerCase() === "failed" ? (
-                      <div className="w-full h-full flex flex-col items-center justify-center p-4 gap-2 text-center bg-red-500/5">
-                        <FiAlertCircle className="text-red-400 text-2xl" />
-                        <span className="text-xs font-semibold text-red-400">Generation Failed</span>
+                      <div className="w-full h-full flex flex-col items-center justify-center p-4 gap-2 text-center bg-red-50">
+                        <FiAlertCircle className="text-red-600 text-2xl" />
+                        <span className="text-xs font-semibold text-red-600">Generation Failed</span>
                       </div>
                     ) : (
-                      <div className="w-full h-full flex flex-col items-center justify-center gap-3">
-                        <FiClock className="text-2xl text-[#38bdf8] animate-spin" />
-                        <span className="text-xs font-semibold text-slate-400 animate-pulse">Processing...</span>
+                      <div className="w-full h-full flex flex-col items-center justify-center gap-3 bg-[#FAF8ED]">
+                        <FiClock className="text-2xl text-[#111111] animate-spin" />
+                        <span className="text-xs font-semibold text-[#55534E] animate-pulse">Processing...</span>
                       </div>
                     )}
                     
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-150 p-4 flex flex-col justify-end pointer-events-none">
-                      <p className="text-white text-xs font-semibold leading-snug line-clamp-3 mb-2">{item.prompt}</p>
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200 p-4 flex flex-col justify-end pointer-events-none">
+                      <p className="text-white text-sm font-medium leading-snug line-clamp-3 mb-2">{item.prompt}</p>
                       <div className="flex items-center justify-between">
-                        <span className="text-[10px] font-medium text-slate-300 uppercase">
+                        <span className="text-xs font-semibold text-slate-200 uppercase tracking-wider">
                           {item.aspectRatio || "9:16"}
                         </span>
-                        <div className="w-8 h-8 rounded-full glass-panel flex items-center justify-center text-white bg-black/60 backdrop-blur-md">
-                          <FiMaximize2 size={14} />
+                        <div className="w-9 h-9 rounded-full bg-white/90 flex items-center justify-center text-[#111111] shadow-sm">
+                          <FiMaximize2 size={15} />
                         </div>
                       </div>
                     </div>
@@ -846,64 +611,9 @@ function HomeContent() {
 
       </div>
 
-      {/* MODALS */}
+      {/* WISPR FLOW MODALS */}
 
-      {/* 1. Model Selection Modal */}
-      <AnimatePresence>
-        {isModelsModalOpen && (
-          <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4">
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.12 }}
-              onClick={() => setIsModelsModalOpen(false)}
-              className="absolute inset-0 bg-black/75 backdrop-blur-xl"
-            />
-            <motion.div
-              initial={{ opacity: 0, scale: 0.96 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.96 }}
-              transition={{ duration: 0.12 }}
-              className="relative w-full max-w-4xl h-[70vh] glass-panel p-6 shadow-2xl flex flex-col overflow-hidden text-white border border-white/10 bg-[#0d0d12]/90 z-10"
-            >
-              <div className="pb-4 border-b glass-divider flex items-center justify-between">
-                <h3 className="text-sm font-bold text-white tracking-wide">Select an AI model</h3>
-                <button
-                  onClick={() => setIsModelsModalOpen(false)}
-                  className="p-1.5 text-slate-400 hover:text-white transition-colors cursor-pointer rounded-lg hover:bg-white/10"
-                >
-                  <FiX size={18} />
-                </button>
-              </div>
-
-              <div className="flex-1 py-5 overflow-y-auto scrollbar-subtle">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {MODELS.map((model) => (
-                    <div
-                      key={model.id}
-                      onClick={() => {
-                        setSelectedModel(model);
-                        setIsModelsModalOpen(false);
-                      }}
-                      className={`glass-card p-4 cursor-pointer space-y-3 flex flex-col justify-between transition-all duration-150 active:scale-[0.98] border border-white/10 ${selectedModel.id === model.id ? "border-[#0070f3] bg-[#0070f3]/20 shadow-[0_4px_20px_rgba(0,112,243,0.3)]" : "hover:border-white/20"}`}
-                    >
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs font-bold text-white">{model.name}</span>
-                        </div>
-                        <p className="text-xs text-slate-400 leading-relaxed">{model.description}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
-      {/* 2. Avatars Modal */}
+      {/* 1. Avatars Modal */}
       <AnimatePresence>
         {isAvatarsModalOpen && (
           <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4">
@@ -911,27 +621,25 @@ function HomeContent() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              transition={{ duration: 0.12 }}
               onClick={() => setIsAvatarsModalOpen(false)}
-              className="absolute inset-0 bg-black/75 backdrop-blur-xl"
+              className="absolute inset-0 bg-[#111111]/40 backdrop-blur-md"
             />
             <motion.div
               initial={{ opacity: 0, scale: 0.96 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.96 }}
-              transition={{ duration: 0.12 }}
-              className="relative w-full max-w-3xl h-[75vh] glass-panel p-6 shadow-2xl flex flex-col overflow-hidden text-white border border-white/10 bg-[#0d0d12]/90 z-10"
+              className="relative w-full max-w-3xl h-[75vh] bg-[#FAF8ED] rounded-3xl p-6 sm:p-8 shadow-2xl flex flex-col overflow-hidden text-[#111111] border border-[#111111]/20 z-10"
             >
-              <div className="pb-4 border-b glass-divider flex items-center justify-between">
+              <div className="pb-4 border-b border-[#111111]/10 flex items-center justify-between">
                 <div>
-                  <h3 className="text-sm font-bold text-white tracking-wide">Select Avatar</h3>
-                  <p className="text-xs text-slate-400">Select from our curated avatars</p>
+                  <h3 className="text-xl font-serif font-bold text-[#111111]">Select AI Avatar</h3>
+                  <p className="text-sm text-[#55534E] mt-0.5">Select from our curated realistic avatars</p>
                 </div>
                 <button
                   onClick={() => setIsAvatarsModalOpen(false)}
-                  className="p-1.5 text-slate-400 hover:text-white transition-colors cursor-pointer rounded-lg hover:bg-white/10"
+                  className="p-2 text-[#55534E] hover:text-[#111111] transition-colors cursor-pointer rounded-full hover:bg-black/5"
                 >
-                  <FiX size={18} />
+                  <FiX size={20} />
                 </button>
               </div>
 
@@ -943,18 +651,18 @@ function HomeContent() {
                       <div
                         key={avatar.id}
                         onClick={() => handleSelectAvatar(avatar)}
-                        className={`glass-card aspect-[3/4] overflow-hidden cursor-pointer relative group flex flex-col justify-between p-3 transition-all duration-150 active:scale-[0.98] border border-white/10 ${isSelected ? "border-[#0070f3] ring-2 ring-[#0070f3]/50" : ""}`}
+                        className={`bg-white aspect-[3/4] overflow-hidden cursor-pointer relative group flex flex-col justify-between p-3 rounded-2xl border border-[#111111]/15 transition-all duration-150 active:scale-[0.98] ${isSelected ? "border-[#111111] ring-2 ring-[#111111]" : "hover:border-[#111111]/30"}`}
                       >
-                        <img src={avatar.image} className="absolute inset-0 w-full h-full object-cover" />
+                        <img src={avatar.image} className="absolute inset-0 w-full h-full object-cover rounded-xl" />
                         <div className="relative z-10 flex justify-end">
                           {isSelected && (
-                            <span className="w-5 h-5 rounded-full bg-[#0070f3] text-white flex items-center justify-center text-[10px] shadow">
-                              <FiCheck />
+                            <span className="w-6 h-6 rounded-full bg-[#064E3B] text-white flex items-center justify-center text-xs shadow">
+                              <FiCheck size={14} />
                             </span>
                           )}
                         </div>
-                        <div className="relative z-10 glass-panel p-1.5 text-center rounded-xl bg-black/70 backdrop-blur-md border border-white/10">
-                          <span className="text-xs font-semibold text-white">{avatar.name}</span>
+                        <div className="relative z-10 p-2 text-center rounded-xl bg-white/95 backdrop-blur-md border border-[#111111]/15">
+                          <span className="text-sm font-semibold text-[#111111]">{avatar.name}</span>
                         </div>
                       </div>
                     );
@@ -966,97 +674,7 @@ function HomeContent() {
         )}
       </AnimatePresence>
 
-      {/* 3. Presets Modal */}
-      <AnimatePresence>
-        {isPresetsModalOpen && (
-          <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4">
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.12 }}
-              onClick={() => setIsPresetsModalOpen(false)}
-              className="absolute inset-0 bg-black/75 backdrop-blur-xl"
-            />
-            <motion.div
-              initial={{ opacity: 0, scale: 0.96 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.96 }}
-              transition={{ duration: 0.12 }}
-              className="relative w-full max-w-4xl h-[80vh] glass-panel p-6 shadow-2xl flex flex-col overflow-hidden text-white border border-white/10 bg-[#0d0d12]/90 z-10"
-            >
-              <div className="pb-4 border-b glass-divider flex items-center justify-between">
-                <h3 className="text-sm font-bold text-white tracking-wide">Presets</h3>
-                <button
-                  onClick={() => setIsPresetsModalOpen(false)}
-                  className="p-1.5 text-slate-400 hover:text-white transition-colors cursor-pointer rounded-lg hover:bg-white/10"
-                >
-                  <FiX size={18} />
-                </button>
-              </div>
-
-              {/* Search & Filter Controls */}
-              <div className="py-3 space-y-3">
-                <div className="glass-control h-11 flex items-center px-4 gap-3 bg-[#121217] border border-white/10">
-                  <FiSearch size={16} className="text-slate-400" />
-                  <input
-                    type="text"
-                    value={presetSearchQuery}
-                    onChange={(e) => setPresetSearchQuery(e.target.value)}
-                    placeholder="Search presets..."
-                    className="w-full bg-transparent border-none outline-none text-xs text-white placeholder-slate-400"
-                  />
-                </div>
-
-                <div className="flex gap-2 overflow-x-auto scrollbar-subtle pb-1">
-                  {categoriesList.map((cat) => (
-                    <button
-                      key={cat}
-                      onClick={() => setPresetCategoryFilter(cat)}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
-                        presetCategoryFilter === cat 
-                          ? "bg-[#0070f3] text-white shadow-sm border border-white/20" 
-                          : "glass-chip-blue"
-                      }`}
-                    >
-                      {cat}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Presets Grid */}
-              <div className="flex-1 py-3 overflow-y-auto scrollbar-subtle">
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {filteredPresets.map((preset) => (
-                    <div
-                      key={preset.id}
-                      onClick={() => handleSelectPreset(preset)}
-                      className="glass-card glass-card-hover p-4 cursor-pointer flex flex-col justify-between space-y-3 transition-all duration-150 active:scale-[0.98] border border-white/10"
-                    >
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between">
-                          <span className="text-[11px] font-semibold text-[#38bdf8] uppercase tracking-wider">Preset #{preset.code}</span>
-                          <span className="glass-chip-blue px-2 py-0.5 text-[10px]">{preset.tag}</span>
-                        </div>
-                        <h4 className="text-xs font-bold text-white">{preset.name}</h4>
-                        <p className="text-xs text-slate-400 leading-relaxed line-clamp-2">{preset.bestFor}</p>
-                      </div>
-
-                      <div className="flex items-center justify-between border-t glass-divider pt-2 text-xs text-slate-400">
-                        <span>{preset.defaultAspect} • {preset.defaultDuration}s</span>
-                        <span className="text-[#38bdf8] font-semibold">Select →</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
-      {/* 4. Pricing Upgrade Modal */}
+      {/* 2. Pricing Upgrade Modal */}
       <AnimatePresence>
         {isPricingModalOpen && (
           <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4">
@@ -1064,54 +682,52 @@ function HomeContent() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              transition={{ duration: 0.12 }}
               onClick={() => setIsPricingModalOpen(false)}
-              className="absolute inset-0 bg-black/75 backdrop-blur-xl"
+              className="absolute inset-0 bg-[#111111]/40 backdrop-blur-md"
             />
             <motion.div
               initial={{ opacity: 0, scale: 0.96 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.96 }}
-              transition={{ duration: 0.12 }}
-              className="relative w-full max-w-4xl h-[70vh] glass-panel p-6 shadow-2xl flex flex-col overflow-hidden text-white border border-white/10 bg-[#0d0d12]/90 z-10"
+              className="relative w-full max-w-4xl h-[75vh] bg-[#FAF8ED] rounded-3xl p-6 sm:p-8 shadow-2xl flex flex-col overflow-hidden text-[#111111] border border-[#111111]/20 z-10"
             >
-              <div className="pb-4 border-b glass-divider flex items-center justify-between">
+              <div className="pb-4 border-b border-[#111111]/10 flex items-center justify-between">
                 <div>
-                  <h3 className="text-sm font-bold text-white tracking-wide">Upgrade Plan</h3>
-                  <p className="text-xs text-slate-400">Top up balance to generate videos.</p>
+                  <h3 className="text-xl sm:text-2xl font-serif font-bold text-[#111111]">Upgrade Plan</h3>
+                  <p className="text-sm text-[#55534E] mt-0.5">Top up balance to generate high-fidelity videos.</p>
                 </div>
                 <button
                   onClick={() => setIsPricingModalOpen(false)}
-                  className="p-1.5 text-slate-400 hover:text-white transition-colors cursor-pointer rounded-lg hover:bg-white/10"
+                  className="p-2 text-[#55534E] hover:text-[#111111] transition-colors cursor-pointer rounded-full hover:bg-black/5"
                 >
-                  <FiX size={18} />
+                  <FiX size={20} />
                 </button>
               </div>
 
-              <div className="flex-1 py-5 overflow-y-auto scrollbar-subtle flex items-center">
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 w-full">
+              <div className="flex-1 py-6 overflow-y-auto scrollbar-subtle flex items-center">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-5 w-full">
                   {PRICING_PLANS.map((plan) => (
                     <div
                       key={plan.id}
-                      className={`glass-card p-5 flex flex-col justify-between gap-4 relative border border-white/10 ${plan.popular ? "border-[#0070f3] shadow-lg shadow-[#0070f3]/20" : ""}`}
+                      className={`bg-white p-5 sm:p-6 rounded-2xl md:rounded-3xl flex flex-col justify-between gap-4 relative border border-[#111111]/15 ${plan.popular ? "border-[#111111] ring-2 ring-[#111111]/20 shadow-md" : ""}`}
                     >
                       {plan.popular && (
-                        <span className="glass-chip-blue absolute -top-3 left-1/2 -translate-x-1/2 px-2.5 py-0.5 text-[10px]">
+                        <span className="bg-[#064E3B] text-white absolute -top-3 left-1/2 -translate-x-1/2 px-3.5 py-0.5 rounded-full text-xs font-semibold shadow-sm">
                           Popular
                         </span>
                       )}
 
                       <div className="space-y-3">
                         <div>
-                          <h4 className="text-xs font-semibold uppercase text-slate-400">{plan.name}</h4>
-                          <p className="text-2xl font-bold text-white mt-1">{plan.price}</p>
+                          <h4 className="text-xs font-bold uppercase tracking-wider text-[#77746D]">{plan.name}</h4>
+                          <p className="text-3xl font-serif font-bold text-[#111111] mt-1">{plan.price}</p>
                         </div>
                         
-                        <div className="glass-chip-blue py-1.5 text-center text-xs font-semibold">
+                        <div className="bg-[#E6D9FF] text-[#111111] py-1.5 text-center text-xs font-semibold rounded-full border border-[#111111]/20">
                           {plan.credits} Credits
                         </div>
 
-                        <p className="text-xs text-slate-400 leading-relaxed min-h-[2.5rem]">
+                        <p className="text-xs sm:text-sm text-[#55534E] leading-relaxed min-h-[2.5rem]">
                           {plan.description}
                         </p>
                       </div>
@@ -1119,7 +735,7 @@ function HomeContent() {
                       <button
                         onClick={() => handleCheckoutPlan(plan.id)}
                         disabled={loadingCheckoutPlan !== null}
-                        className={`w-full py-2 rounded-xl text-xs font-semibold cursor-pointer transition-transform active:scale-95 ${plan.popular ? "glass-btn-primary" : "glass-btn-secondary"}`}
+                        className={`w-full py-3 rounded-full text-sm font-semibold cursor-pointer transition-transform active:scale-95 ${plan.popular ? "bg-[#E6D9FF] text-[#111111] border border-[#111111] hover:bg-[#DBCBFF]" : "bg-[#FAF8ED] text-[#111111] border border-[#111111]/20 hover:bg-[#EFECE1]"}`}
                       >
                         {loadingCheckoutPlan === plan.id ? "Loading..." : "Purchase"}
                       </button>
@@ -1132,7 +748,7 @@ function HomeContent() {
         )}
       </AnimatePresence>
 
-      {/* 5. Creation Detail View Modal */}
+      {/* 3. Creation Detail View Modal */}
       <AnimatePresence>
         {selectedCreation && (
           <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4">
@@ -1140,28 +756,26 @@ function HomeContent() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              transition={{ duration: 0.12 }}
               onClick={() => setSelectedCreation(null)}
-              className="absolute inset-0 bg-black/75 backdrop-blur-xl"
+              className="absolute inset-0 bg-[#111111]/40 backdrop-blur-md"
             />
             <motion.div
               initial={{ opacity: 0, scale: 0.96 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.96 }}
-              transition={{ duration: 0.12 }}
-              className="relative w-full max-w-lg glass-panel p-6 shadow-2xl overflow-hidden flex flex-col justify-between text-white border border-white/10 bg-[#0d0d12]/90 z-10"
+              className="relative w-full max-w-lg bg-white rounded-3xl p-6 shadow-2xl overflow-hidden flex flex-col justify-between text-[#111111] border border-[#111111]/20 z-10"
             >
-              <div className="pb-3 border-b glass-divider flex items-center justify-between">
-                <span className="text-xs font-semibold uppercase text-slate-400">Creation Detail</span>
+              <div className="pb-3 border-b border-[#111111]/10 flex items-center justify-between">
+                <span className="text-xs font-bold uppercase tracking-wider text-[#77746D]">Creation Detail</span>
                 <button
                   onClick={() => setSelectedCreation(null)}
-                  className="p-1.5 text-slate-400 hover:text-white transition-colors cursor-pointer rounded-lg hover:bg-white/10"
+                  className="p-1.5 text-[#55534E] hover:text-[#111111] transition-colors cursor-pointer rounded-full hover:bg-[#EFECE1]"
                 >
-                  <FiX size={18} />
+                  <FiX size={20} />
                 </button>
               </div>
 
-              <div className="w-full aspect-[9/16] max-h-[55vh] my-4 glass-card overflow-hidden flex items-center justify-center relative border border-white/10">
+              <div className="w-full aspect-[9/16] max-h-[55vh] my-4 bg-black rounded-2xl overflow-hidden flex items-center justify-center relative border border-[#111111]/20">
                 {selectedCreation.status === "completed" && selectedCreation.url ? (
                   <video
                     key={selectedCreation.url}
@@ -1173,31 +787,25 @@ function HomeContent() {
                   >
                     <source src={selectedCreation.url} type="video/mp4" />
                   </video>
-                ) : selectedCreation.status === "failed" ? (
-                  <div className="text-center space-y-2 p-6">
-                    <FiAlertCircle size={32} className="text-red-400 mx-auto" />
-                    <p className="text-xs font-bold text-red-400">Generation Failed</p>
-                    <p className="text-xs text-slate-400">{selectedCreation.error || "An error occurred."}</p>
-                  </div>
                 ) : (
-                  <div className="text-center space-y-3 p-6">
-                    <FiClock size={32} className="text-[#38bdf8] mx-auto animate-spin" />
-                    <p className="text-xs font-bold text-[#38bdf8]">Processing</p>
+                  <div className="text-center space-y-2 p-6 text-white">
+                    <FiClock size={32} className="mx-auto animate-spin" />
+                    <p className="text-sm font-bold">Processing Video</p>
                   </div>
                 )}
               </div>
 
-              <div className="space-y-3 border-t glass-divider pt-3">
-                <p className="text-xs font-semibold text-white line-clamp-2">"{selectedCreation.prompt}"</p>
-                <div className="flex items-center justify-between text-xs text-slate-400">
+              <div className="space-y-3 border-t border-[#111111]/10 pt-3">
+                <p className="text-sm sm:text-base font-serif text-[#111111] line-clamp-2">"{selectedCreation.prompt}"</p>
+                <div className="flex items-center justify-between text-xs sm:text-sm text-[#55534E]">
                   <span>Model: {selectedCreation.modelId || "Generic"}</span>
                   {selectedCreation.status === "completed" && selectedCreation.url && (
                     <a
                       href={`/api/creations/${selectedCreation.id}/download`}
                       download={`lembda-${selectedCreation.id}.mp4`}
-                      className="text-[#38bdf8] font-semibold flex items-center gap-1 hover:underline"
+                      className="text-[#111111] font-semibold flex items-center gap-1 hover:underline"
                     >
-                      <FiDownload size={14} />
+                      <FiDownload size={15} />
                       <span>Download</span>
                     </a>
                   )}
@@ -1208,28 +816,28 @@ function HomeContent() {
         )}
       </AnimatePresence>
 
-      {/* EXPLORE VIDEO DETAIL MODAL (Clean minimal popup) */}
+      {/* 4. EXPLORE VIDEO DETAIL MODAL */}
       <AnimatePresence>
         {selectedExploreVideo && (
           <div 
             onClick={() => setSelectedExploreVideo(null)}
-            className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-black/85 backdrop-blur-xl"
+            className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-[#111111]/60 backdrop-blur-md"
           >
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
               onClick={(e) => e.stopPropagation()}
-              className="relative p-2 flex flex-col items-center justify-center max-h-[92vh] overflow-hidden rounded-[24px]"
+              className="relative p-3 flex flex-col items-center justify-center max-h-[92vh] overflow-hidden rounded-3xl bg-[#FAF8ED] border border-[#111111]/20 shadow-2xl"
             >
               <button
                 onClick={() => setSelectedExploreVideo(null)}
-                className="absolute top-4 right-4 z-20 w-9 h-9 rounded-full bg-black/70 hover:bg-black/90 text-white border border-white/20 flex items-center justify-center cursor-pointer transition-all duration-150 shadow-lg"
+                className="absolute top-5 right-5 z-20 w-10 h-10 rounded-full bg-black/70 hover:bg-black/90 text-white border border-white/20 flex items-center justify-center cursor-pointer transition-all shadow-lg"
               >
-                <FiX size={18} />
+                <FiX size={20} />
               </button>
 
-              <div className="relative aspect-[9/16] h-[82vh] max-w-sm mx-auto rounded-[20px] overflow-hidden bg-black shadow-2xl border border-white/10 flex items-center justify-center">
+              <div className="relative aspect-[9/16] h-[82vh] max-w-sm mx-auto rounded-2xl overflow-hidden bg-black shadow-2xl flex items-center justify-center border border-[#111111]/20">
                 <video
                   src={selectedExploreVideo.url}
                   className="w-full h-full object-contain"
@@ -1251,8 +859,8 @@ function HomeContent() {
 export default function Home() {
   return (
     <Suspense fallback={
-      <div className="h-full w-full flex flex-col items-center justify-center gap-3 text-white">
-        <div className="w-10 h-10 border-3 border-[#0070f3] border-t-transparent rounded-full animate-spin" />
+      <div className="h-full w-full flex flex-col items-center justify-center gap-3 text-[#111111] bg-[#FAF8ED]">
+        <div className="w-10 h-10 border-3 border-[#111111] border-t-transparent rounded-full animate-spin" />
       </div>
     }>
       <HomeContent />

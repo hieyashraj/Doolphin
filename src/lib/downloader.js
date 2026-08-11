@@ -11,7 +11,10 @@ const ALLOWED_DOMAINS = [
   "d3adwkbyhxyrtq.cloudfront.net",
   "cloudfront.net",
   "assets.mixkit.co",
-  "cdn.doolphin.ai"
+  "cdn.doolphin.ai",
+  "storage.googleapis.com",
+  "replicate.delivery",
+  "pbxt.replicate.delivery"
 ];
 
 /**
@@ -76,6 +79,12 @@ export function validateSsrfTargetUrl(targetUrl) {
  * SSRF-Safe Video Downloader with Redirect Inspection & Private IP Defense
  */
 export async function downloadVideoSsrfSafe(remoteUrl, creationId) {
+  const { buffer } = await downloadMediaBufferSsrfSafe(remoteUrl);
+  const filename = `${creationId}_${Date.now()}.mp4`;
+  return saveMediaBuffer(buffer, filename, "creations");
+}
+
+export async function downloadMediaBufferSsrfSafe(remoteUrl) {
   let currentUrl = remoteUrl;
   let redirectsRemaining = 5;
 
@@ -119,9 +128,7 @@ export async function downloadVideoSsrfSafe(remoteUrl, creationId) {
       throw new Error("MEDIA_DOWNLOAD_FAILED: Downloaded file payload too small to be valid media");
     }
 
-    const filename = `${creationId}_${Date.now()}.mp4`;
-    const localUrl = await saveMediaBuffer(buffer, filename, "creations");
-    return localUrl;
+    return { buffer, contentType: contentType || "video/mp4", sourceUrl: currentUrl };
   }
 
   throw new Error("SSRF_VALIDATION_FAILED: Too many redirects");

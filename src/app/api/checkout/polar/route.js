@@ -13,18 +13,18 @@ export async function POST(req) {
       return NextResponse.json({ error: "Authentication required" }, { status: 401 });
     }
 
-    const { productId } = await req.json();
+    const { productId, planId, credits } = await req.json();
     const token = process.env.POLAR_ACCESS_TOKEN;
 
     if (!token || token.includes("placeholder")) {
       // Development simulated response if token not configured yet
       return NextResponse.json({
-        url: `https://sandbox.polar.sh/checkout/simulated?product=${productId || "default"}&user=${session.user.id}`,
+        url: `https://sandbox.polar.sh/checkout/simulated?product=${productId || planId || "default"}&user=${session.user.id}`,
         simulated: true,
       });
     }
 
-    const isSandbox = token.startsWith("polar_at_") && process.env.NODE_ENV !== "production";
+    const isSandbox = (token.startsWith("polar_at_") || token.includes("sandbox")) && process.env.NODE_ENV !== "production";
     const baseUrl = isSandbox ? "https://sandbox-api.polar.sh" : "https://api.polar.sh";
 
     const response = await fetch(`${baseUrl}/v1/checkouts/custom/`, {
@@ -38,6 +38,8 @@ export async function POST(req) {
         customer_email: session.user.email,
         metadata: {
           userId: session.user.id,
+          planId: planId || "",
+          credits: credits ? credits.toString() : "",
         },
         success_url: `${process.env.NEXTAUTH_URL || "http://localhost:3000"}/pricing?success=true`,
       }),

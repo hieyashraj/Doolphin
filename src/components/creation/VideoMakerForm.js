@@ -6,6 +6,8 @@ import { FiUser, FiMusic, FiPlus, FiChevronDown, FiHelpCircle } from "react-icon
 export default function VideoMakerForm({
   sceneMotion,
   setSceneMotion,
+  additionalInstructions,
+  setAdditionalInstructions,
   spokenScript,
   setSpokenScript,
   selectedModel,
@@ -27,12 +29,18 @@ export default function VideoMakerForm({
   setAudioSource,
   modelsList = []
 }) {
+  const currentInstructions = additionalInstructions !== undefined ? additionalInstructions : sceneMotion;
+  const handleInstructionChange = (val) => {
+    if (setSceneMotion) setSceneMotion(val);
+    if (setAdditionalInstructions) setAdditionalInstructions(val);
+  };
+
   return (
-    <div className="space-y-4 text-xs font-sans text-slate-200">
-      {/* Write your script * */}
+    <div className="space-y-4 font-sans text-[#111111]">
+      {/* Write your script */}
       <div className="space-y-1.5">
-        <label className="block text-xs font-semibold text-slate-300">
-          Write your script <span className="text-red-400">*</span>
+        <label className="block text-base font-semibold text-[#111111]">
+          Write your script <span className="text-red-500">*</span>
         </label>
         <div className="relative">
           <textarea
@@ -41,10 +49,10 @@ export default function VideoMakerForm({
             maxLength={300}
             rows={3}
             required
-            placeholder="Write the exact spoken script for the avatar (max 300 chars). Spoken verbatim."
-            className="w-full glass-control p-3 text-xs text-white placeholder-slate-500 focus:border-[#6366f1] focus:ring-1 focus:ring-[#6366f1] transition-all resize-none rounded-xl"
+            placeholder="Write the exact spoken script for the avatar (max 300 chars)..."
+            className="w-full bg-[#F2EFE5] focus:bg-white p-3.5 text-sm font-medium text-[#111111] placeholder-[#8C887B] border border-[#111111]/15 focus:border-[#111111] focus:outline-none focus:ring-2 focus:ring-[#111111] caret-[#111111] transition-all resize-none rounded-xl"
           />
-          <div className="absolute bottom-2 right-3 text-[10px] text-slate-500 font-mono">
+          <div className="absolute bottom-2.5 right-3 text-xs text-[#77746D] font-mono">
             {spokenScript ? spokenScript.length : 0}/300
           </div>
         </div>
@@ -52,141 +60,139 @@ export default function VideoMakerForm({
 
       {/* Describe your scene */}
       <div className="space-y-1.5">
-        <label className="block text-xs font-semibold text-slate-300">
+        <label className="block text-base font-semibold text-[#111111]">
           Describe your scene (Additional Instructions)
         </label>
         <div className="relative">
           <textarea
-            value={sceneMotion}
-            onChange={(e) => setSceneMotion(e.target.value)}
+            value={currentInstructions}
+            onChange={(e) => handleInstructionChange(e.target.value)}
             maxLength={1000}
             rows={3}
-            placeholder="Describe motion, camera angles, or delivery overrides (e.g. talking head, voiceover, B-roll)..."
-            className="w-full glass-control p-3 text-xs text-white placeholder-slate-500 focus:border-[#6366f1] focus:ring-1 focus:ring-[#6366f1] transition-all resize-none rounded-xl"
+            placeholder="Describe motion, camera angles, or delivery overrides..."
+            className="w-full bg-[#F2EFE5] focus:bg-white p-3.5 text-sm font-medium text-[#111111] placeholder-[#8C887B] border border-[#111111]/15 focus:border-[#111111] focus:outline-none focus:ring-2 focus:ring-[#111111] caret-[#111111] transition-all resize-none rounded-xl"
           />
-          <div className="absolute bottom-2 right-3 text-[10px] text-slate-500 font-mono">
-            {sceneMotion ? sceneMotion.length : 0}/1000
+          <div className="absolute bottom-2.5 right-3 text-xs text-[#77746D] font-mono">
+            {currentInstructions ? currentInstructions.length : 0}/1000
           </div>
         </div>
       </div>
 
       {/* AI Model */}
       <div className="space-y-1.5">
-        <label className="block text-xs font-semibold text-slate-300">AI model</label>
-        <div className="relative">
+        <label className="block text-base font-semibold text-[#111111]">AI model</label>
+        <div className="relative flex items-center">
           <select
             value={selectedModel?.id || "seedance-2"}
             onChange={(e) => {
               const m = modelsList.find((item) => item.id === e.target.value);
               if (m) setSelectedModel(m);
             }}
-            className="w-full glass-control px-3 py-2.5 text-xs text-white appearance-none focus:border-[#6366f1] focus:ring-1 focus:ring-[#6366f1] cursor-pointer pr-8 rounded-xl"
+            className="w-full bg-[#F2EFE5] focus:bg-white px-3.5 py-3 pr-10 text-sm font-medium text-[#111111] border border-[#111111]/15 appearance-none focus:border-[#111111] focus:outline-none focus:ring-2 focus:ring-[#111111] caret-[#111111] cursor-pointer rounded-xl transition-all"
           >
             {modelsList.map((m) => (
-              <option key={m.id} value={m.id} className="bg-[#0d0d12] text-white">
+              <option key={m.id} value={m.id} className="bg-white text-[#111111] text-sm font-medium">
                 {m.name}
               </option>
             ))}
           </select>
-          <FiChevronDown className="absolute right-3 top-3 text-slate-400 pointer-events-none" size={14} />
+          <FiChevronDown className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[#77746D] pointer-events-none" size={16} />
         </div>
       </div>
 
       {/* Duration */}
       <div className="space-y-1.5">
-        <label className="block text-xs font-semibold text-slate-300">Duration</label>
-        <div className="relative">
+        <label className="block text-base font-semibold text-[#111111]">Duration</label>
+        <div className="relative flex items-center">
           <select
             value={duration}
             onChange={(e) => setDuration(e.target.value)}
-            className="w-full glass-control px-3 py-2.5 text-xs text-white appearance-none focus:border-[#6366f1] focus:ring-1 focus:ring-[#6366f1] cursor-pointer pr-8 rounded-xl"
+            className="w-full bg-[#F2EFE5] focus:bg-white px-3.5 py-3 pr-10 text-sm font-medium text-[#111111] border border-[#111111]/15 appearance-none focus:border-[#111111] focus:outline-none focus:ring-2 focus:ring-[#111111] caret-[#111111] cursor-pointer rounded-xl transition-all"
           >
-            <option value="Auto" className="bg-[#0d0d12]">Auto</option>
-            <option value="5" className="bg-[#0d0d12]">5s</option>
-            <option value="8" className="bg-[#0d0d12]">8s</option>
-            <option value="12" className="bg-[#0d0d12]">12s</option>
-            <option value="15" className="bg-[#0d0d12]">15s</option>
+            <option value="Auto" className="bg-white text-[#111111]">Auto</option>
+            <option value="5" className="bg-white text-[#111111]">5s</option>
+            <option value="8" className="bg-white text-[#111111]">8s</option>
+            <option value="12" className="bg-white text-[#111111]">12s</option>
+            <option value="15" className="bg-white text-[#111111]">15s</option>
           </select>
-          <FiChevronDown className="absolute right-3 top-3 text-slate-400 pointer-events-none" size={14} />
+          <FiChevronDown className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[#77746D] pointer-events-none" size={16} />
         </div>
+        <p className="text-xs text-[#77746D] leading-relaxed">
+          Auto lets preflight resolve the final length from your script, scene notes, and attached assets.
+        </p>
       </div>
 
       {/* Resolution */}
       <div className="space-y-1.5">
-        <label className="block text-xs font-semibold text-slate-300">Resolution</label>
-        <div className="relative">
+        <label className="block text-base font-semibold text-[#111111]">Resolution</label>
+        <div className="relative flex items-center">
           <select
             value={resolution}
             onChange={(e) => setResolution(e.target.value)}
-            className="w-full glass-control px-3 py-2.5 text-xs text-white appearance-none focus:border-[#6366f1] focus:ring-1 focus:ring-[#6366f1] cursor-pointer pr-8 rounded-xl"
+            className="w-full bg-[#F2EFE5] focus:bg-white px-3.5 py-3 pr-10 text-sm font-medium text-[#111111] border border-[#111111]/15 appearance-none focus:border-[#111111] focus:outline-none focus:ring-2 focus:ring-[#111111] caret-[#111111] cursor-pointer rounded-xl transition-all"
           >
-            <option value="480p" className="bg-[#0d0d12]">480p</option>
-            <option value="720p" className="bg-[#0d0d12]">720p</option>
-            <option value="1080p" className="bg-[#0d0d12]">1080p</option>
-            <option value="4k" className="bg-[#0d0d12]">4k</option>
+            {(selectedModel?.resolutions || ["720p"]).map((value) => <option key={value} value={value} className="bg-white text-[#111111]">{value}</option>)}
           </select>
-          <FiChevronDown className="absolute right-3 top-3 text-slate-400 pointer-events-none" size={14} />
+          <FiChevronDown className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[#77746D] pointer-events-none" size={16} />
         </div>
       </div>
 
       {/* Aspect Ratio */}
       <div className="space-y-1.5">
-        <label className="block text-xs font-semibold text-slate-300">Aspect Ratio</label>
-        <div className="relative">
+        <label className="block text-base font-semibold text-[#111111]">Aspect Ratio</label>
+        <div className="relative flex items-center">
           <select
             value={aspectRatio}
             onChange={(e) => setAspectRatio(e.target.value)}
-            className="w-full glass-control px-3 py-2.5 text-xs text-white appearance-none focus:border-[#6366f1] focus:ring-1 focus:ring-[#6366f1] cursor-pointer pr-8 rounded-xl"
+            className="w-full bg-[#F2EFE5] focus:bg-white px-3.5 py-3 pr-10 text-sm font-medium text-[#111111] border border-[#111111]/15 appearance-none focus:border-[#111111] focus:outline-none focus:ring-2 focus:ring-[#111111] caret-[#111111] cursor-pointer rounded-xl transition-all"
           >
-            <option value="Auto" className="bg-[#0d0d12]">Auto</option>
-            <option value="9:16" className="bg-[#0d0d12]">9:16 (Portrait)</option>
-            <option value="16:9" className="bg-[#0d0d12]">16:9 (Landscape)</option>
-            <option value="1:1" className="bg-[#0d0d12]">1:1 (Square)</option>
+            <option value="Auto" className="bg-white text-[#111111]">Auto</option>
+            {(selectedModel?.aspectRatios || ["9:16"]).map((value) => <option key={value} value={value} className="bg-white text-[#111111]">{value}</option>)}
           </select>
-          <FiChevronDown className="absolute right-3 top-3 text-slate-400 pointer-events-none" size={14} />
+          <FiChevronDown className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[#77746D] pointer-events-none" size={16} />
         </div>
       </div>
 
       {/* Number of videos stepper */}
       <div className="space-y-1.5">
-        <label className="block text-xs font-semibold text-slate-300">Number of videos</label>
-        <div className="flex items-center gap-2 glass-control p-1 w-28 rounded-xl border border-white/10">
+        <label className="block text-base font-semibold text-[#111111]">Number of videos</label>
+        <div className="flex items-center gap-2 bg-[#F2EFE5] p-1.5 w-32 rounded-2xl border border-[#111111]/15">
           <button
             type="button"
             onClick={() => setNumVideos(Math.max(1, numVideos - 1))}
-            className="w-8 h-8 rounded-lg bg-white/5 hover:bg-white/10 text-white flex items-center justify-center font-bold transition-colors cursor-pointer"
+            className="w-9 h-9 rounded-full bg-white text-[#111111] flex items-center justify-center font-bold text-base border border-[#111111]/20 hover:bg-[#F2EFE5] active:scale-95 transition-all shadow-sm cursor-pointer"
           >
             -
           </button>
-          <span className="flex-1 text-center font-semibold text-white text-xs">{numVideos}</span>
+          <span className="flex-1 text-center font-bold text-[#111111] text-sm">{numVideos}</span>
           <button
             type="button"
-            onClick={() => setNumVideos(Math.min(4, numVideos + 1))}
-            className="w-8 h-8 rounded-lg bg-white/5 hover:bg-white/10 text-white flex items-center justify-center font-bold transition-colors cursor-pointer"
+            onClick={() => setNumVideos(Math.min(2, numVideos + 1))}
+            className="w-9 h-9 rounded-full bg-white text-[#111111] flex items-center justify-center font-bold text-base border border-[#111111]/20 hover:bg-[#F2EFE5] active:scale-95 transition-all shadow-sm cursor-pointer"
           >
             +
           </button>
         </div>
       </div>
 
-      {/* Choose an actor */}
+      {/* Choose an avatar */}
       <div className="space-y-1.5">
-        <label className="block text-xs font-semibold text-slate-300">Choose an actor</label>
+        <label className="block text-base font-semibold text-[#111111]">Choose an avatar</label>
         <button
           type="button"
           onClick={onOpenActorModal}
-          className="w-full glass-control p-3 text-left flex items-center justify-between text-xs text-slate-400 hover:border-white/20 transition-all cursor-pointer rounded-xl"
+          className="w-full bg-[#F2EFE5] hover:bg-[#EAE6D8] focus:bg-white p-3.5 text-left flex items-center justify-between text-sm text-[#55534E] hover:border-[#111111]/30 transition-all cursor-pointer rounded-xl border border-[#111111]/15 focus:outline-none focus:ring-2 focus:ring-[#111111]"
         >
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2.5">
             {selectedActor ? (
               <>
-                <img src={selectedActor.image} alt={selectedActor.name} className="w-5 h-5 rounded-full object-cover border border-white/20" />
-                <span className="text-white font-medium">{selectedActor.name}</span>
+                <img src={selectedActor.image} alt={selectedActor.name} className="w-6 h-6 rounded-full object-cover border border-[#111111]/20" />
+                <span className="text-[#111111] font-semibold text-sm">{selectedActor.name}</span>
               </>
             ) : (
               <>
-                <FiUser size={14} className="text-slate-400" />
-                <span>Choose actor</span>
+                <FiUser size={16} className="text-[#77746D]" />
+                <span className="font-medium text-sm">Choose avatar</span>
               </>
             )}
           </div>
@@ -195,25 +201,25 @@ export default function VideoMakerForm({
 
       {/* References (optional) */}
       <div className="space-y-1.5">
-        <div className="flex items-center gap-1">
-          <label className="block text-xs font-semibold text-gray-300">References</label>
-          <FiHelpCircle size={12} className="text-gray-500" title="Optional reference images" />
+        <div className="flex items-center gap-1.5">
+          <label className="block text-base font-semibold text-[#111111]">References</label>
+          <FiHelpCircle size={14} className="text-[#77746D]" title="Optional reference images" />
         </div>
         <div className="flex flex-wrap gap-2">
           {uploadedImages?.map((img) => (
-            <div key={img.id} className="relative w-16 h-16 rounded-xl border border-white/10 overflow-hidden group">
+            <div key={img.id} className="relative w-16 h-16 rounded-xl border border-[#111111]/15 overflow-hidden group">
               <img src={img.preview || img.url} alt="Reference" className="w-full h-full object-cover" />
               <button
                 type="button"
                 onClick={() => onRemoveImage(img.id)}
-                className="absolute top-1 right-1 bg-black/70 text-white rounded-full w-4 h-4 flex items-center justify-center text-[10px] opacity-0 group-hover:opacity-100 transition-opacity"
+                className="absolute top-1 right-1 bg-black/70 text-white rounded-full w-4 h-4 flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-opacity"
               >
                 ✕
               </button>
             </div>
           ))}
-          <label className="w-16 h-16 rounded-xl bg-[#1c1c20] border border-dashed border-white/20 hover:border-white/40 flex items-center justify-center cursor-pointer transition-colors">
-            <FiPlus size={18} className="text-gray-400" />
+          <label className="w-16 h-16 rounded-xl bg-[#F2EFE5] border border-dashed border-[#111111]/25 hover:border-[#111111]/50 flex items-center justify-center cursor-pointer transition-colors">
+            <FiPlus size={20} className="text-[#77746D]" />
             <input type="file" accept="image/*" multiple onChange={onImageUpload} className="hidden" />
           </label>
         </div>
@@ -221,18 +227,18 @@ export default function VideoMakerForm({
 
       {/* Audio Reference (optional) */}
       <div className="space-y-1.5">
-        <label className="block text-xs font-semibold text-gray-300">Audio Reference (optional)</label>
+        <label className="block text-base font-semibold text-[#111111]">Audio Reference (optional)</label>
         <button
           type="button"
           onClick={() => {
             const val = prompt("Enter audio URL or description:");
             if (val) setAudioSource(val);
           }}
-          className="w-full bg-[#1c1c20] hover:bg-[#27272c] border border-white/10 rounded-xl p-3 text-left flex items-center justify-between text-xs text-gray-400 transition-colors cursor-pointer"
+          className="w-full bg-[#F2EFE5] hover:bg-[#EAE6D8] focus:bg-white border border-[#111111]/15 rounded-xl p-3.5 text-left flex items-center justify-between text-sm text-[#55534E] transition-colors cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#111111]"
         >
-          <div className="flex items-center gap-2">
-            <FiMusic size={14} className="text-gray-400" />
-            <span className="truncate">{audioSource || "Choose audio source"}</span>
+          <div className="flex items-center gap-2.5">
+            <FiMusic size={16} className="text-[#77746D]" />
+            <span className="truncate font-medium text-sm">{audioSource || "Choose audio source"}</span>
           </div>
         </button>
       </div>

@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
-import { getMockSession } from "@/lib/getMockSession";
+import { getServerSession } from "next-auth/next";
+import { authOptions } from "@/lib/auth";
 
-export async function GET(req) {
-  const session = await getMockSession();
-  return NextResponse.json(session);
+export async function GET() {
+  const session = await getServerSession(authOptions);
+  return NextResponse.json(session || null);
 }

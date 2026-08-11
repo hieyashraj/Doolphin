@@ -32,7 +32,9 @@ export async function POST(req) {
     if (eventType === "order.created" || eventType === "checkout.created") {
       const data = payload.data || payload;
       const userId = data.metadata?.userId || data.customer_metadata?.userId;
-      const creditsToAdd = data.amount ? Math.floor(data.amount / 100) * 10 : 100;
+      const creditsToAdd = data.metadata?.credits
+        ? parseInt(data.metadata.credits, 10)
+        : (data.amount ? Math.floor(data.amount / 100) * 10 : 100);
 
       if (userId) {
         await prisma.user.update({

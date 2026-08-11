@@ -1,4 +1,4 @@
-import { prisma } from "./prisma";
+import { prisma } from "./prisma.js";
 import { headers } from "next/headers";
 
 import { getServerSession } from "next-auth/next";
@@ -13,6 +13,9 @@ export async function getMockSession() {
   } catch (e) {
     // If NextAuth session check throws outside context, proceed to dev fallback
   }
+
+  // Public deployments must never manufacture a shared administrator session.
+  if (process.env.NODE_ENV !== "development") return null;
 
   let defaultUserId = "doolphin-default-user";
   try {
@@ -42,37 +45,21 @@ export async function getMockSession() {
           id: defaultUserId,
           name: "Doolphin Admin",
           email: "admin@doolphin.ai",
-          customApiKey: process.env.MUAPI_API_KEY || process.env.MUAPI_API_KEY_SANDBOX || "",
-          falKey: process.env.FAL_KEY || "",
-          elevenLabsKey: process.env.ELEVENLABS_API_KEY || ""
         }
       });
     } catch (createErr) {
       console.error("Failed to create default user in database:", createErr);
-      // Fallback in-memory user if DB write fails
-      user = {
-        id: defaultUserId,
-        name: "Doolphin Admin",
-        email: "admin@doolphin.ai",
-        credits: 9999,
-        customApiKey: "",
-        falKey: "",
-        elevenLabsKey: ""
-      };
+      return null;
     }
   }
   
   return {
     user: {
-      id: user.id,
-      name: user.name,
-      email: user.email,
-      credits: user.credits,
-      customApiKey: user.customApiKey || null,
-      falKey: user.falKey || null,
-      elevenLabsKey: user.elevenLabsKey || null,
-      image: null,
-      isApiKeyUser: true
+      id: user?.id || defaultUserId,
+      name: user?.name || "Doolphin Admin",
+      email: user?.email || "admin@doolphin.ai",
+      image: user?.image || null,
+      isDevelopmentSession: true
     },
     expires: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
   };

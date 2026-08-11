@@ -61,6 +61,7 @@ enum CreationStatus {
   FAILED
   CANCELLED
   TIMED_OUT
+  QUARANTINED
 }
 
 enum StageStatus {
@@ -264,9 +265,43 @@ model User {
   workspaceMembers   WorkspaceMember[]
   creations          Creation[]
   assets             CreationAsset[]
+  uploadedAssets     UploadedAsset[]
   creditTransactions CreditTransaction[]
   auditEvents        AuditEvent[]
   usageEvents        UsageEvent[]
+}
+
+model UploadedAsset {
+  id                  String                @id @default(cuid())
+  userId              String
+  storageKey          String
+  originalFileName    String
+  mimeType            String
+  fileSizeBytes       BigInt
+  checksumSha256      String
+  mediaType           MediaType
+  validationStatus    AssetValidationStatus @default(VALIDATING)
+  detectedMimeType    String?
+  width               Int?
+  height              Int?
+  durationMs          Int?
+  codec               String?
+  validationMetadata  String?
+  validatedAt         DateTime?
+  analysisStatus      String                @default("PENDING")
+  analysisRevision    String?
+  analysisJson        String?
+  providerRequestId   String?
+  analysisConfirmedAt DateTime?
+  analysisWorkspaceId  String?
+  analysisCreditsCharged Int                   @default(0)
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+
+  user                User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, checksumSha256])
+  @@index([userId, analysisStatus])
 }
 
 // 5.2 Workspace

@@ -11,67 +11,73 @@
   --z-modal: 1010;
   --z-toast: 1100;
 
-  /* FAANG Deep AMOLED Black & Charcoal Surfaces */
-  --bg-canvas: #000000;
-  --bg-surface-0: #050507;
-  --bg-surface-1: #0d0d12;
-  --bg-surface-2: #14141c;
-  --bg-surface-3: #1c1c26;
+  /* Wispr Flow Light Warm Cream Surfaces */
+  --bg-canvas: #FAF8ED;
+  --bg-surface-0: #FAF7EC;
+  --bg-surface-1: #FFFFFF;
+  --bg-surface-2: #F2EFE5;
+  --bg-surface-3: #EBE7DA;
+
+  /* Wispr Flow Pill Stone & Accent Tokens */
+  --bg-pill-stone: #EFECE1;
+  --bg-pill-active: #FFFFFF;
+  --accent-lavender: #E6D9FF;
+  --accent-lavender-hover: #DBCBFF;
+  --accent-emerald: #064E3B;
+  --accent-emerald-text: #FFFFFF;
 
   /* Glass Surface Tokens */
-  --surface-glass-strong: rgba(14, 14, 18, 0.88);
-  --surface-glass-medium: rgba(22, 22, 28, 0.75);
-  --surface-glass-soft: rgba(30, 30, 38, 0.55);
-  --surface-hover: rgba(255, 255, 255, 0.08);
-  --surface-active: rgba(255, 255, 255, 0.14);
+  --surface-glass-strong: rgba(255, 255, 255, 0.92);
+  --surface-glass-medium: rgba(255, 255, 255, 0.85);
+  --surface-glass-soft: rgba(250, 248, 237, 0.75);
+  --surface-hover: rgba(17, 17, 17, 0.04);
+  --surface-active: rgba(17, 17, 17, 0.08);
 
   /* Border & Divider System */
-  --border-glass: rgba(255, 255, 255, 0.12);
-  --border-subtle: rgba(255, 255, 255, 0.07);
-  --border-focus: rgba(99, 102, 241, 0.5);
-  --divider: rgba(255, 255, 255, 0.09);
+  --border-glass: rgba(17, 17, 17, 0.15);
+  --border-subtle: rgba(17, 17, 17, 0.1);
+  --border-dark: #111111;
+  --border-focus: #111111;
+  --divider: rgba(17, 17, 17, 0.12);
 
-  /* High Contrast Typography */
-  --text-primary: #ffffff;
-  --text-secondary: #94a3b8;
-  --text-tertiary: #64748b;
-  --text-muted: #475569;
-  --text-disabled: rgba(148, 163, 184, 0.35);
-  --text-inverse: #000000;
+  /* High Contrast WCAG AAA Typography */
+  --text-primary: #111111;
+  --text-secondary: #44423D;
+  --text-tertiary: #66635C;
+  --text-muted: #8C887B;
+  --text-disabled: rgba(17, 17, 17, 0.35);
+  --text-inverse: #FFFFFF;
 
-  /* FAANG Vibrant Accent Palette (Brand Matched) */
-  --primary: 239 84% 67%;
-  --accent-primary: #6366f1;
-  --accent-primary-hover: #4f46e5;
-  --accent-primary-soft: rgba(99, 102, 241, 0.15);
+  /* Accent Palette */
+  --primary: 260 100% 92%;
+  --accent-primary: #E6D9FF;
+  --accent-primary-hover: #DBCBFF;
+  --accent-primary-soft: rgba(230, 217, 255, 0.4);
 
-  --accent-success: #10b981;
-  --accent-success-soft: rgba(16, 185, 129, 0.15);
-  --accent-danger: #ef4444;
-  --accent-danger-soft: rgba(239, 68, 68, 0.15);
-  --accent-warning: #f59e0b;
-  --accent-warning-soft: rgba(245, 158, 11, 0.15);
-  --accent-purple: #8b5cf6;
+  --accent-success: #064E3B;
+  --accent-success-soft: rgba(6, 78, 59, 0.12);
+  --accent-danger: #B91C1C;
+  --accent-danger-soft: rgba(185, 28, 28, 0.12);
+  --accent-warning: #B45309;
+  --accent-warning-soft: rgba(180, 83, 9, 0.12);
 
   /* Radius Tokens */
-  --radius-xs: 6px;
-  --radius-sm: 10px;
-  --radius-md: 16px;
-  --radius-lg: 22px;
-  --radius-xl: 28px;
+  --radius-xs: 8px;
+  --radius-sm: 12px;
+  --radius-md: 18px;
+  --radius-lg: 24px;
+  --radius-xl: 32px;
   --radius-round: 9999px;
 
   /* Shadows for Depth */
-  --shadow-sm: 0 4px 14px rgba(0, 0, 0, 0.6);
-  --shadow-md: 0 8px 30px rgba(0, 0, 0, 0.8);
-  --shadow-lg: 0 16px 50px rgba(0, 0, 0, 0.95);
-  --shadow-glow: 0 0 24px rgba(99, 102, 241, 0.35);
+  --shadow-sm: 0 2px 10px rgba(17, 17, 17, 0.04);
+  --shadow-md: 0 6px 24px rgba(17, 17, 17, 0.06);
+  --shadow-lg: 0 12px 40px rgba(17, 17, 17, 0.09);
+  --shadow-pill: 0 2px 6px rgba(17, 17, 17, 0.08);
 
-  --inner-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.08);
-
-  --blur-sm: 12px;
-  --blur-md: 20px;
-  --blur-lg: 32px;
+  --blur-sm: 10px;
+  --blur-md: 18px;
+  --blur-lg: 28px;
 }
 
 html, body {
@@ -79,168 +85,102 @@ html, body {
   margin: 0;
   padding: 0;
   color: var(--text-primary);
-  font-family: Inter, -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+  font-family: 'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   background-color: var(--bg-canvas);
   overflow: hidden;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Base Atmospheric Canvas Background */
-.liquid-canvas {
-  position: relative;
-  width: 100%;
-  height: 100%;
-  background:
-    radial-gradient(circle at 0% 0%, rgba(99, 102, 241, 0.05), transparent 40%),
-    radial-gradient(circle at 100% 100%, rgba(168, 85, 247, 0.03), transparent 40%),
-    linear-gradient(135deg, #000000 0%, #050507 50%, #0d0d12 100%) !important;
-  overflow: hidden;
+/* Custom Display Serif Font Helper */
+.font-serif {
+  font-family: 'Instrument Serif', 'Playfair Display', Georgia, serif !important;
 }
 
-/* Primary Glass Panel Component */
-.glass-panel {
-  position: relative;
-  background: var(--surface-glass-strong);
-  border: 1px solid var(--border-glass);
-  border-radius: var(--radius-lg);
-  backdrop-filter: blur(24px) saturate(140%);
-  -webkit-backdrop-filter: blur(24px) saturate(140%);
-  box-shadow: var(--shadow-md), var(--inner-highlight);
+.italic-accent {
+  font-family: 'Instrument Serif', 'Playfair Display', Georgia, serif !important;
+  font-style: italic !important;
 }
 
-/* Elevated Glass Card */
-.glass-card {
-  position: relative;
-  background: var(--surface-glass-medium);
-  border: 1px solid var(--border-glass);
-  border-radius: var(--radius-lg);
-  backdrop-filter: blur(20px) saturate(130%);
-  -webkit-backdrop-filter: blur(20px) saturate(130%);
-  box-shadow: var(--shadow-sm), var(--inner-highlight);
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+/* Global Typography Scale */
+.text-display-lg {
+  font-size: 2.75rem; /* 44px */
+  line-height: 1.15;
+  letter-spacing: -0.025em;
 }
 
-.glass-card-hover:hover {
-  background: var(--surface-hover);
-  border-color: rgba(255, 255, 255, 0.2);
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-md);
+.text-display {
+  font-size: 2.25rem; /* 36px */
+  line-height: 1.2;
+  letter-spacing: -0.02em;
 }
 
-/* Embedded Control Field */
-.glass-control {
-  background: var(--bg-surface-2);
-  border: 1px solid var(--border-glass);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border-radius: var(--radius-md);
-  box-shadow: var(--inner-highlight);
-  transition: all 0.18s ease;
-  color: var(--text-primary);
+.text-h1 {
+  font-size: 1.75rem; /* 28px */
+  line-height: 1.25;
+  letter-spacing: -0.015em;
 }
 
-.glass-control:focus-within, .glass-control:focus {
-  background: var(--bg-surface-3);
-  border-color: var(--accent-primary);
-  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.25);
+.text-h2 {
+  font-size: 1.375rem; /* 22px */
+  line-height: 1.3;
+  letter-spacing: -0.01em;
 }
 
-/* Navigation Rail & Items */
-.glass-rail {
-  background: var(--surface-glass-strong);
-  border-right: 1px solid var(--border-glass);
-  backdrop-filter: blur(28px) saturate(130%);
-  -webkit-backdrop-filter: blur(28px) saturate(130%);
-  box-shadow: var(--shadow-lg);
+.text-h3 {
+  font-size: 1.125rem; /* 18px */
+  line-height: 1.4;
 }
 
-.glass-nav-item {
-  color: var(--text-secondary);
-  border: 1px solid transparent;
-  border-radius: var(--radius-md);
-  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+.text-body-lg {
+  font-size: 1rem; /* 16px */
+  line-height: 1.5;
 }
 
-.glass-nav-item:hover {
-  background: var(--surface-hover);
-  color: var(--text-primary);
-  border-color: var(--border-glass);
+.text-body {
+  font-size: 0.875rem; /* 14px */
+  line-height: 1.5;
 }
 
-.glass-nav-item.active {
-  background: rgba(255, 255, 255, 0.09);
-  border: 1px solid var(--border-glass);
-  color: var(--text-primary);
-  font-weight: 600;
-  box-shadow: var(--shadow-sm), var(--inner-highlight);
+.text-body-sm {
+  font-size: 0.75rem; /* 12px */
+  line-height: 1.5;
 }
 
-/* Action Buttons */
-.glass-btn-primary {
-  background: var(--accent-primary);
-  color: #ffffff;
-  border: 1px solid rgba(255, 255, 255, 0.25);
-  border-radius: var(--radius-md);
-  font-weight: 600;
-  box-shadow: 0 8px 20px rgba(99, 102, 241, 0.35), var(--inner-highlight);
-  transition: all 0.18s ease;
+.text-caption {
+  font-size: 0.6875rem; /* 11px */
+  line-height: 1.4;
+  letter-spacing: 0.04em;
 }
 
-.glass-btn-primary:hover {
-  background: var(--accent-primary-hover);
-  transform: translateY(-1px);
-  box-shadow: 0 12px 28px rgba(99, 102, 241, 0.45);
+/* Smooth Light Theme Scrollbars */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(17, 17, 17, 0.25) transparent;
 }
 
-.glass-btn-secondary {
-  background: var(--surface-glass-strong);
-  color: var(--text-primary);
-  border: 1px solid var(--border-glass);
-  border-radius: var(--radius-md);
-  font-weight: 500;
-  backdrop-filter: blur(12px);
-  box-shadow: var(--shadow-sm);
-  transition: all 0.18s ease;
+::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
 }
 
-.glass-btn-secondary:hover {
-  background: var(--surface-hover);
-  border-color: rgba(255, 255, 255, 0.2);
-  transform: translateY(-1px);
+::-webkit-scrollbar-track {
+  background: transparent;
 }
 
-/* Micro Chips & Badges */
-.glass-chip-green {
-  color: var(--accent-success);
-  border: 1px solid rgba(16, 185, 129, 0.35);
-  background: rgba(16, 185, 129, 0.12);
-  border-radius: var(--radius-xs);
-  font-weight: 500;
+::-webkit-scrollbar-thumb {
+  background: rgba(17, 17, 17, 0.25);
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+  transition: background-color 0.2s ease;
 }
 
-.glass-chip-blue {
-  color: #38bdf8;
-  border: 1px solid rgba(56, 189, 248, 0.35);
-  background: rgba(56, 189, 248, 0.12);
-  border-radius: var(--radius-xs);
-  font-weight: 500;
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(17, 17, 17, 0.45);
+  background-clip: content-box;
 }
 
-.glass-chip-red {
-  color: var(--accent-danger);
-  border: 1px solid rgba(239, 68, 68, 0.35);
-  background: rgba(239, 68, 68, 0.12);
-  border-radius: var(--radius-xs);
-  font-weight: 500;
-}
-
-/* Subdued Dividers */
-.glass-divider {
-  border-color: var(--divider);
-}
-
-/* Custom Scrollbars */
 .scrollbar-subtle::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -251,39 +191,264 @@ html, body {
 }
 
 .scrollbar-subtle::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.15) !important;
-  border-radius: 10px;
+  background: rgba(17, 17, 17, 0.25) !important;
+  border-radius: 9999px;
 }
 
 .scrollbar-subtle::-webkit-scrollbar-thumb:hover {
-  background: var(--accent-primary) !important;
+  background: rgba(17, 17, 17, 0.5) !important;
 }
 
-/* Accessibility Fallbacks */
-@media (prefers-reduced-transparency: reduce) {
-  .glass-panel, .glass-card, .glass-control, .glass-rail {
-    backdrop-filter: none !important;
-    -webkit-backdrop-filter: none !important;
-    background: rgba(18, 18, 22, 0.98) !important;
-  }
+/* Custom Input Focus Rings & Field Styling */
+input:focus,
+textarea:focus,
+select:focus,
+.flow-input:focus,
+.glass-control:focus,
+.glass-control:focus-within {
+  outline: none !important;
+  border-color: #111111 !important;
+  box-shadow: 0 0 0 2px #111111, 0 2px 8px rgba(17, 17, 17, 0.08) !important;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  * {
-    animation-duration: 0.01ms !important;
-    transition-duration: 0.01ms !important;
-  }
+:focus-visible {
+  outline: 2px solid #111111 !important;
+  outline-offset: 2px !important;
 }
 
-/* Explicit Form Inputs Contrast Enforcement */
+/* Webkit Autofill Background Overrides */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active,
+textarea:-webkit-autofill,
+textarea:-webkit-autofill:hover,
+textarea:-webkit-autofill:focus,
+select:-webkit-autofill {
+  -webkit-box-shadow: 0 0 0 1000px #F2EFE5 inset !important;
+  -webkit-text-fill-color: #111111 !important;
+  caret-color: #111111 !important;
+  font-family: inherit !important;
+  transition: background-color 50000s ease-in-out 0s;
+}
+
+/* FAANG-grade Wispr Flow Button Utility Classes */
+.btn-primary, .glass-btn-primary, .flow-btn-lavender {
+  background-color: #E6D9FF;
+  color: #111111;
+  border: 1px solid #111111;
+  border-radius: 9999px;
+  font-weight: 600;
+  font-size: 0.875rem;
+  padding: 0.5rem 1.25rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  box-shadow: 0 2px 6px rgba(17, 17, 17, 0.08);
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  cursor: pointer;
+}
+
+.btn-primary:hover, .glass-btn-primary:hover, .flow-btn-lavender:hover {
+  background-color: #DBCBFF;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(17, 17, 17, 0.14);
+}
+
+.btn-primary:active, .glass-btn-primary:active, .flow-btn-lavender:active {
+  transform: translateY(0);
+  box-shadow: 0 1px 3px rgba(17, 17, 17, 0.08);
+}
+
+.btn-secondary, .glass-btn-secondary, .flow-btn-stone {
+  background-color: #FFFFFF;
+  color: #111111;
+  border: 1px solid #111111;
+  border-radius: 9999px;
+  font-weight: 600;
+  font-size: 0.875rem;
+  padding: 0.5rem 1.25rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  box-shadow: 0 1px 4px rgba(17, 17, 17, 0.05);
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  cursor: pointer;
+}
+
+.btn-secondary:hover, .glass-btn-secondary:hover, .flow-btn-stone:hover {
+  background-color: #F2EFE5;
+  border-color: #111111;
+  transform: translateY(-1px);
+  box-shadow: 0 3px 10px rgba(17, 17, 17, 0.09);
+}
+
+.btn-dark {
+  background-color: #111111;
+  color: #FFFFFF;
+  border: 1px solid #111111;
+  border-radius: 9999px;
+  font-weight: 600;
+  font-size: 0.875rem;
+  padding: 0.5rem 1.25rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  box-shadow: 0 2px 6px rgba(17, 17, 17, 0.12);
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  cursor: pointer;
+}
+
+.btn-dark:hover {
+  background-color: #262626;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(17, 17, 17, 0.18);
+}
+
+/* WCAG AAA Contrast Chips, Badges & Tooltips with Strict #111111 Borders */
+.flow-badge-emerald, .badge-emerald {
+  background-color: #064E3B;
+  color: #FFFFFF;
+  border: 1px solid #111111;
+  border-radius: 9999px;
+  font-weight: 600;
+  font-size: 0.75rem;
+  padding: 0.25rem 0.625rem;
+  letter-spacing: 0.02em;
+}
+
+.glass-chip-green, .chip-green {
+  color: #044E39;
+  border: 1px solid #111111;
+  background-color: #E2F4EC;
+  border-radius: 9999px;
+  font-weight: 600;
+  font-size: 0.75rem;
+  padding: 0.2rem 0.6rem;
+}
+
+.glass-chip-blue, .chip-blue {
+  color: #0747A6;
+  border: 1px solid #111111;
+  background-color: #E6F0FA;
+  border-radius: 9999px;
+  font-weight: 600;
+  font-size: 0.75rem;
+  padding: 0.2rem 0.6rem;
+}
+
+.glass-chip-red, .chip-red {
+  color: #991B1B;
+  border: 1px solid #111111;
+  background-color: #FEE2E2;
+  border-radius: 9999px;
+  font-weight: 600;
+  font-size: 0.75rem;
+  padding: 0.2rem 0.6rem;
+}
+
+.flow-tooltip {
+  background-color: #111111;
+  color: #FFFFFF;
+  border: 1px solid #111111;
+  border-radius: 8px;
+  padding: 0.35rem 0.65rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  box-shadow: 0 4px 12px rgba(17, 17, 17, 0.15);
+  z-index: var(--z-toast);
+}
+
+/* Base Wispr Flow Canvas Background */
+.flow-canvas {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  background-color: #FAF8ED !important;
+  background-image: 
+    radial-gradient(circle at 10% 20%, rgba(230, 217, 255, 0.25), transparent 35%),
+    radial-gradient(circle at 90% 80%, rgba(242, 239, 229, 0.4), transparent 45%);
+  overflow: hidden;
+}
+
+/* Primary Wispr Flow Light Card Component */
+.glass-panel, .flow-card {
+  position: relative;
+  background: #FFFFFF;
+  border: 1px solid #111111;
+  border-radius: var(--radius-lg);
+  box-shadow: 0 4px 20px rgba(17, 17, 17, 0.04);
+}
+
+/* Elevated Light Card */
+.glass-card {
+  position: relative;
+  background: #FFFFFF;
+  border: 1px solid #111111;
+  border-radius: var(--radius-lg);
+  box-shadow: 0 2px 12px rgba(17, 17, 17, 0.03);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.glass-card-hover:hover {
+  background: #FFFFFF;
+  border-color: #111111;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 30px rgba(17, 17, 17, 0.08);
+}
+
+/* Embedded Control Field */
+.glass-control, .flow-input {
+  background: #F2EFE5;
+  border: 1px solid #111111;
+  border-radius: var(--radius-md);
+  transition: all 0.18s ease;
+  color: #111111;
+}
+
+/* Wispr Flow Pill Navigation & Rails */
+.glass-rail {
+  background: #FAF8ED;
+  border-right: 1px solid #111111;
+}
+
+.glass-nav-item {
+  color: var(--text-secondary);
+  border: 1px solid transparent;
+  border-radius: 9999px;
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.glass-nav-item:hover {
+  background: rgba(17, 17, 17, 0.04);
+  color: #111111;
+}
+
+.glass-nav-item.active {
+  background: #FFFFFF;
+  border: 1px solid #111111;
+  color: #111111;
+  font-weight: 600;
+  box-shadow: 0 2px 8px rgba(17, 17, 17, 0.06);
+}
+
+/* Subdued Dividers */
+.glass-divider {
+  border-color: rgba(17, 17, 17, 0.12);
+}
+
+/* Form Inputs Contrast Enforcement */
 input, 
 textarea,
 select,
 button {
-  color: var(--text-primary) !important;
+  color: #111111 !important;
 }
 
 input::placeholder, 
 textarea::placeholder {
-  color: var(--text-tertiary) !important;
+  color: #77746D !important;
 }

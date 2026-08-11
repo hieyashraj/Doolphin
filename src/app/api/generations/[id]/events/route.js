@@ -1,47 +1,27 @@
-import prisma from '@/lib/prisma';
+import { getServerSession } from "next-auth/next";
+import { authOptions } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
 
 export async function GET(request, { params }) {
-  const { id } = params;
-
-  // Set headers for SSE
-  const headers = new Headers({
-    'Content-Type': 'text/event-stream',
-    'Cache-Control': 'no-cache',
-    'Connection': 'keep-alive',
-  });
-
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.id) return new Response("Unauthorized", { status: 401 });
+  const { id } = await params;
+  const owned = await prisma.creation.findFirst({ where: { id, userId: session.user.id }, select: { id: true } });
+  if (!owned) return new Response("Not found", { status: 404 });
   const stream = new ReadableStream({
     async start(controller) {
-      controller.enqueue(`data: ${JSON.stringify({ message: 'Connected to SSE' })}\n\n`);
-
-      // Mock polling for updates (In production, use Redis PubSub)
+      const encoder = new TextEncoder();
+      controller.enqueue(encoder.encode(`data: ${JSON.stringify({ message: "connected" })}\n\n`));
       const interval = setInterval(async () => {
         try {
-          const creation = await prisma.creation.findUnique({
-            where: { id },
-            select: { status: true }
-          });
-
-          if (creation) {
-            controller.enqueue(`data: ${JSON.stringify({ status: creation.status })}\n\n`);
-            
-            if (['completed', 'failed', 'cancelled', 'timed_out'].includes(creation.status)) {
-              clearInterval(interval);
-              controller.close();
-            }
-          }
-        } catch (error) {
-          console.error('SSE polling error:', error);
-          clearInterval(interval);
-          controller.close();
-        }
+          const creation = await prisma.creation.findFirst({ where: { id, userId: session.user.id }, select: { status: true, currentStage: true, progressValue: true } });
+          if (!creation) throw new Error("Creation no longer available");
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(creation)}\n\n`));
+          if (["COMPLETED", "PARTIAL_COMPLETED", "FAILED", "CANCELLED", "TIMED_OUT", "QUARANTINED"].includes(creation.status)) { clearInterval(interval); controller.close(); }
+        } catch { clearInterval(interval); controller.close(); }
       }, 5000);
-
-      request.signal.addEventListener('abort', () => {
-        clearInterval(interval);
-      });
+      request.signal.addEventListener("abort", () => clearInterval(interval));
     }
   });
-
-  return new Response(stream, { headers });
+  return new Response(stream, { headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache, no-transform", Connection: "keep-alive" } });
 }

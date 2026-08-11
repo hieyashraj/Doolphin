@@ -18,18 +18,21 @@ export function compileGenerationPrompt({
   aspectRatio = "9:16",
   duration = 5,
   presetCategory = "",
+  generationType = "",
   modelId = "",
   hasAvatarImage = false,
   hasProductImage = false,
+  referenceImageCount = 0,
   hasAudio = false
 }) {
   let baseTemplate = rawPrompt || (preset ? preset.prompt : "") || spokenScript || sceneMotion;
 
-  if (!baseTemplate.trim()) {
-    baseTemplate = "Authentic iPhone UGC video of [Avatar] showcasing [Target Product].";
+  if (!baseTemplate.trim() && !additionalInstructions.trim()) {
+    throw new Error("MISSING_REQUIRED_INPUT: A spoken script, prompt, or scene instructions must be provided.");
   }
-  
-  if (sceneMotion && baseTemplate !== sceneMotion) {
+  if (!baseTemplate.trim()) {
+    baseTemplate = additionalInstructions.trim();
+  } else if (sceneMotion && baseTemplate !== sceneMotion) {
     baseTemplate += ` ${sceneMotion}`;
   }
 
@@ -75,14 +78,27 @@ export function compileGenerationPrompt({
     compiled += ` ${additionalInstructions}`;
   }
 
-  // Seedance 2 specific syntax
+  // Seedance 2 specific syntax with explicit image role categorization
   if (modelId === "seedance-2") {
     let seedancePrefix = [];
+    let imageIdx = 1;
     if (hasAvatarImage) {
-      seedancePrefix.push("@image1 is the main character presenting the product.");
+      seedancePrefix.push(`@image${imageIdx} is the selected AI avatar (main character).`);
+      imageIdx++;
     }
     if (hasProductImage) {
-      seedancePrefix.push("@image2 is the product being presented by @image1.");
+      if (generationType === "APP_STUDIO" || presetCategory === "app") {
+        seedancePrefix.push(`@image${imageIdx} is the smartphone app screen UI displayed by @image1.`);
+      } else {
+        seedancePrefix.push(`@image${imageIdx} is the physical product being showcased by @image1.`);
+      }
+      imageIdx++;
+    }
+    if (referenceImageCount > 0) {
+      for (let r = 0; r < referenceImageCount; r++) {
+        seedancePrefix.push(`@image${imageIdx} is a visual reference for UGC video style, lighting, camera angle, and scene composition.`);
+        imageIdx++;
+      }
     }
     if (hasAudio) {
       seedancePrefix.push("@audio1 is the spoken audio narration.");

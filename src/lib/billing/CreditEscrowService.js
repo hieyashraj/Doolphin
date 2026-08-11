@@ -8,54 +8,93 @@ import { AppError, ERROR_CODES } from "../errors.js";
  */
 
 export class CreditEscrowService {
+  static async releaseVariantReservations(creationVariantId, reason) {
+    const reservations = await prisma.creditReservation.findMany({ where: { creationVariantId } });
+    return Promise.all(reservations.map((reservation) => this.releaseCredits({ reservationId: reservation.id, reason })));
+  }
+
+  static async settleVerifiedVariant(creationVariantId, passed) {
+    const reservations = await prisma.creditReservation.findMany({ where: { creationVariantId } });
+    for (const reservation of reservations) {
+      const isGeneration = reservation.idempotencyKey.includes("_generation_");
+      if (passed || !isGeneration) await this.commitCredits({ reservationId: reservation.id });
+      else await this.releaseCredits({ reservationId: reservation.id, reason: "QUALITY_GATE_FAILED" });
+    }
+  }
+
+  static async chargeImmediate({ workspaceId, amount, idempotencyKey, userId, reasonCode }) {
+    return prisma.$transaction(async (tx) => {
+      const existing = await tx.creditTransaction.findUnique({ where: { idempotencyKey } });
+      if (existing) return existing;
+      const account = await tx.creditAccount.findUnique({ where: { workspaceId } });
+      if (!account || account.availableCredits < amount) {
+        throw new AppError(ERROR_CODES.INSUFFICIENT_CREDITS, `Insufficient available credits (${account?.availableCredits || 0} available, ${amount} required).`, { statusCode: 402 });
+      }
+      const claimed = await tx.creditAccount.updateMany({ where: { id: account.id, version: account.version, availableCredits: { gte: amount } }, data: { availableCredits: { decrement: amount }, lifetimeCommittedCredits: { increment: amount }, version: { increment: 1 } } });
+      if (claimed.count !== 1) throw new AppError(ERROR_CODES.CREDIT_RESERVATION_FAILED, "Credit balance changed concurrently; retry the request", { statusCode: 409 });
+      const updated = await tx.creditAccount.findUnique({ where: { id: account.id } });
+      return tx.creditTransaction.create({ data: { workspaceId, type: "COMMIT", amount, idempotencyKey, balanceBefore: account.availableCredits, balanceAfter: updated.availableCredits, reservedBefore: account.reservedCredits, reservedAfter: account.reservedCredits, reasonCode, createdByUserId: userId, createdBySystemComponent: "CreditEscrowService" } });
+    });
+  }
+
+  static async refundImmediate({ workspaceId, amount, idempotencyKey, userId, reasonCode }) {
+    return prisma.$transaction(async (tx) => {
+      const existing = await tx.creditTransaction.findUnique({ where: { idempotencyKey } });
+      if (existing) return existing;
+      const account = await tx.creditAccount.findUnique({ where: { workspaceId } });
+      const updated = await tx.creditAccount.update({ where: { id: account.id }, data: { availableCredits: account.availableCredits + amount, version: { increment: 1 } } });
+      return tx.creditTransaction.create({ data: { workspaceId, type: "REFUND", amount, idempotencyKey, balanceBefore: account.availableCredits, balanceAfter: updated.availableCredits, reservedBefore: account.reservedCredits, reservedAfter: account.reservedCredits, reasonCode, createdByUserId: userId, createdBySystemComponent: "CreditEscrowService" } });
+    });
+  }
+
   /**
    * Ensures user has a default workspace and credit account.
    */
   static async ensureUserWorkspace(userId) {
     const user = await prisma.user.findUnique({ where: { id: userId } });
-    if (!user) throw new AppError(ERROR_CODES.NOT_FOUND, "User not found");
+    if (!user) throw new AppError(ERROR_CODES.NOT_FOUND, "Authenticated user record not found");
 
-    if (user.defaultWorkspaceId) {
-      const workspace = await prisma.workspace.findUnique({
-        where: { id: user.defaultWorkspaceId },
-        include: { creditAccount: true },
-      });
-      if (workspace) return workspace;
-    }
+      if (user.defaultWorkspaceId) {
+        const workspace = await prisma.workspace.findUnique({
+          where: { id: user.defaultWorkspaceId },
+          include: { creditAccount: true },
+        });
+        if (workspace) return workspace;
+      }
 
-    // Create workspace transactionally
+      // Create workspace transactionally
     return await prisma.$transaction(async (tx) => {
-      const workspace = await tx.workspace.create({
-        data: {
-          name: `${user.name || "Default"}'s Workspace`,
-          ownerUserId: user.id,
-          billingPlan: "starter",
-        },
-      });
+        const workspace = await tx.workspace.create({
+          data: {
+            name: `${user.name || "Default"}'s Workspace`,
+            ownerUserId: user.id,
+            billingPlan: "starter",
+          },
+        });
 
-      await tx.workspaceMember.create({
-        data: {
-          workspaceId: workspace.id,
-          userId: user.id,
-          role: "OWNER",
-        },
-      });
+        await tx.workspaceMember.create({
+          data: {
+            workspaceId: workspace.id,
+            userId: user.id,
+            role: "OWNER",
+          },
+        });
 
-      const creditAccount = await tx.creditAccount.create({
-        data: {
-          workspaceId: workspace.id,
-          availableCredits: 100,
-          reservedCredits: 0,
-          lifetimeIssuedCredits: 100,
-        },
-      });
+        const creditAccount = await tx.creditAccount.create({
+          data: {
+            workspaceId: workspace.id,
+            availableCredits: 100,
+            reservedCredits: 0,
+            lifetimeIssuedCredits: 100,
+          },
+        });
 
-      await tx.user.update({
-        where: { id: user.id },
-        data: { defaultWorkspaceId: workspace.id },
-      });
+        await tx.user.update({
+          where: { id: user.id },
+          data: { defaultWorkspaceId: workspace.id },
+        });
 
-      return { ...workspace, creditAccount };
+        return { ...workspace, creditAccount };
     });
   }
 
@@ -82,14 +121,16 @@ export class CreditEscrowService {
       }
 
       // Update credit account
-      const updatedAccount = await db.creditAccount.update({
-        where: { id: account.id },
+      const claimed = await db.creditAccount.updateMany({
+        where: { id: account.id, version: account.version, availableCredits: { gte: amount } },
         data: {
-          availableCredits: account.availableCredits - amount,
-          reservedCredits: account.reservedCredits + amount,
+          availableCredits: { decrement: amount },
+          reservedCredits: { increment: amount },
           version: { increment: 1 },
         },
       });
+      if (claimed.count !== 1) throw new AppError(ERROR_CODES.CREDIT_RESERVATION_FAILED, "Credit balance changed concurrently; retry preflight", { statusCode: 409 });
+      const updatedAccount = await db.creditAccount.findUnique({ where: { id: account.id } });
 
       // Create CreditReservation
       const reservation = await db.creditReservation.create({

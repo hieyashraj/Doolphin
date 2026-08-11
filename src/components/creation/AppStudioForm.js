@@ -4,7 +4,7 @@ import { useState } from "react";
 import { FiUser, FiPlus, FiChevronDown, FiHelpCircle, FiSmartphone } from "react-icons/fi";
 
 export default function AppStudioForm({
-  appImage,
+  appImages = [],
   onAppUpload,
   selectedActor,
   onOpenActorModal,
@@ -22,57 +22,63 @@ export default function AppStudioForm({
   aspectRatio,
   setAspectRatio,
   numVideos,
-  setNumVideos
+  setNumVideos,
+  selectedModel,
+  setSelectedModel,
+  modelsList = []
 }) {
   return (
-    <div className="space-y-4 text-xs font-sans text-gray-200">
+    <div className="space-y-4 font-sans text-[#111111]">
       {/* Upload your app * (i) */}
       <div className="space-y-1.5">
-        <div className="flex items-center gap-1">
-          <label className="block text-xs font-semibold text-gray-300">
-            Upload your app <span className="text-red-400">*</span>
+        <div className="flex items-center gap-1.5">
+          <label className="block text-base font-semibold text-[#111111]">
+            Upload your app <span className="text-red-500">*</span>
           </label>
-          <FiHelpCircle size={12} className="text-gray-500" title="Upload a screenshot of your app interface" />
+          <FiHelpCircle size={14} className="text-[#77746D]" title="Upload a screenshot of your app interface" />
         </div>
         <div className="flex items-center gap-3">
-          {appImage ? (
-            <div className="relative w-20 h-20 rounded-xl border border-white/10 overflow-hidden group">
-              <img src={appImage.preview || appImage.url} alt="App UI" className="w-full h-full object-cover" />
+          {appImages.map((appImage) => (
+            <div key={appImage.id || appImage.assetId} className="relative w-20 h-20 rounded-xl border border-[#111111]/15 overflow-hidden group">
+              {appImage.mimeType?.startsWith("video/") ? (
+                <video src={appImage.preview || appImage.url} className="w-full h-full object-cover" muted />
+              ) : (
+                <img src={appImage.preview || appImage.url} alt={appImage.alias || "App UI"} className="w-full h-full object-cover" />
+              )}
               <button
                 type="button"
                 onClick={() => onRemoveImage(appImage.id)}
-                className="absolute top-1 right-1 bg-black/70 text-white rounded-full w-4 h-4 flex items-center justify-center text-[10px] opacity-0 group-hover:opacity-100 transition-opacity"
+                className="absolute top-1 right-1 bg-black/70 text-white rounded-full w-4 h-4 flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-opacity"
               >
                 ✕
               </button>
             </div>
-          ) : (
-            <label className="w-20 h-20 rounded-xl bg-[#1c1c20] border border-dashed border-white/20 hover:border-white/40 flex flex-col items-center justify-center cursor-pointer transition-colors">
-              <FiPlus size={20} className="text-gray-400" />
-              <input type="file" accept="image/*" onChange={onAppUpload} className="hidden" />
-            </label>
-          )}
+          ))}
+          <label className="w-20 h-20 rounded-xl bg-[#F2EFE5] hover:bg-[#EAE6D8] border border-dashed border-[#111111]/25 hover:border-[#111111]/50 flex flex-col items-center justify-center cursor-pointer transition-colors">
+            <FiPlus size={22} className="text-[#77746D]" />
+            <input type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime" multiple onChange={onAppUpload} className="hidden" />
+          </label>
         </div>
       </div>
 
-      {/* Choose an actor */}
+      {/* Choose an avatar */}
       <div className="space-y-1.5">
-        <label className="block text-xs font-semibold text-gray-300">Choose an actor</label>
+        <label className="block text-base font-semibold text-[#111111]">Choose an avatar</label>
         <button
           type="button"
           onClick={onOpenActorModal}
-          className="w-full bg-[#1c1c20] hover:bg-[#27272c] border border-white/10 rounded-xl p-3 text-left flex items-center justify-between text-xs text-gray-400 transition-colors cursor-pointer"
+          className="w-full bg-[#F2EFE5] hover:bg-[#EAE6D8] focus:bg-white border border-[#111111]/15 focus:border-[#111111] focus:ring-2 focus:ring-[#111111] focus:outline-none rounded-xl p-3.5 text-left flex items-center justify-between text-sm text-[#55534E] transition-colors cursor-pointer"
         >
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2.5">
             {selectedActor ? (
               <>
-                <img src={selectedActor.image} alt={selectedActor.name} className="w-5 h-5 rounded-full object-cover" />
-                <span className="text-white font-medium">{selectedActor.name}</span>
+                <img src={selectedActor.image} alt={selectedActor.name} className="w-6 h-6 rounded-full object-cover border border-[#111111]/20" />
+                <span className="text-[#111111] font-semibold text-sm">{selectedActor.name}</span>
               </>
             ) : (
               <>
-                <FiUser size={14} className="text-gray-400" />
-                <span>Choose actor</span>
+                <FiUser size={16} className="text-[#77746D]" />
+                <span className="font-medium text-sm">Choose avatar</span>
               </>
             )}
           </div>
@@ -81,8 +87,8 @@ export default function AppStudioForm({
 
       {/* Write your script * */}
       <div className="space-y-1.5">
-        <label className="block text-xs font-semibold text-gray-300">
-          Write your script <span className="text-red-400">*</span>
+        <label className="block text-base font-semibold text-[#111111]">
+          Write your script <span className="text-red-500">*</span>
         </label>
         <div className="relative">
           <textarea
@@ -92,18 +98,18 @@ export default function AppStudioForm({
             rows={3}
             required
             placeholder="Write the exact script for your app demo (max 300 chars). Spoken verbatim."
-            className="w-full bg-[#1c1c20] border border-white/10 rounded-xl p-3 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500 transition-colors resize-none"
+            className="w-full bg-[#F2EFE5] focus:bg-white p-3.5 text-sm font-medium text-[#111111] placeholder-[#8C887B] border border-[#111111]/15 focus:border-[#111111] focus:outline-none focus:ring-2 focus:ring-[#111111] caret-[#111111] transition-all resize-none rounded-xl"
           />
-          <div className="absolute bottom-2 right-3 text-[10px] text-gray-500 font-mono">
+          <div className="absolute bottom-2.5 right-3 text-xs text-[#77746D] font-mono">
             {spokenScript ? spokenScript.length : 0}/300
           </div>
         </div>
       </div>
 
-      {/* Additional instructions * */}
+      {/* Additional instructions */}
       <div className="space-y-1.5">
-        <label className="block text-xs font-semibold text-gray-300">
-          Additional instructions <span className="text-red-400">*</span>
+        <label className="block text-base font-semibold text-[#111111]">
+          Additional instructions <span className="text-[#77746D] text-sm font-normal">(optional)</span>
         </label>
         <div className="relative">
           <textarea
@@ -112,9 +118,9 @@ export default function AppStudioForm({
             maxLength={1600}
             rows={4}
             placeholder="Add any extra direction beyond what the preset enforces.."
-            className="w-full bg-[#1c1c20] border border-white/10 rounded-xl p-3 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500 transition-colors resize-none"
+            className="w-full bg-[#F2EFE5] focus:bg-white p-3.5 text-sm font-medium text-[#111111] placeholder-[#8C887B] border border-[#111111]/15 focus:border-[#111111] focus:outline-none focus:ring-2 focus:ring-[#111111] caret-[#111111] transition-all resize-none rounded-xl"
           />
-          <div className="absolute bottom-2 right-3 text-[10px] text-gray-500 font-mono">
+          <div className="absolute bottom-2.5 right-3 text-xs text-[#77746D] font-mono">
             {additionalInstructions ? additionalInstructions.length : 0}/1600
           </div>
         </div>
@@ -122,101 +128,113 @@ export default function AppStudioForm({
 
       {/* References (i) */}
       <div className="space-y-1.5">
-        <div className="flex items-center gap-1">
-          <label className="block text-xs font-semibold text-gray-300">References</label>
-          <FiHelpCircle size={12} className="text-gray-500" title="Optional reference images" />
+        <div className="flex items-center gap-1.5">
+          <label className="block text-base font-semibold text-[#111111]">References</label>
+          <FiHelpCircle size={14} className="text-[#77746D]" title="Optional reference images" />
         </div>
         <div className="flex flex-wrap gap-2">
-          {uploadedImages?.filter(i => i.id !== appImage?.id).map((img) => (
-            <div key={img.id} className="relative w-16 h-16 rounded-xl border border-white/10 overflow-hidden group">
+          {uploadedImages?.filter(i => !appImages.some((app) => (app.id || app.assetId) === (i.id || i.assetId))).map((img) => (
+            <div key={img.id} className="relative w-16 h-16 rounded-xl border border-[#111111]/15 overflow-hidden group">
               <img src={img.preview || img.url} alt="Reference" className="w-full h-full object-cover" />
               <button
                 type="button"
                 onClick={() => onRemoveImage(img.id)}
-                className="absolute top-1 right-1 bg-black/70 text-white rounded-full w-4 h-4 flex items-center justify-center text-[10px] opacity-0 group-hover:opacity-100 transition-opacity"
+                className="absolute top-1 right-1 bg-black/70 text-white rounded-full w-4 h-4 flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-opacity"
               >
                 ✕
               </button>
             </div>
           ))}
-          <label className="w-16 h-16 rounded-xl bg-[#1c1c20] border border-dashed border-white/20 hover:border-white/40 flex items-center justify-center cursor-pointer transition-colors">
-            <FiPlus size={18} className="text-gray-400" />
+          <label className="w-16 h-16 rounded-xl bg-[#F2EFE5] border border-dashed border-[#111111]/25 hover:border-[#111111]/50 flex items-center justify-center cursor-pointer transition-colors">
+            <FiPlus size={20} className="text-[#77746D]" />
             <input type="file" accept="image/*" multiple onChange={onImageUpload} className="hidden" />
           </label>
         </div>
       </div>
 
+      <div className="space-y-1.5">
+        <label className="block text-base font-semibold text-[#111111]">AI Model</label>
+        <div className="relative flex items-center">
+          <select
+            value={selectedModel?.id || ""}
+            onChange={(event) => setSelectedModel(modelsList.find((model) => model.id === event.target.value))}
+            className="w-full bg-[#F2EFE5] px-3.5 py-3 pr-10 text-sm font-medium border border-[#111111]/15 appearance-none rounded-xl focus:outline-none focus:ring-2 focus:ring-[#111111]"
+          >
+            {modelsList.map((model) => <option key={model.id} value={model.id}>{model.name}</option>)}
+          </select>
+          <FiChevronDown className="absolute right-3.5 text-[#77746D] pointer-events-none" size={16} />
+        </div>
+      </div>
+
       {/* Duration */}
       <div className="space-y-1.5">
-        <label className="block text-xs font-semibold text-gray-300">Duration</label>
-        <div className="relative">
+        <label className="block text-base font-semibold text-[#111111]">Duration</label>
+        <div className="relative flex items-center">
           <select
             value={duration}
             onChange={(e) => setDuration(e.target.value)}
-            className="w-full bg-[#1c1c20] border border-white/10 rounded-xl px-3 py-2.5 text-xs text-white appearance-none focus:outline-none focus:border-indigo-500 cursor-pointer pr-8"
+            className="w-full bg-[#F2EFE5] focus:bg-white px-3.5 py-3 pr-10 text-sm font-medium text-[#111111] border border-[#111111]/15 appearance-none focus:border-[#111111] focus:outline-none focus:ring-2 focus:ring-[#111111] caret-[#111111] cursor-pointer rounded-xl transition-all"
           >
-            <option value="Auto">Auto</option>
-            <option value="5">5s</option>
-            <option value="8">8s</option>
-            <option value="12">12s</option>
-            <option value="15">15s</option>
+            <option value="Auto" className="bg-white text-[#111111]">Auto</option>
+            <option value="5" className="bg-white text-[#111111]">5s</option>
+            <option value="8" className="bg-white text-[#111111]">8s</option>
+            <option value="12" className="bg-white text-[#111111]">12s</option>
+            <option value="15" className="bg-white text-[#111111]">15s</option>
           </select>
-          <FiChevronDown className="absolute right-3 top-3 text-gray-400 pointer-events-none" size={14} />
+          <FiChevronDown className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[#77746D] pointer-events-none" size={16} />
         </div>
+        <p className="text-xs text-[#77746D] leading-relaxed">
+          Auto lets the app flow, screen count, and script timing decide the final length.
+        </p>
       </div>
 
       {/* Resolution */}
       <div className="space-y-1.5">
-        <label className="block text-xs font-semibold text-gray-300">Resolution</label>
-        <div className="relative">
+        <label className="block text-base font-semibold text-[#111111]">Resolution</label>
+        <div className="relative flex items-center">
           <select
             value={resolution}
             onChange={(e) => setResolution(e.target.value)}
-            className="w-full bg-[#1c1c20] border border-white/10 rounded-xl px-3 py-2.5 text-xs text-white appearance-none focus:outline-none focus:border-indigo-500 cursor-pointer pr-8"
+            className="w-full bg-[#F2EFE5] focus:bg-white px-3.5 py-3 pr-10 text-sm font-medium text-[#111111] border border-[#111111]/15 appearance-none focus:border-[#111111] focus:outline-none focus:ring-2 focus:ring-[#111111] caret-[#111111] cursor-pointer rounded-xl transition-all"
           >
-            <option value="480p">480p</option>
-            <option value="720p">720p</option>
-            <option value="1080p">1080p</option>
-            <option value="4k">4k</option>
+            {(selectedModel?.resolutions || ["720p"]).map((value) => <option key={value} value={value} className="bg-white text-[#111111]">{value}</option>)}
           </select>
-          <FiChevronDown className="absolute right-3 top-3 text-gray-400 pointer-events-none" size={14} />
+          <FiChevronDown className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[#77746D] pointer-events-none" size={16} />
         </div>
       </div>
 
       {/* Aspect Ratio */}
       <div className="space-y-1.5">
-        <label className="block text-xs font-semibold text-gray-300">Aspect Ratio</label>
+        <label className="block text-base font-semibold text-[#111111]">Aspect Ratio</label>
         <div className="relative flex items-center">
           <select
             value={aspectRatio}
             onChange={(e) => setAspectRatio(e.target.value)}
-            className="w-full bg-[#1c1c20] border border-white/10 rounded-xl pl-8 pr-8 py-2.5 text-xs text-white appearance-none focus:outline-none focus:border-indigo-500 cursor-pointer"
+            className="w-full bg-[#F2EFE5] focus:bg-white pl-10 pr-10 py-3 text-sm font-medium text-[#111111] border border-[#111111]/15 appearance-none focus:border-[#111111] focus:outline-none focus:ring-2 focus:ring-[#111111] caret-[#111111] cursor-pointer rounded-xl transition-all"
           >
-            <option value="9:16">9:16 (Vertical)</option>
-            <option value="16:9">16:9 (Landscape)</option>
-            <option value="1:1">1:1 (Square)</option>
+            {(selectedModel?.aspectRatios || ["9:16"]).map((value) => <option key={value} value={value} className="bg-white text-[#111111]">{value}</option>)}
           </select>
-          <FiSmartphone className="absolute left-3 text-gray-400 pointer-events-none" size={14} />
-          <FiChevronDown className="absolute right-3 text-gray-400 pointer-events-none" size={14} />
+          <FiSmartphone className="absolute left-3.5 text-[#77746D] pointer-events-none" size={16} />
+          <FiChevronDown className="absolute right-3.5 text-[#77746D] pointer-events-none" size={16} />
         </div>
       </div>
 
       {/* Number of videos stepper */}
       <div className="space-y-1.5">
-        <label className="block text-xs font-semibold text-gray-300">Number of videos</label>
-        <div className="flex items-center gap-2 bg-[#1c1c20] border border-white/10 rounded-xl p-1 w-28">
+        <label className="block text-base font-semibold text-[#111111]">Number of videos</label>
+        <div className="flex items-center gap-2 bg-[#F2EFE5] p-1.5 w-32 rounded-2xl border border-[#111111]/15">
           <button
             type="button"
             onClick={() => setNumVideos(Math.max(1, numVideos - 1))}
-            className="w-8 h-8 rounded-lg bg-white/5 hover:bg-white/10 text-white flex items-center justify-center font-bold transition-colors cursor-pointer"
+            className="w-9 h-9 rounded-full bg-white text-[#111111] flex items-center justify-center font-bold text-base border border-[#111111]/20 hover:bg-[#F2EFE5] active:scale-95 transition-all shadow-sm cursor-pointer"
           >
             -
           </button>
-          <span className="flex-1 text-center font-semibold text-white text-xs">{numVideos}</span>
+          <span className="flex-1 text-center font-bold text-[#111111] text-sm">{numVideos}</span>
           <button
             type="button"
-            onClick={() => setNumVideos(Math.min(4, numVideos + 1))}
-            className="w-8 h-8 rounded-lg bg-white/5 hover:bg-white/10 text-white flex items-center justify-center font-bold transition-colors cursor-pointer"
+            onClick={() => setNumVideos(Math.min(2, numVideos + 1))}
+            className="w-9 h-9 rounded-full bg-white text-[#111111] flex items-center justify-center font-bold text-base border border-[#111111]/20 hover:bg-[#F2EFE5] active:scale-95 transition-all shadow-sm cursor-pointer"
           >
             +
           </button>

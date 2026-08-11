@@ -28,7 +28,9 @@ export class ScenePlanner {
 
     // Word count timing validation (approx 2.8 words per second, capped at max pipeline 15s runtime capacity of ~50 words)
     const wordCount = script.split(/\s+/).filter(Boolean).length;
-    const effectiveDuration = duration === "Auto" ? 15 : (typeof duration === "number" ? duration : parseInt(duration) || 15);
+    const instructionWords = String(additionalInstructions || "").trim().split(/\s+/).filter(Boolean).length;
+    const autoDuration = Math.min(15, Math.max(4, Math.ceil(wordCount / 2.8 + 1 + Math.min(2, Math.floor(instructionWords / 35)) + (generationType === "PRODUCT_AD" || generationType === "APP_STUDIO" ? 1 : 0))));
+    const effectiveDuration = duration === "Auto" ? autoDuration : (typeof duration === "number" ? duration : parseInt(duration) || autoDuration);
     const maxWordsAllowed = Math.max(Math.floor(effectiveDuration * 4.5) + 30, 100);
     if (wordCount > maxWordsAllowed) {
       return {

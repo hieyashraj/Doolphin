@@ -1,21 +1,29 @@
-import { NextResponse } from 'next/server';
-import { v4 as uuidv4 } from 'uuid';
+import path from "path";
+import { NextResponse } from "next/server";
+import { getMockSession as getRequestSession } from "@/lib/getMockSession";
+import { prisma } from "@/lib/prisma";
+import { R2StorageService } from "@/lib/storage/r2StorageService";
 
-export async function POST(request) {
-  try {
-    const { filename, contentType } = await request.json();
+const ALLOWED = new Set(["image/jpeg", "image/png", "image/webp", "video/mp4", "video/quicktime"]);
 
-    // Mock presigned upload generation
-    // In production, use AWS S3 getSignedUrl(PutObjectCommand)
-    const storageKey = `uploads/${uuidv4()}-${filename}`;
-    const uploadUrl = `https://storage.mock.com/upload/${storageKey}?token=mock_presigned_upload_token_1hr`;
-
-    return NextResponse.json({
-      uploadUrl,
-      storageKey
-    }, { status: 200 });
-  } catch (error) {
-    console.error('Upload presign error:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+export async function POST(req) {
+  const session = await getRequestSession();
+  if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!R2StorageService.isConfigured()) return NextResponse.json({ directUpload: false });
+  const body = await req.json().catch(() => null);
+  if (!body || !ALLOWED.has(body.contentType) || !Number.isInteger(body.fileSizeBytes) || !/^[a-f0-9]{64}$/i.test(body.checksumSha256 || "")) return NextResponse.json({ error: "Invalid upload metadata" }, { status: 422 });
+  const max = body.contentType.startsWith("video/") ? 50 * 1024 * 1024 : 15 * 1024 * 1024;
+  if (body.fileSizeBytes <= 0 || body.fileSizeBytes > max) return NextResponse.json({ error: "File exceeds the allowed size" }, { status: 413 });
+  const extension = (path.extname(body.filename || "") || (body.contentType.startsWith("video/") ? ".mp4" : ".png")).toLowerCase();
+  const storageKey = `uploads/${session.user.id}/${body.checksumSha256}${extension}`;
+  const asset = await prisma.uploadedAsset.upsert({
+    where: { userId_checksumSha256: { userId: session.user.id, checksumSha256: body.checksumSha256 } },
+    update: { storageKey, originalFileName: body.filename || `upload${extension}`, mimeType: body.contentType, fileSizeBytes: BigInt(body.fileSizeBytes), mediaType: body.contentType.startsWith("video/") ? "VIDEO" : "IMAGE" },
+    create: { userId: session.user.id, storageKey, originalFileName: body.filename || `upload${extension}`, mimeType: body.contentType, fileSizeBytes: BigInt(body.fileSizeBytes), checksumSha256: body.checksumSha256, mediaType: body.contentType.startsWith("video/") ? "VIDEO" : "IMAGE", validationStatus: "VALIDATING" }
+  });
+  if (asset.validationStatus === "VALID" && asset.validatedAt) {
+    return NextResponse.json({ directUpload: true, alreadyUploaded: true, assetId: asset.id });
   }
+  const uploadUrl = await R2StorageService.generateUploadUrl({ storageKey, contentType: body.contentType, expiresInSeconds: 900 });
+  return NextResponse.json({ directUpload: true, assetId: asset.id, uploadUrl, expiresInSeconds: 900, requiredHeaders: { "Content-Type": body.contentType } });
 }

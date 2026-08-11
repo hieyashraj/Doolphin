@@ -1,105 +1,94 @@
-import { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
+"use client";
 
-export default function PreflightReview({ 
-  selectedModel, 
-  creditCost = 30, 
-  isSubmitting = false, 
+import { motion } from "framer-motion";
+
+const ROLE_LABELS = {
+  ACTOR_REFERENCE: "Only actor identity",
+  PRIMARY_PRODUCT: "Product",
+  PRODUCT_PACKAGING: "Product view",
+  PRODUCT_USAGE_REFERENCE: "Product usage reference",
+  APP_PRIMARY_SCREEN: "Exact app screen",
+  APP_SCREEN_RECORDING: "Exact composition B-roll",
+  STYLE_REFERENCE: "Style/composition only"
+};
+
+export default function PreflightReview({
+  quote,
+  selectedModel,
+  creditCost,
+  isSubmitting = false,
   submitError = null,
-  onConfirm, 
-  onCancel 
+  onConfirm,
+  onCancel
 }) {
-  const modelName = selectedModel?.name || 'Seedance 2.0';
-  const modelId = selectedModel?.id || 'seedance-2';
-
-  const capabilities = ['Lipsync', 'Motion Control', 'Background Replacement'];
-  const stages = ['Asset Processing', 'Audio Generation', 'Video Synthesis', 'Compositing & Export'];
+  const review = quote?.quote;
+  if (!review) return null;
+  const costs = review.costs || {};
 
   return (
     <motion.div
-      initial={{ opacity: 0, scale: 0.95 }}
+      initial={{ opacity: 0, scale: 0.96 }}
       animate={{ opacity: 1, scale: 1 }}
-      exit={{ opacity: 0, scale: 0.95 }}
-      className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-black/80 backdrop-blur-xl"
+      exit={{ opacity: 0, scale: 0.96 }}
+      className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-black/70 backdrop-blur-md"
     >
-      <div className="bg-[#0d0d12] border border-white/10 rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl">
-        <div className="p-6 border-b border-white/10 bg-white/5">
-          <h3 className="text-xl font-semibold text-white">Preflight Review</h3>
-          <p className="text-sm text-gray-400 mt-1">Review your generation quote before proceeding.</p>
+      <div className="bg-white border border-[#111111]/20 rounded-3xl w-full max-w-3xl max-h-[90vh] overflow-y-auto shadow-2xl text-[#111111]">
+        <div className="p-6 border-b border-[#111111]/10 bg-[#FAF8ED]">
+          <h3 className="text-xl font-serif font-bold">Confirm the exact generation plan</h3>
+          <p className="text-sm text-[#55534E] mt-1">No paid provider request is made until you approve this immutable snapshot.</p>
         </div>
 
         <div className="p-6 space-y-6">
-          {submitError && (
-            <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-xs text-red-300">
-              {submitError}
-            </div>
-          )}
+          {submitError && <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700">{submitError}</div>}
 
-          <div className="grid grid-cols-2 gap-4">
-            <div className="bg-black/40 p-4 rounded-2xl border border-white/5">
-              <p className="text-xs text-gray-500 mb-1">Selected Model</p>
-              <p className="text-sm font-medium text-white">{modelName}</p>
-            </div>
-            <div className="bg-black/40 p-4 rounded-2xl border border-white/5">
-              <p className="text-xs text-gray-500 mb-1">Credits to Reserve</p>
-              <p className="text-sm font-medium text-white">{creditCost} Credits</p>
-            </div>
-            <div className="bg-black/40 p-4 rounded-2xl border border-white/5">
-              <p className="text-xs text-gray-500 mb-1">Est. External Cost</p>
-              <p className="text-sm font-medium text-white">$0.20 - $0.50</p>
-            </div>
-            <div className="bg-black/40 p-4 rounded-2xl border border-white/5">
-              <p className="text-xs text-gray-500 mb-1">Typical Processing</p>
-              <p className="text-sm font-medium text-white">2-4 minutes</p>
-              <p className="text-xs text-gray-600 mt-0.5">Max wait: 10 minutes</p>
-            </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <ReviewValue label="Model endpoint" value={review.model?.displayName || selectedModel?.name} />
+            <ReviewValue label="Delivery" value={(review.delivery || "").replaceAll("_", " ")} />
+            <ReviewValue
+              label="Duration"
+              value={review.settings?.durationMode === "AUTO"
+                ? `Auto → ${review.settings?.durationSeconds}s`
+                : `${review.settings?.durationSeconds}s (explicit)`}
+            />
+            <ReviewValue label="Format" value={`${review.settings?.resolution} · ${review.settings?.aspectRatio} · ${review.settings?.outputCount} output${review.settings?.outputCount === 1 ? "" : "s"}`} />
           </div>
 
-          <div>
-            <p className="text-xs text-gray-500 mb-2">Enabled Capabilities</p>
-            <div className="flex flex-wrap gap-2">
-              {capabilities.map(cap => (
-                <span key={cap} className="px-2.5 py-1 rounded-lg bg-blue-500/10 text-blue-400 text-xs font-medium border border-blue-500/20">
-                  {cap}
-                </span>
-              ))}
-            </div>
-          </div>
-
-          <div>
-            <p className="text-xs text-gray-500 mb-2">Expected Pipeline Stages</p>
+          <section>
+            <h4 className="text-sm font-bold mb-2">Asset map sent to Seedance</h4>
             <div className="space-y-2">
-              {stages.map((stage, idx) => (
-                <div key={stage} className="flex items-center text-sm text-gray-300">
-                  <span className="w-5 h-5 rounded-full bg-white/10 flex items-center justify-center text-[10px] mr-3">{idx + 1}</span>
-                  {stage}
+              {review.roleMap?.map((asset) => (
+                <div key={`${asset.tag}-${asset.assetId}`} className="flex items-start gap-3 p-3 rounded-xl border border-[#111111]/10 bg-[#F8F6EE]">
+                  <span className="font-mono text-xs font-bold bg-[#E6D9FF] px-2 py-1 rounded-lg">{asset.tag}</span>
+                  <div>
+                    <p className="text-sm font-semibold">{asset.alias}</p>
+                    <p className="text-xs text-[#66635D]">{ROLE_LABELS[asset.role] || asset.role}{asset.groupId ? ` · group: ${asset.groupId}` : ""}</p>
+                  </div>
                 </div>
               ))}
             </div>
-          </div>
+          </section>
+
+          <section>
+            <h4 className="text-sm font-bold mb-2">Confirmed compiled plan</h4>
+            <pre className="whitespace-pre-wrap text-xs leading-relaxed bg-[#111111] text-white p-4 rounded-2xl max-h-64 overflow-y-auto">{review.scenePlan}</pre>
+          </section>
+
+          <section>
+            <h4 className="text-sm font-bold mb-2">Credit quote</h4>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <ReviewValue label="Asset analysis (paid)" value={`${costs.analysisCreditsAlreadyPaid || 0} credits`} />
+              <ReviewValue label="Video generation" value={`${costs.generationCredits || 0} credits`} />
+              <ReviewValue label="Verification" value={`${costs.verificationCredits || 0} credits`} />
+              <ReviewValue label="Total reserved" value={`${creditCost || 0} credits`} strong />
+            </div>
+            <p className="text-xs text-[#66635D] mt-2">Failed or quarantined variants release their video-generation reservation. Analysis and verification follow this displayed quote.</p>
+          </section>
         </div>
 
-        <div className="p-6 border-t border-white/10 bg-black/40 flex justify-end space-x-3">
-          <button
-            onClick={onCancel}
-            disabled={isSubmitting}
-            className="px-5 py-2.5 rounded-xl text-sm font-medium text-gray-300 hover:text-white hover:bg-white/5 transition-colors disabled:opacity-50"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={onConfirm}
-            disabled={isSubmitting}
-            className="px-5 py-2.5 rounded-xl text-sm font-medium text-white bg-blue-600 hover:bg-blue-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-          >
-            {isSubmitting ? (
-              <>
-                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                <span>Submitting Job...</span>
-              </>
-            ) : (
-              <span>Confirm & Generate</span>
-            )}
+        <div className="p-6 border-t border-[#111111]/10 bg-[#FAF8ED] flex justify-end gap-3">
+          <button onClick={onCancel} disabled={isSubmitting} className="px-5 py-2.5 rounded-full text-sm font-semibold border border-[#111111]/20 hover:bg-white disabled:opacity-50">Edit request</button>
+          <button onClick={onConfirm} disabled={isSubmitting} className="px-5 py-2.5 rounded-full text-sm font-semibold bg-[#E6D9FF] border border-[#111111] hover:bg-[#DBCBFF] disabled:opacity-50">
+            {isSubmitting ? "Reserving & submitting…" : `Approve & reserve ${creditCost || 0} credits`}
           </button>
         </div>
       </div>
@@ -107,3 +96,11 @@ export default function PreflightReview({
   );
 }
 
+function ReviewValue({ label, value, strong = false }) {
+  return (
+    <div className="bg-white p-3 rounded-xl border border-[#111111]/10">
+      <p className="text-[11px] text-[#77746D] mb-1">{label}</p>
+      <p className={`text-sm ${strong ? "font-extrabold" : "font-semibold"}`}>{value || "—"}</p>
+    </div>
+  );
+}

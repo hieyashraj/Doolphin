@@ -34,6 +34,10 @@ function getS3Client() {
 }
 
 export class R2StorageService {
+  static isConfigured() {
+    return Boolean(accessKeyId && secretAccessKey && accountId && bucketName);
+  }
+
   static async uploadFile({ storageKey, filePath, buffer, contentType }) {
     let data = buffer;
     if (!data && filePath) {
@@ -80,9 +84,18 @@ export class R2StorageService {
       return await getSignedUrl(s3, command, { expiresIn: expiresInSeconds });
     }
 
-    // Local signed URL fallback
-    const baseUrl = process.env.NEXTAUTH_URL || "http://localhost:3000";
-    return `${baseUrl}/api/uploads/serve?key=${encodeURIComponent(storageKey)}&disposition=${isDownload ? "attachment" : "inline"}`;
+    // Local development storage lives below `public`, so it is served directly by
+    // Next.js.  The previous fallback pointed at `/api/uploads/serve`, which does
+    // not exist and made otherwise completed videos render as blank players.
+    return `/storage/${storageKey.split("/").map(encodeURIComponent).join("/")}`;
+  }
+
+  static async generateUploadUrl({ storageKey, contentType, expiresInSeconds = 900 }) {
+    const s3 = getS3Client();
+    if (!s3) return null;
+    const { PutObjectCommand } = req("@aws-sdk/client-s3");
+    const { getSignedUrl } = req("@aws-sdk/s3-request-presigner");
+    return getSignedUrl(s3, new PutObjectCommand({ Bucket: bucketName, Key: storageKey, ContentType: contentType }), { expiresIn: expiresInSeconds });
   }
 
   static async checkObjectExists(storageKey) {
@@ -109,5 +122,15 @@ export class R2StorageService {
       return { exists: true, size: stats.size, contentType: "video/mp4" };
     }
     return { exists: false };
+  }
+
+  static async downloadBuffer(storageKey) {
+    const s3 = getS3Client();
+    if (s3) {
+      const { GetObjectCommand } = req("@aws-sdk/client-s3");
+      const response = await s3.send(new GetObjectCommand({ Bucket: bucketName, Key: storageKey }));
+      return Buffer.from(await response.Body.transformToByteArray());
+    }
+    return fs.readFileSync(`./public/storage/${storageKey}`);
   }
 }
