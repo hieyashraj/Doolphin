@@ -15,16 +15,35 @@ export async function GET() {
   let appUser; try { ({ appUser } = await requireActivatedAccount()); } catch (error) { return NextResponse.json({ error: error.code || "UNAUTHENTICATED" }, { status: error.status || 401 }); }
   try {
     const creations = await prisma.creation.findMany({
-      where: { userId: appUser.id },
+      // userId and workspaceId are both intentional: a user's default
+      // workspace must never receive a cached/list response from another one.
+      where: { userId: appUser.id, workspaceId: appUser.defaultWorkspaceId },
       orderBy: { createdAt: "desc" },
       take: 100,
-      include: {
+      select: {
+        id: true, generationType: true, presetId: true, title: true, isFavorite: true,
+        prompt: true, spokenScript: true, additionalInstructions: true, status: true,
+        currentStage: true, progressValue: true, completedAt: true, modelId: true,
+        provider: true, aspectRatio: true, resolution: true, duration: true,
+        numberOfVideos: true, errorCode: true, quoteId: true, createdAt: true,
         variants: {
           orderBy: { variantIndex: "asc" },
-          include: { artifacts: { where: { type: "FINAL_VIDEO" }, orderBy: { createdAt: "desc" }, take: 1 } }
-        }
+          select: {
+            id: true, variantIndex: true, status: true, errorCode: true, safeError: true,
+            artifacts: { where: { type: "FINAL_VIDEO" }, orderBy: { createdAt: "desc" }, take: 1, select: { storageKey: true } }
+          }
+        },
+        url: true
       }
     });
+
+    // The previous per-creation retry lookup was an N+1 query. Fetch the
+    // small set of retry snapshots once, keyed by a creation-owned quote id.
+    const retryQuoteIds = creations.filter((creation) => isTerminalGenerationFailure(creation.status) && creation.quoteId).map((creation) => creation.quoteId);
+    const retryQuotes = retryQuoteIds.length
+      ? await prisma.preflightQuote.findMany({ where: { id: { in: retryQuoteIds }, userId: appUser.id }, select: { id: true, requestSnapshot: true } })
+      : [];
+    const retryRequestByQuoteId = new Map(retryQuotes.map((quote) => [quote.id, quote.requestSnapshot]));
 
     return NextResponse.json(await Promise.all(creations.map(async (creation) => {
       const passing = creation.variants.find((variant) => variant.status === "COMPLETED" && variant.artifacts[0]);
@@ -33,9 +52,7 @@ export async function GET() {
       // validated FINAL_VIDEO artifact.
       const url = await previewUrl(passing?.artifacts[0]) || creation.url || null;
       const canRetry = isTerminalGenerationFailure(creation.status);
-      const retryQuote = canRetry && creation.quoteId
-        ? await prisma.preflightQuote.findUnique({ where: { id: creation.quoteId }, select: { requestSnapshot: true } })
-        : null;
+      const retryRequest = canRetry && creation.quoteId ? retryRequestByQuoteId.get(creation.quoteId) : null;
       return {
         id: creation.id,
         generationType: creation.generationType,
@@ -58,7 +75,7 @@ export async function GET() {
         url,
         error: canRetry ? userFacingGenerationMessage(creation.status, creation.errorCode) : null,
         errorCode: creation.errorCode,
-        retryRequest: retryQuote ? JSON.parse(retryQuote.requestSnapshot) : null,
+        retryRequest: retryRequest ? JSON.parse(retryRequest) : null,
         createdAt: creation.createdAt,
         variants: creation.variants.map((variant) => ({
           id: variant.id,
@@ -68,7 +85,7 @@ export async function GET() {
           error: variant.safeError
         }))
       };
-    })));
+    })), { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
     console.error("[CREATIONS_LIST_FAILED]", error);
     return NextResponse.json({ error: "Creation history is temporarily unavailable" }, { status: 503 });

@@ -24,10 +24,10 @@ import {
 } from "react-icons/fi";
 import toast from "react-hot-toast";
 import { createClient } from "@/lib/supabase/browser";
+import { useAppAccount } from "@/components/AppAccountProvider";
 
 function SidebarContent() {
-  const [account, setAccount] = useState(null);
-  useEffect(() => { fetch("/api/account").then((r) => r.ok ? r.json() : null).then((value) => setAccount(value?.user || null)).catch(() => setAccount(null)); }, []);
+  const { account, setAccount } = useAppAccount();
   const searchParams = useSearchParams();
   const router = useRouter();
   
@@ -107,8 +107,8 @@ function SidebarContent() {
     try {
       const { error } = await createClient().auth.signOut();
       if (error) throw error;
+      setAccount(null);
       router.replace("/sign-in");
-      router.refresh();
     } catch {
       toast.error("Unable to sign out. Please try again.");
       setSigningOut(false);

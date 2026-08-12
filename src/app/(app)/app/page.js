@@ -31,6 +31,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import toast, { Toaster } from "react-hot-toast";
 import { PRESETS_LIBRARY } from "@/lib/presetsData";
 import CreationHub from "@/components/creation/CreationHub";
+import LazyVideo from "@/components/LazyVideo";
+import { useAppAccount } from "@/components/AppAccountProvider";
 
 const MODELS = [
   {
@@ -203,8 +205,7 @@ function calculateScriptDuration(text) {
 }
 
 function HomeContent() {
-  const [account, setAccount] = useState(null);
-  useEffect(() => { fetch("/api/account").then((r) => r.ok ? r.json() : null).then((value) => setAccount(value?.user || null)).catch(() => setAccount(null)); }, []);
+  const { account } = useAppAccount();
   const searchParams = useSearchParams();
   const router = useRouter();
   
@@ -500,13 +501,10 @@ function HomeContent() {
                     onClick={() => setSelectedExploreVideo(item)}
                     className="bg-white aspect-[9/16] overflow-hidden group relative shadow-sm cursor-pointer rounded-2xl md:rounded-3xl border border-[#111111]/15 hover:border-[#111111]/35 hover:shadow-xl transition-all duration-200"
                   >
-                    <video
+                    <LazyVideo
                       src={item.url}
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 ease-out"
                       autoPlay
-                      muted
-                      loop
-                      playsInline
                     />
 
                     {/* Dark Gradient Overlay */}
@@ -581,7 +579,7 @@ function HomeContent() {
               onOpenAvatarModal={() => setIsAvatarsModalOpen(true)} 
               onOpenPricing={() => setIsPricingModalOpen(true)}
               onNavigateTab={(tab) => router.push(`/?tab=${tab}`)}
-              userCredits={session?.user?.credits}
+              userCredits={account?.credits}
             />
           </div>
         )}
@@ -683,7 +681,7 @@ function HomeContent() {
                     className="bg-white aspect-[9/16] overflow-hidden relative cursor-pointer group shadow-sm rounded-2xl md:rounded-3xl border border-[#111111]/15 hover:border-[#111111]/35 hover:shadow-lg transition-all"
                   >
                     {item.status?.toLowerCase() === "completed" ? (
-                      <video src={item.url} className="w-full h-full object-cover" muted loop playsInline />
+                      <LazyVideo src={item.url} className="w-full h-full object-cover" />
                     ) : item.status?.toLowerCase() === "failed" ? (
                       <div className="w-full h-full flex flex-col items-center justify-center p-4 gap-2 text-center bg-red-50">
                         <FiAlertCircle className="text-red-600 text-2xl" />

@@ -1,6 +1,7 @@
 "use client";
 
 import { FiEdit3 } from "react-icons/fi";
+import LazyVideo from "@/components/LazyVideo";
 
 export default function PresetHeaderCard({ preset, onChangeClick }) {
   const title = preset?.name || "Video Studio";
@@ -10,12 +11,9 @@ export default function PresetHeaderCard({ preset, onChangeClick }) {
     <div className="relative w-full h-36 rounded-2xl overflow-hidden bg-white border border-[#111111]/15 shadow-sm group shrink-0">
       {preset?.image ? (
         isVideo ? (
-          <video
+          <LazyVideo
             src={preset.image}
             autoPlay
-            loop
-            muted
-            playsInline
             className="w-full h-full object-cover opacity-90 group-hover:scale-105 transition-transform duration-300 pointer-events-none"
           />
         ) : (

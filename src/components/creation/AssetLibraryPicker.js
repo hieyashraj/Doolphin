@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { FiFolder, FiSearch, FiX, FiVideo } from "react-icons/fi";
+import LazyVideo from "@/components/LazyVideo";
 
 /** A small, self-contained picker so all studios reuse the same owned assets. */
 export default function AssetLibraryPicker({ accept = ["image/"], onSelect, selectedAssetIds = [], label = "Library" }) {
@@ -60,7 +61,7 @@ export default function AssetLibraryPicker({ accept = ["image/"], onSelect, sele
               const selected = selectedAssetIds.includes(asset.assetId);
               return <button key={asset.assetId} type="button" disabled={selected} onClick={() => choose(asset)} className={`text-left overflow-hidden rounded-xl border transition-colors ${selected ? "opacity-45 border-[#111111]/10 cursor-not-allowed" : "border-[#111111]/15 hover:border-[#111111] bg-white"}`}>
                 <div className="h-24 bg-[#F2EFE5] relative">
-                  {asset.mimeType?.startsWith("video/") ? <video src={asset.url} muted className="w-full h-full object-cover" /> : <img src={asset.url} alt="" className="w-full h-full object-cover" />}
+                  {asset.mimeType?.startsWith("video/") ? <LazyVideo src={asset.url} className="w-full h-full object-cover" /> : <img src={asset.url} alt="" className="w-full h-full object-cover" />}
                   {asset.mimeType?.startsWith("video/") && <FiVideo className="absolute top-2 right-2 text-white drop-shadow" />}
                 </div>
                 <div className="p-2">

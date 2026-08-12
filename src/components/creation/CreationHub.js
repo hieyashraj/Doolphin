@@ -29,6 +29,8 @@ import { PRESETS_LIBRARY } from "@/lib/presetsData";
 import CreationDetailModal from "./CreationDetailModal";
 import { listGenerationModels } from "@/lib/generation/modelRegistry";
 import toast from "react-hot-toast";
+import LazyVideo from "@/components/LazyVideo";
+import { useAppAccount } from "@/components/AppAccountProvider";
 
 const PRESET_MODES = [
   {
@@ -141,6 +143,7 @@ export default function CreationHub({
   onNavigateTab,
   userCredits
 }) {
+  const { refreshAccount } = useAppAccount();
   const [activeModeId, setActiveModeId] = useState("video_maker");
   const [isPresetModalOpen, setIsPresetModalOpen] = useState(false);
   const [presetSearch, setPresetSearch] = useState("");
@@ -223,6 +226,10 @@ export default function CreationHub({
   // A very fast provider can finish before the post-submit gallery refresh
   // observes QUEUED. Keep submitted IDs so that edge case still alerts once.
   const watchedCreationIds = useRef(new Set());
+
+  useEffect(() => {
+    setDisplayedCredits(userCredits);
+  }, [userCredits]);
 
   const notifyGenerationStatusChange = (nextCreations) => {
     const previousStatuses = creationStatuses.current;
@@ -394,19 +401,16 @@ export default function CreationHub({
 
   useEffect(() => {
     fetchCreations();
-    if (userCredits === undefined) {
-      fetch("/api/account/balance").then((response) => response.ok ? response.json() : null).then((data) => {
-        if (data) setDisplayedCredits(data.availableCredits);
-      }).catch(() => {});
-    }
   }, []);
 
   // Jobs continue on the server via webhooks and reconciliation. Poll the
   // durable gallery so a refresh or closed tab never interrupts the workflow.
   useEffect(() => {
+    const hasActiveGeneration = creations.some((creation) => ["QUEUED", "PROCESSING"].includes(String(creation.status).toUpperCase()));
+    if (!hasActiveGeneration) return undefined;
     const interval = window.setInterval(fetchCreations, 5000);
     return () => window.clearInterval(interval);
-  }, []);
+  }, [creations]);
 
   const activePreset = PRESET_MODES.find((m) => m.id === activeModeId) || PRESET_MODES[0];
 
@@ -657,7 +661,8 @@ export default function CreationHub({
       const data = await response.json();
       if (!response.ok || !data.success) throw new Error(data.error || "Generation submission failed");
       if (data.creationId) watchedCreationIds.current.add(data.creationId);
-      setDisplayedCredits((value) => typeof value === "number" ? Math.max(0, value - (quote.costs?.totalCredits || 0)) : value);
+      const account = await refreshAccount();
+      setDisplayedCredits(account?.credits);
       await fetchCreations();
     } catch (error) {
       throw new Error(error.message || "Generation submission failed");
@@ -742,7 +747,7 @@ export default function CreationHub({
         throw new Error(data.error || "Could not cancel this generation");
       } else {
         toast.success("Generation cancelled. Any unsubmitted credits were released.");
-        await fetchCreations();
+        await Promise.all([fetchCreations(), refreshAccount().then((account) => setDisplayedCredits(account?.credits))]);
       }
     } catch (error) {
       toast.error(error.message || "Could not cancel this generation");
@@ -1043,13 +1048,10 @@ export default function CreationHub({
               >
                 {isPlayable(item) ? (
                   <>
-                    <video
+                    <LazyVideo
                       src={item.url}
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                       autoPlay
-                      muted
-                      loop
-                      playsInline
                     />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/20 p-3 flex flex-col justify-between opacity-0 group-hover:opacity-100 transition-opacity">
                       <div className="flex justify-between items-start">

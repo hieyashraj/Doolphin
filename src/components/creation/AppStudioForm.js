@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { FiUser, FiPlus, FiChevronDown, FiHelpCircle, FiSmartphone } from "react-icons/fi";
 import AssetLibraryPicker from "./AssetLibraryPicker";
+import LazyVideo from "@/components/LazyVideo";
 
 export default function AppStudioForm({
   appImages = [],
@@ -45,7 +46,7 @@ export default function AppStudioForm({
           {appImages.map((appImage) => (
             <div key={appImage.id || appImage.assetId} className="relative w-20 h-20 rounded-xl border border-[#111111]/15 overflow-hidden group">
               {appImage.mimeType?.startsWith("video/") ? (
-                <video src={appImage.preview || appImage.url} className="w-full h-full object-cover" muted />
+                <LazyVideo src={appImage.preview || appImage.url} className="w-full h-full object-cover" />
               ) : (
                 <img src={appImage.preview || appImage.url} alt={appImage.alias || "App UI"} className="w-full h-full object-cover" />
               )}
