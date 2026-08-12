@@ -1,20 +1,16 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth";
+import { requireActivatedAccount } from "@/lib/access/authorization";
 import { prisma } from "@/lib/prisma";
 import { formatErrorResponse, AppError, ERROR_CODES } from "@/lib/errors";
 
 export async function GET(req, { params }) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
-      throw new AppError(ERROR_CODES.UNAUTHORIZED, "Authentication required", { statusCode: 401 });
-    }
+    const { appUser } = await requireActivatedAccount();
 
     const { id } = await params;
 
-    const creation = await prisma.creation.findUnique({
-      where: { id },
+    const creation = await prisma.creation.findFirst({
+      where: { id, userId: appUser.id },
       include: { variants: true },
     });
 
@@ -22,10 +18,6 @@ export async function GET(req, { params }) {
       throw new AppError(ERROR_CODES.NOT_FOUND, "Creation not found", { statusCode: 404 });
     }
 
-    // Ownership check (Section 27)
-    if (creation.userId !== session.user.id) {
-      throw new AppError(ERROR_CODES.FORBIDDEN, "Access denied to creation", { statusCode: 403 });
-    }
 
     return NextResponse.json({
       success: true,

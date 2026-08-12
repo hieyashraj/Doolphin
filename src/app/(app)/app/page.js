@@ -1,6 +1,5 @@
 "use client";
 
-import { useSession } from "next-auth/react";
 import {
   FiArrowUp,
   FiVideo,
@@ -204,7 +203,8 @@ function calculateScriptDuration(text) {
 }
 
 function HomeContent() {
-  const { data: session } = useSession();
+  const [account, setAccount] = useState(null);
+  useEffect(() => { fetch("/api/account").then((r) => r.ok ? r.json() : null).then((value) => setAccount(value?.user || null)).catch(() => setAccount(null)); }, []);
   const searchParams = useSearchParams();
   const router = useRouter();
   
@@ -379,7 +379,7 @@ function HomeContent() {
 
             <div className="bg-white border border-[#111111]/15 px-4 py-2.5 rounded-full flex items-center gap-2 text-sm font-semibold text-[#111111] shadow-sm">
               <span className="text-[#111111]">💎</span>
-              <span>{session?.user?.credits !== undefined ? session.user.credits : "90"} credits</span>
+              <span>{account?.credits ?? "—"} credits</span>
             </div>
 
             <button

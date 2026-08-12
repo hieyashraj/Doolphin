@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { getMockSession as getServerSession } from "@/lib/getMockSession";
+import { requireActivatedAccount } from "@/lib/access/authorization";
 import { prisma } from "@/lib/prisma";
 import { R2StorageService } from "@/lib/storage/r2StorageService";
 import { isTerminalGenerationFailure, userFacingGenerationMessage } from "@/lib/generation/statusMessages";
@@ -12,11 +12,10 @@ async function previewUrl(artifact) {
 }
 
 export async function GET() {
-  const session = await getServerSession();
-  if (!session?.user?.id) return NextResponse.json([], { status: 200 });
+  let appUser; try { ({ appUser } = await requireActivatedAccount()); } catch (error) { return NextResponse.json({ error: error.code || "UNAUTHENTICATED" }, { status: error.status || 401 }); }
   try {
     const creations = await prisma.creation.findMany({
-      where: { userId: session.user.id },
+      where: { userId: appUser.id },
       orderBy: { createdAt: "desc" },
       take: 100,
       include: {
@@ -87,8 +86,7 @@ const creationMetadataSchema = z.object({
 // Metadata is deliberately kept on Creation (rather than the generated asset),
 // so it applies consistently to all variants made in a single request.
 export async function PATCH(request) {
-  const session = await getServerSession();
-  if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  let appUser; try { ({ appUser } = await requireActivatedAccount()); } catch (error) { return NextResponse.json({ error: error.code || "UNAUTHENTICATED" }, { status: error.status || 401 }); }
 
   let body;
   try {
@@ -103,7 +101,7 @@ export async function PATCH(request) {
 
   try {
     const result = await prisma.creation.updateMany({
-      where: { id: body.id, userId: session.user.id },
+      where: { id: body.id, userId: appUser.id },
       data
     });
     if (!result.count) return NextResponse.json({ error: "Not found" }, { status: 404 });

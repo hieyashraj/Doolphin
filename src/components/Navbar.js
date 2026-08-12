@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useState, useEffect, Suspense } from "react";
-import { useSession } from "next-auth/react";
 import { 
   FiCompass, 
   FiLayers, 
@@ -25,13 +24,14 @@ import {
 import toast from "react-hot-toast";
 
 function SidebarContent() {
-  const { data: session, update: updateSession } = useSession();
+  const [account, setAccount] = useState(null);
+  useEffect(() => { fetch("/api/account").then((r) => r.ok ? r.json() : null).then((value) => setAccount(value?.user || null)).catch(() => setAccount(null)); }, []);
   const searchParams = useSearchParams();
   const router = useRouter();
   
   const currentTab = searchParams.get("tab") || "explore";
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
-  const [activeSettingsTab, setActiveSettingsTab] = useState("profile"); // profile, billing, notifications, apikeys, mcp
+  const [activeSettingsTab, setActiveSettingsTab] = useState("profile");
   const [isCollapsedManual, setIsCollapsedManual] = useState(true);
 
   useEffect(() => {
@@ -52,8 +52,9 @@ function SidebarContent() {
   const isCollapsed = isCollapsedManual;
 
   // User Profile States
-  const [profileName, setProfileName] = useState(session?.user?.name || "Doolphin Creator");
-  const [profileEmail, setProfileEmail] = useState(session?.user?.email || "creator@doolphin.ai");
+  const [profileName, setProfileName] = useState("Doolphin Creator");
+  const [profileEmail, setProfileEmail] = useState("");
+  useEffect(() => { if (account) { setProfileName(account.name); setProfileEmail(account.email); } }, [account]);
 
   // Generation alerts are a device preference: browser permission is managed by
   // the browser itself, while this flag controls Doolphin's in-app/browser alerts.
@@ -84,61 +85,22 @@ function SidebarContent() {
     toast.success(nextEnabled ? "Generation alerts enabled" : "Generation alerts disabled");
   };
 
-  // Smart Multi-Key Provider API Keys State
-  const [muApiKey, setMuApiKey] = useState(session?.user?.customApiKey || "");
-  const [falKey, setFalKey] = useState(session?.user?.falKey || "");
-  const [elevenLabsKey, setElevenLabsKey] = useState(session?.user?.elevenLabsKey || "");
-  const [openAiKey, setOpenAiKey] = useState("");
-  
+  const [savingSettings, setSavingSettings] = useState(false);
+  // Legacy inert UI state retained temporarily while the legacy settings markup
+  // is removed; it is not navigable and never reaches a provider-key endpoint.
+  const [muApiKey, setMuApiKey] = useState("");
+  const [falKey, setFalKey] = useState("");
+  const [elevenLabsKey] = useState("");
+  const [openAiKey] = useState("");
   const [showMuKey, setShowMuKey] = useState(false);
   const [showFalKey, setShowFalKey] = useState(false);
-  const [showElevenKey, setShowElevenKey] = useState(false);
-  const [showOpenAiKey, setShowOpenAiKey] = useState(false);
-
-  const [savingSettings, setSavingSettings] = useState(false);
-
-  const isApiKeyActive = Boolean(session?.user?.customApiKey || session?.user?.falKey || session?.user?.elevenLabsKey || openAiKey);
 
   const handleSaveAllSettings = async (e) => {
     if (e) e.preventDefault();
     setSavingSettings(true);
     try {
-      const res = await fetch("/api/user/apikey", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: profileName.trim(),
-          email: profileEmail.trim(),
-          apiKey: muApiKey.trim(),
-          falKey: falKey.trim(),
-          elevenLabsKey: elevenLabsKey.trim(),
-        }),
-      });
-
-      const contentType = res.headers.get("content-type") || "";
-      let data = {};
-      if (contentType.includes("application/json")) {
-        data = await res.json();
-      } else {
-        data = {
-          success: true,
-          customApiKey: muApiKey.trim(),
-          falKey: falKey.trim(),
-          elevenLabsKey: elevenLabsKey.trim()
-        };
-      }
-
-      if (updateSession) {
-        await updateSession({
-          name: profileName.trim(),
-          email: profileEmail.trim(),
-          customApiKey: data.customApiKey,
-          falKey: data.falKey,
-          elevenLabsKey: data.elevenLabsKey,
-        });
-      }
-
-      toast.success("Settings updated cleanly!");
+      setAccount((previous) => ({ ...(previous || {}), name: profileName.trim(), email: profileEmail.trim() }));
+      toast.success("Profile preferences updated on this device.");
       setIsSettingsModalOpen(false);
     } catch (err) {
       console.error(err);
@@ -154,10 +116,7 @@ function SidebarContent() {
     }
     setSavingSettings(true);
     try {
-      await fetch("/api/user/apikey?action=deleteAccount", { method: "DELETE" });
-      toast.success("Account deleted");
-      setIsSettingsModalOpen(false);
-      setTimeout(() => window.location.reload(), 300);
+      toast("Account deletion is not available from this settings panel.", { icon: "ℹ️" });
     } catch (err) {
       toast.error("Failed to delete account");
     } finally {
@@ -366,8 +325,7 @@ function SidebarContent() {
               {[
                 { id: "profile", label: "Profile", icon: FiUser },
                 { id: "billing", label: "Plan & Billing", icon: FiCreditCard },
-                { id: "notifications", label: "Notifications", icon: FiBell },
-                { id: "mcp", label: "MCP Protocol", icon: FiCpu }
+                { id: "notifications", label: "Notifications", icon: FiBell }
               ].map((tab) => {
                 const Icon = tab.icon;
                 const isActive = activeSettingsTab === tab.id;

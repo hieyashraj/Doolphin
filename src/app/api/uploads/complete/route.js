@@ -1,15 +1,14 @@
 import crypto from "crypto";
 import { NextResponse } from "next/server";
-import { getMockSession as getRequestSession } from "@/lib/getMockSession";
+import { requireActivatedAccount } from "@/lib/access/authorization";
 import { prisma } from "@/lib/prisma";
 import { R2StorageService } from "@/lib/storage/r2StorageService";
 import { validateUploadedMedia } from "@/lib/media/uploadValidation";
 
 export async function POST(req) {
-  const session = await getRequestSession();
-  if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  let appUser; try { ({ appUser } = await requireActivatedAccount()); } catch (error) { return NextResponse.json({ error: error.code || "UNAUTHENTICATED" }, { status: error.status || 401 }); }
   const { assetId } = await req.json().catch(() => ({}));
-  const asset = await prisma.uploadedAsset.findFirst({ where: { id: assetId, userId: session.user.id } });
+  const asset = await prisma.uploadedAsset.findFirst({ where: { id: assetId, userId: appUser.id } });
   if (!asset) return NextResponse.json({ error: "Asset not found" }, { status: 404 });
   const object = await R2StorageService.checkObjectExists(asset.storageKey);
   if (!object.exists || Number(object.size) !== Number(asset.fileSizeBytes)) return NextResponse.json({ error: "Uploaded object is missing or incomplete" }, { status: 422 });

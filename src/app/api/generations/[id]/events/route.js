@@ -1,12 +1,10 @@
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth";
+import { requireActivatedAccount } from "@/lib/access/authorization";
 import { prisma } from "@/lib/prisma";
 
 export async function GET(request, { params }) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id) return new Response("Unauthorized", { status: 401 });
+  let appUser; try { ({ appUser } = await requireActivatedAccount()); } catch (error) { return new Response(error.code || "UNAUTHENTICATED", { status: error.status || 401 }); }
   const { id } = await params;
-  const owned = await prisma.creation.findFirst({ where: { id, userId: session.user.id }, select: { id: true } });
+  const owned = await prisma.creation.findFirst({ where: { id, userId: appUser.id }, select: { id: true } });
   if (!owned) return new Response("Not found", { status: 404 });
   const stream = new ReadableStream({
     async start(controller) {
@@ -14,7 +12,7 @@ export async function GET(request, { params }) {
       controller.enqueue(encoder.encode(`data: ${JSON.stringify({ message: "connected" })}\n\n`));
       const interval = setInterval(async () => {
         try {
-          const creation = await prisma.creation.findFirst({ where: { id, userId: session.user.id }, select: { status: true, currentStage: true, progressValue: true } });
+          const creation = await prisma.creation.findFirst({ where: { id, userId: appUser.id }, select: { status: true, currentStage: true, progressValue: true } });
           if (!creation) throw new Error("Creation no longer available");
           controller.enqueue(encoder.encode(`data: ${JSON.stringify(creation)}\n\n`));
           if (["COMPLETED", "PARTIAL_COMPLETED", "FAILED", "CANCELLED", "TIMED_OUT", "QUARANTINED"].includes(creation.status)) { clearInterval(interval); controller.close(); }

@@ -103,10 +103,9 @@ export async function POST(req, context) {
 }
 
 export async function GET(_req, { params }) {
-  const session = await getRequestSession();
-  if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  let appUser; try { ({ appUser } = await requireActivatedAccount()); } catch (error) { return NextResponse.json({ error: error.code || "UNAUTHENTICATED" }, { status: error.status || 401 }); }
   const { id } = await params;
-  let asset = await ownedAsset(id, session.user.id);
+  let asset = await ownedAsset(id, appUser.id);
   if (!asset) return NextResponse.json({ error: "Asset not found" }, { status: 404 });
   if (["COMPLETED", "CONFIRMED", "FAILED"].includes(asset.analysisStatus) || asset.analysisConfirmedAt) {
     return NextResponse.json({ status: asset.analysisConfirmedAt ? "CONFIRMED" : asset.analysisStatus, analysis: asset.analysisJson ? JSON.parse(asset.analysisJson) : null, revision: asset.analysisRevision });
@@ -124,7 +123,7 @@ export async function GET(_req, { params }) {
   try {
     const analysis = parseAnalysisOutput(result);
     await prisma.uploadedAsset.update({ where: { id }, data: { analysisStatus: "COMPLETED", analysisJson: JSON.stringify(analysis), analysisRevision: `${ANALYSIS_REVISION}.${crypto.createHash("sha256").update(JSON.stringify(analysis)).digest("hex").slice(0, 12)}` } });
-    asset = await ownedAsset(id, session.user.id);
+    asset = await ownedAsset(id, appUser.id);
     return NextResponse.json({ status: "COMPLETED", analysis, revision: asset.analysisRevision });
   } catch (error) {
     await prisma.uploadedAsset.update({ where: { id }, data: { analysisStatus: "FAILED", analysisJson: JSON.stringify({ error: error.message }) } });
@@ -133,10 +132,9 @@ export async function GET(_req, { params }) {
 }
 
 export async function PATCH(req, { params }) {
-  const session = await getRequestSession();
-  if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  let appUser; try { ({ appUser } = await requireActivatedAccount()); } catch (error) { return NextResponse.json({ error: error.code || "UNAUTHENTICATED" }, { status: error.status || 401 }); }
   const { id } = await params;
-  const asset = await ownedAsset(id, session.user.id);
+  const asset = await ownedAsset(id, appUser.id);
   if (!asset) return NextResponse.json({ error: "Asset not found" }, { status: 404 });
   if (asset.analysisStatus !== "COMPLETED" || !asset.analysisJson) return NextResponse.json({ error: "Analysis is not ready" }, { status: 409 });
   const body = await req.json().catch(() => ({}));

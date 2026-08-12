@@ -24,6 +24,12 @@ export async function requireActivatedAccount() {
   return identity;
 }
 
+export async function requireAdminUser() {
+  const identity = await requireAuthenticatedUser();
+  if (!identity.appUser.isAdmin) throw new AuthorizationError("ADMIN_ACCESS_DENIED", 403);
+  return identity;
+}
+
 export async function requireWorkspaceMembership(workspaceId) {
   const identity = await requireActivatedAccount();
   const membership = await prisma.workspaceMember.findUnique({ where: { workspaceId_userId: { workspaceId, userId: identity.appUser.id } } });

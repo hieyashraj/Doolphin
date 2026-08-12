@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getMockSession as getRequestSession } from "@/lib/getMockSession";
+import { requireActivatedAccount } from "@/lib/access/authorization";
 import { prisma } from "@/lib/prisma";
 import { R2StorageService } from "@/lib/storage/r2StorageService";
 
@@ -10,13 +10,12 @@ async function artifactUrl(artifact) {
 }
 
 export async function GET(_req, { params }) {
-  const session = await getRequestSession();
-  if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  let appUser; try { ({ appUser } = await requireActivatedAccount()); } catch (error) { return NextResponse.json({ error: error.code || "UNAUTHENTICATED" }, { status: error.status || 401 }); }
 
   try {
     const { id } = await params;
     const creation = await prisma.creation.findFirst({
-      where: { id, userId: session.user.id },
+      where: { id, userId: appUser.id },
       include: {
         variants: {
           orderBy: { variantIndex: "asc" },

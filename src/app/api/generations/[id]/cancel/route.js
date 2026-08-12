@@ -1,14 +1,12 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth";
+import { requireActivatedAccount } from "@/lib/access/authorization";
 import { prisma } from "@/lib/prisma";
 import { CreditEscrowService } from "@/lib/billing/CreditEscrowService";
 
 export async function POST(_request, { params }) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  let appUser; try { ({ appUser } = await requireActivatedAccount()); } catch (error) { return NextResponse.json({ error: error.code || "UNAUTHENTICATED" }, { status: error.status || 401 }); }
   const { id } = await params;
-  const creation = await prisma.creation.findFirst({ where: { id, userId: session.user.id }, include: { variants: { include: { providerJobs: true } } } });
+  const creation = await prisma.creation.findFirst({ where: { id, userId: appUser.id }, include: { variants: { include: { providerJobs: true } } } });
   if (!creation) return NextResponse.json({ error: "Not found" }, { status: 404 });
   const submitted = creation.variants.some((variant) => variant.providerJobs.some((job) => job.providerRequestId || ["SUBMITTING", "SUBMISSION_UNKNOWN", "QUEUED", "PROCESSING", "SUCCEEDED"].includes(job.status)));
   if (submitted) return NextResponse.json({ error: "This request has already reached a paid provider and cannot be safely cancelled without provider-side cancellation support" }, { status: 409 });

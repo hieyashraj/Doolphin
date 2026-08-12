@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getMockSession as getRequestSession } from "@/lib/getMockSession";
+import { requireActivatedAccount } from "@/lib/access/authorization";
 import { prisma } from "@/lib/prisma";
 import { R2StorageService } from "@/lib/storage/r2StorageService";
 
@@ -15,12 +15,11 @@ function parseAnalysis(value) {
 // validation.  URLs are short-lived and are generated after ownership is
 // checked, so a client can never use this endpoint to enumerate another user.
 export async function GET() {
-  const session = await getRequestSession();
-  if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  let appUser; try { ({ appUser } = await requireActivatedAccount()); } catch (error) { return NextResponse.json({ error: error.code || "UNAUTHENTICATED" }, { status: error.status || 401 }); }
 
   try {
     const assets = await prisma.uploadedAsset.findMany({
-      where: { userId: session.user.id, validationStatus: "VALID" },
+      where: { userId: appUser.id, validationStatus: "VALID" },
       orderBy: { updatedAt: "desc" },
       take: MAX_ASSETS,
       select: {

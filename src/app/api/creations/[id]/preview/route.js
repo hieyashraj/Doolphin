@@ -1,21 +1,17 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth";
+import { requireActivatedAccount } from "@/lib/access/authorization";
 import { R2StorageService } from "@/lib/storage/r2StorageService";
 import { prisma } from "@/lib/prisma";
 import { formatErrorResponse, AppError, ERROR_CODES } from "@/lib/errors";
 
 export async function GET(req, { params }) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
-      throw new AppError(ERROR_CODES.UNAUTHORIZED, "Authentication required", { statusCode: 401 });
-    }
+    const { appUser } = await requireActivatedAccount();
 
     const { id } = await params;
 
-    const creation = await prisma.creation.findUnique({
-      where: { id },
+    const creation = await prisma.creation.findFirst({
+      where: { id, userId: appUser.id },
       include: { variants: { where: { status: "COMPLETED" }, include: { artifacts: { where: { type: "FINAL_VIDEO", validationStatus: "VALID" } } } } },
     });
 
@@ -23,10 +19,6 @@ export async function GET(req, { params }) {
       throw new AppError(ERROR_CODES.NOT_FOUND, "Creation not found", { statusCode: 404 });
     }
 
-    // Authorization check (Section 27)
-    if (creation.userId !== session.user.id) {
-      throw new AppError(ERROR_CODES.FORBIDDEN, "Access denied to creation", { statusCode: 403 });
-    }
 
     const variant = creation.variants[0];
     const artifact = variant?.artifacts?.[0];

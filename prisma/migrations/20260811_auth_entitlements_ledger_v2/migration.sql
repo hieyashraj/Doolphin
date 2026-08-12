@@ -8,7 +8,7 @@ CREATE TYPE "CreditLedgerReason" AS ENUM ('LEGACY_OPENING_BALANCE','EXPLORER_GRA
 CREATE TYPE "CreditGrantStatus" AS ENUM ('PENDING','GRANTED','STOPPED');
 CREATE TYPE "LedgerCutoverStatus" AS ENUM ('PENDING','FROZEN','RECONCILED','BLOCKED','ACTIVE');
 
-ALTER TABLE "User" ADD COLUMN "supabaseUserId" TEXT, ADD COLUMN "normalizedEmail" TEXT, ADD COLUMN "activationStatus" "ActivationStatus" NOT NULL DEFAULT 'UNVERIFIED', ADD COLUMN "subscriptionStatus" "SubscriptionStatus" NOT NULL DEFAULT 'NONE', ADD COLUMN "explorerClaimedAt" TIMESTAMP(3), ADD COLUMN "explorerOrderId" TEXT;
+ALTER TABLE "User" ADD COLUMN "supabaseUserId" TEXT, ADD COLUMN "normalizedEmail" TEXT, ADD COLUMN "activationStatus" "ActivationStatus" NOT NULL DEFAULT 'UNVERIFIED', ADD COLUMN "subscriptionStatus" "SubscriptionStatus" NOT NULL DEFAULT 'NONE', ADD COLUMN "explorerClaimedAt" TIMESTAMP(3), ADD COLUMN "explorerOrderId" TEXT, ADD COLUMN "isAdmin" BOOLEAN NOT NULL DEFAULT false;
 CREATE UNIQUE INDEX "User_supabaseUserId_key" ON "User"("supabaseUserId");
 CREATE UNIQUE INDEX "User_normalizedEmail_key" ON "User"("normalizedEmail");
 CREATE UNIQUE INDEX "User_explorerOrderId_key" ON "User"("explorerOrderId");

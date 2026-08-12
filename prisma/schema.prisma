@@ -300,6 +300,7 @@ model User {
   emailVerified      DateTime?
   image              String?
   status             UserStatus   @default(ACTIVE)
+  isAdmin            Boolean      @default(false)
   lastLoginAt        DateTime?
   defaultWorkspaceId String?
   supabaseUserId     String?      @unique
