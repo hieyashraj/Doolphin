@@ -36,6 +36,7 @@ test("only active generations poll and card media is viewport-gated", async () =
   assert.match(lazyVideo, /IntersectionObserver/);
   assert.match(lazyVideo, /preload="metadata"/);
   assert.match(app, /<LazyVideo/);
+  assert.match(app, /loading="lazy" decoding="async"/);
 });
 
 test("creation list uses a workspace-scoped narrow projection and batches retry metadata", async () => {
@@ -45,4 +46,10 @@ test("creation list uses a workspace-scoped narrow projection and batches retry 
   assert.match(route, /retryQuoteIds/);
   assert.match(route, /preflightQuote\.findMany/);
   assert.doesNotMatch(route, /retryQuote \? await prisma\.preflightQuote\.findUnique/);
+});
+
+test("the app defers the library collection request until the Library view is opened", async () => {
+  const app = await text("src/app/(app)/app/page.js");
+  assert.match(app, /if \(currentTab !== "library"\) return/);
+  assert.match(app, /hasLoadedLibraryCreations/);
 });

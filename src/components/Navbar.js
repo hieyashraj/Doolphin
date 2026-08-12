@@ -25,6 +25,8 @@ import {
 import toast from "react-hot-toast";
 import { createClient } from "@/lib/supabase/browser";
 import { useAppAccount } from "@/components/AppAccountProvider";
+import { navigateAppView } from "@/lib/app/app-navigation";
+import { PLAN_BY_CODE } from "@/lib/entitlements/plan-catalog";
 
 function SidebarContent() {
   const { account, setAccount } = useAppAccount();
@@ -97,6 +99,7 @@ function SidebarContent() {
   const [openAiKey] = useState("");
   const [showMuKey, setShowMuKey] = useState(false);
   const [showFalKey, setShowFalKey] = useState(false);
+  const activePlan = PLAN_BY_CODE[account?.planCode] || null;
   // The legacy key panel is inert; this only prevents the Navbar render from
   // evaluating an undeclared identifier while that panel is retired.
   const isApiKeyActive = false;
@@ -155,25 +158,25 @@ function SidebarContent() {
       id: "explore",
       name: "Explore",
       icon: FiCompass,
-      action: () => router.push("/app?tab=explore")
+      action: () => navigateAppView({ tab: "explore" })
     },
     {
       id: "video",
       name: "Video Studio",
       icon: FiZap,
-      action: () => router.push("/app?tab=video&studio=video_maker")
+      action: () => navigateAppView({ tab: "video", studio: "video_maker" })
     },
     {
       id: "avatars",
       name: "Avatars",
       icon: FiUser,
-      action: () => router.push("/app?tab=avatars")
+      action: () => navigateAppView({ tab: "avatars" })
     },
     {
       id: "library",
       name: "My Creations",
       icon: FiLayers,
-      action: () => router.push("/app?tab=library")
+      action: () => navigateAppView({ tab: "library" })
     }
   ];
 
@@ -197,7 +200,7 @@ function SidebarContent() {
                 <FiSidebar size={18} className="group-hover:scale-110 transition-transform text-[#111111]" />
               </button>
               <Link 
-                href="/app"
+                href="/app?tab=explore" onClick={(event) => { event.preventDefault(); navigateAppView({ tab: "explore" }); }}
                 className="w-10 h-10 rounded-xl bg-white border border-[#111111]/20 flex items-center justify-center p-1.5 shadow-sm hover:scale-105 transition-transform"
                 title="Doolphin Studio"
               >
@@ -207,7 +210,7 @@ function SidebarContent() {
           ) : (
             <div className="flex items-center justify-between px-2 pt-1">
               <Link 
-                href="/app"
+                href="/app?tab=explore" onClick={(event) => { event.preventDefault(); navigateAppView({ tab: "explore" }); }}
                 className="flex items-center gap-3 group truncate"
               >
                 <div className="w-10 h-10 rounded-xl bg-white border border-[#111111]/20 flex items-center justify-center p-1.5 shadow-sm shrink-0 group-hover:scale-105 transition-transform">
@@ -261,7 +264,7 @@ function SidebarContent() {
           {!isCollapsed ? (
             <div className="flex items-center gap-2.5 w-full">
               <button
-                onClick={() => router.push("/app?tab=video&studio=video_maker")}
+                onClick={() => navigateAppView({ tab: "video", studio: "video_maker" })}
                 className="flex-1 bg-[#E6D9FF] hover:bg-[#DBCBFF] text-[#111111] font-semibold text-sm px-4 py-2.5 rounded-full border border-[#111111] flex items-center justify-center gap-2 shadow-sm transition-all active:scale-95 cursor-pointer"
               >
                 <FiZap size={16} className="text-[#111111]" />
@@ -294,7 +297,7 @@ function SidebarContent() {
           ) : (
             <div className="flex flex-col gap-2.5 items-center">
               <button
-                onClick={() => router.push("/app?tab=video&studio=video_maker")}
+                onClick={() => navigateAppView({ tab: "video", studio: "video_maker" })}
                 title="Open Studio"
                 className="w-11 h-11 rounded-full bg-[#E6D9FF] hover:bg-[#DBCBFF] border border-[#111111] flex items-center justify-center text-[#111111] shadow-sm cursor-pointer transition-all active:scale-95"
               >
@@ -399,9 +402,10 @@ function SidebarContent() {
                     <button
                       onClick={handleSaveAllSettings}
                       disabled={savingSettings}
-                      className="bg-[#E6D9FF] hover:bg-[#DBCBFF] text-[#111111] border border-[#111111] rounded-full px-6 py-2.5 text-xs md:text-sm font-semibold shadow-sm cursor-pointer transition-all"
+                      aria-busy={savingSettings}
+                      className="bg-[#E6D9FF] hover:bg-[#DBCBFF] text-[#111111] border border-[#111111] rounded-full px-6 py-2.5 text-xs md:text-sm font-semibold shadow-sm cursor-pointer transition-all disabled:cursor-not-allowed disabled:opacity-60"
                     >
-                      Save Profile
+                      {savingSettings ? "Saving…" : "Save Profile"}
                     </button>
                   </div>
 
@@ -433,18 +437,18 @@ function SidebarContent() {
                     <div className="flex items-center justify-between">
                       <div>
                         <span className="bg-[#064E3B] text-white border border-[#111111] px-3.5 py-1 rounded-full text-xs font-semibold">Active Plan</span>
-                        <h4 className="text-2xl font-serif font-bold text-[#111111] mt-3">Doolphin Pro</h4>
+                        <h4 className="text-2xl font-serif font-bold text-[#111111] mt-3">{activePlan?.name || "Doolphin plan"}</h4>
                       </div>
                       <span className="text-2xl font-bold text-[#111111] font-serif">{account?.credits ?? "—"} Credits</span>
                     </div>
                     <p className="text-sm text-[#44423D] font-medium leading-relaxed">
-                      High-volume video generation enabled. Auto-topup available.
+                      {activePlan ? `${activePlan.credits.toLocaleString()} credits ${activePlan.interval === "ONE_TIME" ? "included" : "granted monthly"}. Credits roll over.` : "Your active entitlement is being verified."}
                     </p>
                     <div className="flex items-center gap-3 pt-2">
                       <button
                         onClick={() => {
                           setIsSettingsModalOpen(false);
-                          router.push("/app?tab=video&studio=video_maker");
+                          navigateAppView({ tab: "video", studio: "video_maker" });
                         }}
                         className="bg-[#E6D9FF] hover:bg-[#DBCBFF] text-[#111111] border border-[#111111] rounded-full px-6 py-2.5 text-xs md:text-sm font-semibold shadow-sm cursor-pointer transition-all"
                       >

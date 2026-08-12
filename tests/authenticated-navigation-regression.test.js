@@ -16,10 +16,19 @@ test("authenticated shell navigation never routes studio controls to the public 
     assert.doesNotMatch(source, /["'`]\/\?tab=/);
     assert.doesNotMatch(source, /href="\/"/);
   }
-  assert.match(navbar, /href="\/app"/);
-  assert.match(navbar, /router\.push\("\/app\?tab=video&studio=video_maker"\)/);
-  assert.match(app, /router\.push\(`\/app\?\$\{params\.toString\(\)\}`\)/);
+  assert.match(navbar, /navigateAppView/);
+  assert.match(app, /navigateAppView/);
+  assert.doesNotMatch(navbar, /router\.push\("\/app\?tab=/);
+  assert.doesNotMatch(app, /router\.push\(`\/app\?/);
   assert.match(gallery, /router\.replace\("\/app\?tab=library"\)/);
+});
+
+test("tab and studio changes keep the protected shell mounted while updating shareable history", async () => {
+  const navigation = await text("src/lib/app/app-navigation.js");
+  assert.match(navigation, /window\.history\[replace \? "replaceState" : "pushState"\]/);
+  assert.match(navigation, /url\.pathname = "\/app"/);
+  assert.match(navigation, /url\.searchParams\.set\("tab", tab\)/);
+  assert.match(navigation, /PopStateEvent\("popstate"\)/);
 });
 
 test("featured studio cards retain the authenticated shell and select the existing studio state", async () => {

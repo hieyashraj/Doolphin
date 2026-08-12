@@ -21,7 +21,7 @@ test("activated Starter fixture reaches /app and receives its safe 700-credit ac
   assert.equal(activatedFixture.entitlement.status, "ACTIVE");
   assert.equal(activatedFixture.entitlement.planCode, "STARTER_MONTHLY");
   assert.equal(postSignInDestination({ ok: true }), "/app");
-  assert.deepEqual(safeAccountState(activatedFixture), { name: "activated", email: "activated@example.test", credits: 700 });
+  assert.deepEqual(safeAccountState(activatedFixture), { name: "activated", email: "activated@example.test", credits: 700, planCode: "STARTER_MONTHLY" });
 });
 
 test("verified but unpaid accounts continue to pricing", () => {

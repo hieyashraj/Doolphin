@@ -27,12 +27,14 @@ import {
 import { FaCoins } from "react-icons/fa";
 import { useEffect, useState, useRef, Suspense } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import toast, { Toaster } from "react-hot-toast";
 import { PRESETS_LIBRARY } from "@/lib/presetsData";
 import CreationHub from "@/components/creation/CreationHub";
 import LazyVideo from "@/components/LazyVideo";
 import { useAppAccount } from "@/components/AppAccountProvider";
+import { navigateAppView } from "@/lib/app/app-navigation";
+import { PLAN_BY_CODE, PURCHASE_PLAN_CODES } from "@/lib/entitlements/plan-catalog";
 
 const MODELS = [
   {
@@ -191,12 +193,7 @@ const MOCK_COMMUNITY = [
   { id: "e9", title: "Casual Creator Dialogue", prompt: "Creator wearing winter beanie speaking directly to camera in home studio setting", url: "/explore/Explore 09.mp4", aspect: "9:16" }
 ];
 
-const PRICING_PLANS = [
-  { id: "basic", name: "Basic Pack", price: "$5", credits: 100, description: "Perfect for testing custom prompts and exploring styles.", polarProductId: process.env.NEXT_PUBLIC_POLAR_PRODUCT_BASIC || "" },
-  { id: "standard", name: "Standard Pack", price: "$10", credits: 250, description: "Ideal for regular creators wanting high resolution outputs.", polarProductId: process.env.NEXT_PUBLIC_POLAR_PRODUCT_STANDARD || "" },
-  { id: "pro", name: "Professional Pack", price: "$20", credits: 600, description: "Designed for power users demanding batch exports.", popular: true, polarProductId: process.env.NEXT_PUBLIC_POLAR_PRODUCT_PRO || "" },
-  { id: "business", name: "Business Pack", price: "$50", credits: 2000, description: "Maximum value pack for agency workflows.", polarProductId: process.env.NEXT_PUBLIC_POLAR_PRODUCT_BUSINESS || "" }
-];
+const PRICING_PLANS = PURCHASE_PLAN_CODES.map((code) => PLAN_BY_CODE[code]);
 
 function calculateScriptDuration(text) {
   if (!text || !text.trim()) return 5;
@@ -210,14 +207,11 @@ function calculateScriptDuration(text) {
 function HomeContent() {
   const { account } = useAppAccount();
   const searchParams = useSearchParams();
-  const router = useRouter();
   
   const currentTab = searchParams.get("tab") || "explore";
   const currentStudio = searchParams.get("studio") || "video_maker";
   const navigateToTab = (tab, studio) => {
-    const params = new URLSearchParams({ tab });
-    if (studio) params.set("studio", studio);
-    router.push(`/app?${params.toString()}`);
+    navigateAppView({ tab, studio });
   };
   
   const [selectedModel, setSelectedModel] = useState(MODELS[0]);
@@ -255,6 +249,7 @@ function HomeContent() {
   const [selectedExploreVideo, setSelectedExploreVideo] = useState(null);
   
   const isSubmittingRef = useRef(false);
+  const hasLoadedLibraryCreations = useRef(false);
 
   const fetchCreations = async () => {
     try {
@@ -271,8 +266,13 @@ function HomeContent() {
   };
 
   useEffect(() => {
+    // Explore, Avatars, and the Studio do not render this collection. Defer
+    // its separately-authorized API request until Library is actually opened.
+    if (currentTab !== "library") return;
+    if (hasLoadedLibraryCreations.current && !lastGeneration) return;
+    hasLoadedLibraryCreations.current = true;
     fetchCreations();
-  }, [lastGeneration]);
+  }, [currentTab, lastGeneration]);
 
   const updateCreationMetadata = async (id, changes) => {
     setIsSavingCreationMetadata(true);
@@ -325,15 +325,10 @@ function HomeContent() {
   const handleCheckoutPlan = async (planId) => {
     setLoadingCheckoutPlan(planId);
     try {
-      const selectedPlan = PRICING_PLANS.find((p) => p.id === planId);
       const res = await fetch("/api/checkout/polar", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          productId: selectedPlan?.polarProductId || planId,
-          planId,
-          credits: selectedPlan?.credits
-        }),
+        body: JSON.stringify({ planCode: planId }),
       });
       const data = await res.json();
       if (data?.url) {
@@ -563,7 +558,7 @@ function HomeContent() {
                   }}
                   className="bg-white aspect-[3/4] overflow-hidden cursor-pointer relative group flex flex-col justify-between p-3 rounded-2xl md:rounded-3xl border border-[#111111]/15 shadow-sm hover:border-[#111111]/30 hover:shadow-md transition-all duration-200 active:scale-[0.98]"
                 >
-                  <img src={avatar.image} className="absolute inset-0 w-full h-full object-cover rounded-xl md:rounded-2xl" />
+                  <img src={avatar.image} alt={avatar.name} loading="lazy" decoding="async" className="absolute inset-0 w-full h-full object-cover rounded-xl md:rounded-2xl" />
                   <div className="relative z-10 flex justify-end">
                     {selectedAvatar?.id === avatar.id && (
                       <span className="w-7 h-7 rounded-full bg-[#064E3B] text-white flex items-center justify-center text-xs shadow-md">
@@ -777,7 +772,7 @@ function HomeContent() {
                         onClick={() => handleSelectAvatar(avatar)}
                         className={`bg-white aspect-[3/4] overflow-hidden cursor-pointer relative group flex flex-col justify-between p-3 rounded-2xl border border-[#111111]/15 transition-all duration-150 active:scale-[0.98] ${isSelected ? "border-[#111111] ring-2 ring-[#111111]" : "hover:border-[#111111]/30"}`}
                       >
-                        <img src={avatar.image} className="absolute inset-0 w-full h-full object-cover rounded-xl" />
+                        <img src={avatar.image} alt={avatar.name} loading="lazy" decoding="async" className="absolute inset-0 w-full h-full object-cover rounded-xl" />
                         <div className="relative z-10 flex justify-end">
                           {isSelected && (
                             <span className="w-6 h-6 rounded-full bg-[#064E3B] text-white flex items-center justify-center text-xs shadow">
@@ -832,7 +827,7 @@ function HomeContent() {
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-5 w-full">
                   {PRICING_PLANS.map((plan) => (
                     <div
-                      key={plan.id}
+                      key={plan.code}
                       className={`bg-white p-5 sm:p-6 rounded-2xl md:rounded-3xl flex flex-col justify-between gap-4 relative border border-[#111111]/15 ${plan.popular ? "border-[#111111] ring-2 ring-[#111111]/20 shadow-md" : ""}`}
                     >
                       {plan.popular && (
@@ -848,20 +843,20 @@ function HomeContent() {
                         </div>
                         
                         <div className="bg-[#E6D9FF] text-[#111111] py-1.5 text-center text-xs font-semibold rounded-full border border-[#111111]/20">
-                          {plan.credits} Credits
+                          {plan.credits.toLocaleString()} credits
                         </div>
 
                         <p className="text-xs sm:text-sm text-[#55534E] leading-relaxed min-h-[2.5rem]">
-                          {plan.description}
+                          {plan.cadence}. Credits roll over.
                         </p>
                       </div>
 
                       <button
-                        onClick={() => handleCheckoutPlan(plan.id)}
+                        onClick={() => handleCheckoutPlan(plan.code)}
                         disabled={loadingCheckoutPlan !== null}
                         className={`w-full py-3 rounded-full text-sm font-semibold cursor-pointer transition-transform active:scale-95 ${plan.popular ? "bg-[#E6D9FF] text-[#111111] border border-[#111111] hover:bg-[#DBCBFF]" : "bg-[#FAF8ED] text-[#111111] border border-[#111111]/20 hover:bg-[#EFECE1]"}`}
                       >
-                        {loadingCheckoutPlan === plan.id ? "Loading..." : "Purchase"}
+                        {loadingCheckoutPlan === plan.code ? "Opening…" : "Choose plan"}
                       </button>
                     </div>
                   ))}
