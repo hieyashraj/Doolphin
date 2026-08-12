@@ -19,9 +19,11 @@ import {
   FiExternalLink,
   FiAlertTriangle,
   FiCpu,
-  FiSidebar
+  FiSidebar,
+  FiLogOut
 } from "react-icons/fi";
 import toast from "react-hot-toast";
+import { createClient } from "@/lib/supabase/browser";
 
 function SidebarContent() {
   const [account, setAccount] = useState(null);
@@ -86,6 +88,7 @@ function SidebarContent() {
   };
 
   const [savingSettings, setSavingSettings] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
   // Legacy inert UI state retained temporarily while the legacy settings markup
   // is removed; it is not navigable and never reaches a provider-key endpoint.
   const [muApiKey, setMuApiKey] = useState("");
@@ -94,6 +97,23 @@ function SidebarContent() {
   const [openAiKey] = useState("");
   const [showMuKey, setShowMuKey] = useState(false);
   const [showFalKey, setShowFalKey] = useState(false);
+  // The legacy key panel is inert; this only prevents the Navbar render from
+  // evaluating an undeclared identifier while that panel is retired.
+  const isApiKeyActive = false;
+
+  const handleSignOut = async () => {
+    if (signingOut) return;
+    setSigningOut(true);
+    try {
+      const { error } = await createClient().auth.signOut();
+      if (error) throw error;
+      router.replace("/sign-in");
+      router.refresh();
+    } catch {
+      toast.error("Unable to sign out. Please try again.");
+      setSigningOut(false);
+    }
+  };
 
   const handleSaveAllSettings = async (e) => {
     if (e) e.preventDefault();
@@ -269,6 +289,7 @@ function SidebarContent() {
                   </span>
                 )}
               </button>
+              <button onClick={handleSignOut} disabled={signingOut} title="Sign out" aria-busy={signingOut} className="h-10 rounded-full bg-white hover:bg-[#F2EFE5] border border-[#111111] flex items-center justify-center gap-2 px-3 text-xs font-semibold text-[#111111] shadow-sm cursor-pointer transition-all shrink-0 disabled:cursor-not-allowed disabled:opacity-60"><FiLogOut size={18} /><span>{signingOut ? "Signing out…" : "Sign out"}</span></button>
             </div>
           ) : (
             <div className="flex flex-col gap-2.5 items-center">
@@ -290,6 +311,7 @@ function SidebarContent() {
                   <span className="absolute top-0 right-0 w-3 h-3 bg-[#064E3B] rounded-full border-2 border-[#111111] shadow-sm" />
                 )}
               </button>
+              <button onClick={handleSignOut} disabled={signingOut} title={signingOut ? "Signing out…" : "Sign out"} aria-busy={signingOut} className="w-11 h-11 rounded-full flex items-center justify-center text-[#111111] hover:bg-[#EFECE1] transition-all cursor-pointer relative bg-white border border-[#111111] disabled:cursor-not-allowed disabled:opacity-60"><FiLogOut size={20} /><span className="sr-only">{signingOut ? "Signing out…" : "Sign out"}</span></button>
             </div>
           )}
         </div>
@@ -413,7 +435,7 @@ function SidebarContent() {
                         <span className="bg-[#064E3B] text-white border border-[#111111] px-3.5 py-1 rounded-full text-xs font-semibold">Active Plan</span>
                         <h4 className="text-2xl font-serif font-bold text-[#111111] mt-3">Doolphin Pro</h4>
                       </div>
-                      <span className="text-2xl font-bold text-[#111111] font-serif">{session?.user?.credits ?? "9,999"} Credits</span>
+                      <span className="text-2xl font-bold text-[#111111] font-serif">{account?.credits ?? "—"} Credits</span>
                     </div>
                     <p className="text-sm text-[#44423D] font-medium leading-relaxed">
                       High-volume video generation enabled. Auto-topup available.

@@ -3,11 +3,13 @@ import fs from "node:fs";
 import test from "node:test";
 
 const page = fs.readFileSync(new URL("../src/app/(auth)/verify-email/page.js", import.meta.url), "utf8");
+const flow = fs.readFileSync(new URL("../src/lib/auth/verification-flow.js", import.meta.url), "utf8");
 
 test("signup OTP verification uses a trimmed email and six-digit token with Supabase email verification", () => {
   assert.match(page, /params\.get\("email"\)\?\.trim\(\) \|\| ""/);
   assert.match(page, /const token = code\.trim\(\);/);
-  assert.match(page, /verifyOtp\(\{\s*email,\s*token,\s*type: "email",\s*\}\)/s);
+  assert.match(page, /const token = code\.trim\(\);/);
+  assert.match(flow, /verifyOtp\(\{ email, token, type: "email" \}\)/);
 });
 
 test("signup resend remains a signup resend and clears the prior OTP", () => {

@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
+import { isActivatedUser } from "@/lib/access/account-state";
 
 export class AuthorizationError extends Error { constructor(code, status = 403) { super(code); this.code = code; this.status = status; } }
 
@@ -20,8 +21,16 @@ export async function requireVerifiedUser() {
 
 export async function requireActivatedAccount() {
   const identity = await requireVerifiedUser();
-  if (identity.appUser.activationStatus !== "ACTIVATED") throw new AuthorizationError("ACTIVATION_REQUIRED", 402);
-  return identity;
+  if (identity.appUser.activationStatus === "SUSPENDED" || identity.appUser.status === "SUSPENDED" || identity.appUser.subscriptionStatus === "SUSPENDED") throw new AuthorizationError("ACCOUNT_DENIED", 403);
+  if (!isActivatedUser(identity.appUser)) throw new AuthorizationError("ACTIVATION_REQUIRED", 402);
+  const workspaceId = identity.appUser.defaultWorkspaceId;
+  if (!workspaceId) throw new AuthorizationError("ACCOUNT_DENIED", 403);
+  const [membership, entitlement] = await Promise.all([
+    prisma.workspaceMember.findUnique({ where: { workspaceId_userId: { workspaceId, userId: identity.appUser.id } } }),
+    prisma.entitlement.findFirst({ where: { workspaceId, userId: identity.appUser.id, status: "ACTIVE", endsAt: { gt: new Date() } }, orderBy: { endsAt: "desc" } }),
+  ]);
+  if (!membership || !entitlement) throw new AuthorizationError("ACCOUNT_DENIED", 403);
+  return { ...identity, membership, entitlement };
 }
 
 export async function requireAdminUser() {
