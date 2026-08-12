@@ -23,9 +23,9 @@ localTest("local Auth: invalid OTP is rejected; generated synthetic OTP verifies
   const address = email("otp"); const password = "TestPassword123!";
   const generated = await admin().auth.admin.generateLink({ type: "signup", email: address, password });
   assert.equal(generated.error, null); assert.ok(generated.data.properties.email_otp);
-  const client = anon(); const invalid = await client.auth.verifyOtp({ email: address, token: "000000", type: "signup" });
+  const client = anon(); const invalid = await client.auth.verifyOtp({ email: address, token: "000000", type: "email" });
   assert.ok(invalid.error);
-  const verified = await client.auth.verifyOtp({ email: address, token: generated.data.properties.email_otp, type: "signup" });
+  const verified = await client.auth.verifyOtp({ email: address, token: generated.data.properties.email_otp, type: "email" });
   assert.ok(verified.data.user?.email_confirmed_at);
   assert.ok((await client.auth.getSession()).data.session);
   assert.equal((await client.auth.signOut()).error, null);
