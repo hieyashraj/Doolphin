@@ -2,10 +2,12 @@
 
 import { useState } from "react";
 import { FiUser, FiPlus, FiChevronDown, FiHelpCircle, FiSmartphone } from "react-icons/fi";
+import AssetLibraryPicker from "./AssetLibraryPicker";
 
 export default function AppStudioForm({
   appImages = [],
   onAppUpload,
+  onChooseLibraryApp,
   selectedActor,
   onOpenActorModal,
   spokenScript,
@@ -14,6 +16,7 @@ export default function AppStudioForm({
   setAdditionalInstructions,
   uploadedImages,
   onImageUpload,
+  onChooseLibraryReference,
   onRemoveImage,
   duration,
   setDuration,
@@ -36,6 +39,7 @@ export default function AppStudioForm({
             Upload your app <span className="text-red-500">*</span>
           </label>
           <FiHelpCircle size={14} className="text-[#77746D]" title="Upload a screenshot of your app interface" />
+          {onChooseLibraryApp && <AssetLibraryPicker label="Library" accept={["image/", "video/"]} onSelect={onChooseLibraryApp} selectedAssetIds={appImages.map((asset) => asset.assetId || asset.id)} />}
         </div>
         <div className="flex items-center gap-3">
           {appImages.map((appImage) => (
@@ -131,6 +135,7 @@ export default function AppStudioForm({
         <div className="flex items-center gap-1.5">
           <label className="block text-base font-semibold text-[#111111]">References</label>
           <FiHelpCircle size={14} className="text-[#77746D]" title="Optional reference images" />
+          {onChooseLibraryReference && <AssetLibraryPicker label="Library" accept={["image/"]} onSelect={onChooseLibraryReference} selectedAssetIds={(uploadedImages || []).map((asset) => asset.assetId || asset.id)} />}
         </div>
         <div className="flex flex-wrap gap-2">
           {uploadedImages?.filter(i => !appImages.some((app) => (app.id || app.assetId) === (i.id || i.assetId))).map((img) => (

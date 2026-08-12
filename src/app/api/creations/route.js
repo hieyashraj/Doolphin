@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { getMockSession as getServerSession } from "@/lib/getMockSession";
 import { prisma } from "@/lib/prisma";
 import { R2StorageService } from "@/lib/storage/r2StorageService";
@@ -41,11 +42,14 @@ export async function GET() {
         generationType: creation.generationType,
         presetId: creation.presetId,
         title: creation.title,
+        isFavorite: creation.isFavorite,
         prompt: creation.prompt,
         spokenScript: creation.spokenScript,
         additionalInstructions: creation.additionalInstructions,
         status: creation.status,
         currentStage: creation.currentStage,
+        progressValue: creation.progressValue ?? 0,
+        completedAt: creation.completedAt,
         modelId: creation.modelId,
         provider: creation.provider,
         aspectRatio: creation.aspectRatio,
@@ -69,5 +73,47 @@ export async function GET() {
   } catch (error) {
     console.error("[CREATIONS_LIST_FAILED]", error);
     return NextResponse.json({ error: "Creation history is temporarily unavailable" }, { status: 503 });
+  }
+}
+
+const creationMetadataSchema = z.object({
+  id: z.string().min(1),
+  title: z.string().trim().max(120).nullable().optional(),
+  isFavorite: z.boolean().optional()
+}).refine((value) => value.title !== undefined || value.isFavorite !== undefined, {
+  message: "Provide a title or favorite status"
+});
+
+// Metadata is deliberately kept on Creation (rather than the generated asset),
+// so it applies consistently to all variants made in a single request.
+export async function PATCH(request) {
+  const session = await getServerSession();
+  if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  let body;
+  try {
+    body = creationMetadataSchema.parse(await request.json());
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof z.ZodError ? error.issues[0]?.message : "Invalid request" }, { status: 400 });
+  }
+
+  const data = {};
+  if (body.title !== undefined) data.title = body.title || null;
+  if (body.isFavorite !== undefined) data.isFavorite = body.isFavorite;
+
+  try {
+    const result = await prisma.creation.updateMany({
+      where: { id: body.id, userId: session.user.id },
+      data
+    });
+    if (!result.count) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    const creation = await prisma.creation.findUnique({
+      where: { id: body.id },
+      select: { id: true, title: true, isFavorite: true, updatedAt: true }
+    });
+    return NextResponse.json(creation);
+  } catch (error) {
+    console.error("[CREATION_METADATA_UPDATE_FAILED]", error);
+    return NextResponse.json({ error: "Could not update creation" }, { status: 503 });
   }
 }

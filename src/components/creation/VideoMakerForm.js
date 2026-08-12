@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { FiUser, FiMusic, FiPlus, FiChevronDown, FiHelpCircle } from "react-icons/fi";
+import AssetLibraryPicker from "./AssetLibraryPicker";
 
 export default function VideoMakerForm({
   sceneMotion,
@@ -24,6 +25,7 @@ export default function VideoMakerForm({
   onOpenActorModal,
   uploadedImages,
   onImageUpload,
+  onChooseLibraryReference,
   onRemoveImage,
   audioSource,
   setAudioSource,
@@ -204,6 +206,7 @@ export default function VideoMakerForm({
         <div className="flex items-center gap-1.5">
           <label className="block text-base font-semibold text-[#111111]">References</label>
           <FiHelpCircle size={14} className="text-[#77746D]" title="Optional reference images" />
+          {onChooseLibraryReference && <AssetLibraryPicker label="Library" accept={["image/"]} onSelect={onChooseLibraryReference} selectedAssetIds={(uploadedImages || []).map((asset) => asset.assetId || asset.id)} />}
         </div>
         <div className="flex flex-wrap gap-2">
           {uploadedImages?.map((img) => (

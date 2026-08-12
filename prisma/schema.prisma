@@ -439,6 +439,7 @@ model Creation {
   workflowVersion        String         @default("1.0.0")
   presetId               String
   title                  String?
+  isFavorite             Boolean        @default(false)
   spokenScript           String?        
   prompt                 String?        
   compiledPrompt         String?        

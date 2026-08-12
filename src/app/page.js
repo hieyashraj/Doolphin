@@ -21,7 +21,9 @@ import {
   FiZap,
   FiMessageSquare,
   FiFilm,
-  FiBox
+  FiBox,
+  FiStar,
+  FiEdit2
 } from "react-icons/fi";
 import { FaCoins } from "react-icons/fa";
 import { useEffect, useState, useRef, Suspense } from "react";
@@ -222,6 +224,9 @@ function HomeContent() {
   
   const [lastGeneration, setLastGeneration] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [libraryFilters, setLibraryFilters] = useState({ type: "all", model: "all", status: "all", date: "all", favorites: false });
+  const [editingCreationTitle, setEditingCreationTitle] = useState("");
+  const [isSavingCreationMetadata, setIsSavingCreationMetadata] = useState(false);
   
   const [voiceoverVoice, setVoiceoverVoice] = useState("21m00Tcm4TlvDq8ikWAM");
   
@@ -258,6 +263,49 @@ function HomeContent() {
   useEffect(() => {
     fetchCreations();
   }, [lastGeneration]);
+
+  const updateCreationMetadata = async (id, changes) => {
+    setIsSavingCreationMetadata(true);
+    try {
+      const response = await fetch("/api/creations", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, ...changes })
+      });
+      const updated = await response.json();
+      if (!response.ok) throw new Error(updated.error || "Could not update creation");
+      setCreations((items) => items.map((item) => item.id === id ? { ...item, ...updated } : item));
+      setSelectedCreation((item) => item?.id === id ? { ...item, ...updated } : item);
+      return updated;
+    } catch (error) {
+      toast.error(error.message || "Could not save creation details");
+      return null;
+    } finally {
+      setIsSavingCreationMetadata(false);
+    }
+  };
+
+  const libraryFilterOptions = {
+    types: [...new Set(creations.map((item) => item.generationType).filter(Boolean))],
+    models: [...new Set(creations.map((item) => item.modelId).filter(Boolean))],
+    statuses: [...new Set(creations.map((item) => item.status).filter(Boolean))]
+  };
+  const filteredCreations = creations.filter((item) => {
+    const search = searchQuery.trim().toLowerCase();
+    const matchesSearch = !search || [item.title, item.prompt, item.spokenScript, item.modelId, item.generationType]
+      .filter(Boolean).some((value) => value.toLowerCase().includes(search));
+    const matchesType = libraryFilters.type === "all" || item.generationType === libraryFilters.type;
+    const matchesModel = libraryFilters.model === "all" || item.modelId === libraryFilters.model;
+    const matchesStatus = libraryFilters.status === "all" || item.status === libraryFilters.status;
+    const createdAt = new Date(item.createdAt);
+    const now = new Date();
+    const ageDays = (now - createdAt) / 86400000;
+    const matchesDate = libraryFilters.date === "all"
+      || (libraryFilters.date === "week" && ageDays <= 7)
+      || (libraryFilters.date === "month" && ageDays <= 30)
+      || (libraryFilters.date === "today" && createdAt.toDateString() === now.toDateString());
+    return matchesSearch && matchesType && matchesModel && matchesStatus && matchesDate && (!libraryFilters.favorites || item.isFavorite);
+  });
 
   const handleSelectAvatar = async (avatar) => {
     setSelectedAvatar(avatar);
@@ -544,9 +592,57 @@ function HomeContent() {
             <header className="border-b border-[#111111]/10 pb-5 flex flex-col sm:flex-row sm:items-end justify-between gap-4">
               <div>
                 <h2 className="text-2xl sm:text-3xl font-serif font-bold text-[#111111]">My Creations</h2>
-                <p className="text-sm sm:text-base text-[#55534E] mt-0.5">Browse and download your generated videos</p>
+                <p className="text-sm sm:text-base text-[#55534E] mt-0.5">Search, organize, and download your generated videos</p>
               </div>
             </header>
+
+            {creations.length > 0 && (
+              <section aria-label="Filter creations" className="rounded-2xl border border-[#111111]/10 bg-white p-3 sm:p-4 space-y-3 shadow-sm">
+                <div className="flex flex-col lg:flex-row gap-2.5">
+                  <label className="relative flex-1 min-w-0">
+                    <FiSearch aria-hidden="true" className="absolute left-3 top-1/2 -translate-y-1/2 text-[#77746D]" size={16} />
+                    <input
+                      value={searchQuery}
+                      onChange={(event) => setSearchQuery(event.target.value)}
+                      placeholder="Search titles, prompts, models…"
+                      className="w-full rounded-xl border border-[#111111]/15 bg-[#FAF8ED] py-2.5 pl-9 pr-3 text-sm outline-none focus:border-[#111111]"
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setLibraryFilters((filters) => ({ ...filters, favorites: !filters.favorites }))}
+                    aria-pressed={libraryFilters.favorites}
+                    className={`inline-flex items-center justify-center gap-1.5 rounded-xl border px-3 py-2.5 text-sm font-semibold transition-colors ${libraryFilters.favorites ? "border-[#111111] bg-[#E6D9FF]" : "border-[#111111]/15 bg-white hover:bg-[#FAF8ED]"}`}
+                  >
+                    <FiStar size={15} fill={libraryFilters.favorites ? "currentColor" : "none"} /> Favorites
+                  </button>
+                </div>
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
+                  {[
+                    ["type", "All studios", libraryFilterOptions.types],
+                    ["model", "All models", libraryFilterOptions.models],
+                    ["status", "All statuses", libraryFilterOptions.statuses],
+                    ["date", "Any date", [["today", "Today"], ["week", "Past 7 days"], ["month", "Past 30 days"]]]
+                  ].map(([key, placeholder, options]) => (
+                    <label key={key} className="sr-only">
+                      {placeholder}
+                      <select
+                        value={libraryFilters[key]}
+                        onChange={(event) => setLibraryFilters((filters) => ({ ...filters, [key]: event.target.value }))}
+                        className="not-sr-only w-full rounded-xl border border-[#111111]/15 bg-white px-3 py-2.5 text-sm text-[#33312C] outline-none focus:border-[#111111]"
+                      >
+                        <option value="all">{placeholder}</option>
+                        {options.map((option) => {
+                          const [value, label] = Array.isArray(option) ? option : [option, option];
+                          return <option key={value} value={value}>{label.replaceAll("_", " ")}</option>;
+                        })}
+                      </select>
+                    </label>
+                  ))}
+                </div>
+                <p className="text-xs text-[#77746D]">Showing {filteredCreations.length} of {creations.length} creation{creations.length === 1 ? "" : "s"}</p>
+              </section>
+            )}
 
             {isLoadingCreations ? (
               <div className="py-24 flex flex-col items-center justify-center gap-3">
@@ -569,12 +665,21 @@ function HomeContent() {
                   Create First Video
                 </button>
               </div>
+            ) : filteredCreations.length === 0 ? (
+              <div className="py-20 flex flex-col items-center justify-center text-center space-y-3">
+                <FiSearch size={28} className="text-[#77746D]" />
+                <div>
+                  <h3 className="text-lg font-serif font-bold text-[#111111]">No matching creations</h3>
+                  <p className="text-sm text-[#55534E]">Try a different search or clear one of the filters.</p>
+                </div>
+                <button type="button" onClick={() => { setSearchQuery(""); setLibraryFilters({ type: "all", model: "all", status: "all", date: "all", favorites: false }); }} className="text-sm font-semibold underline">Clear filters</button>
+              </div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5 sm:gap-6">
-                {creations.map((item) => (
+                {filteredCreations.map((item) => (
                   <div
                     key={item.id}
-                    onClick={() => setSelectedCreation(item)}
+                    onClick={() => { setSelectedCreation(item); setEditingCreationTitle(item.title || ""); }}
                     className="bg-white aspect-[9/16] overflow-hidden relative cursor-pointer group shadow-sm rounded-2xl md:rounded-3xl border border-[#111111]/15 hover:border-[#111111]/35 hover:shadow-lg transition-all"
                   >
                     {item.status?.toLowerCase() === "completed" ? (
@@ -590,9 +695,19 @@ function HomeContent() {
                         <span className="text-xs font-semibold text-[#55534E] animate-pulse">Processing...</span>
                       </div>
                     )}
+
+                    <button
+                      type="button"
+                      aria-label={item.isFavorite ? "Remove from favorites" : "Add to favorites"}
+                      onClick={(event) => { event.stopPropagation(); void updateCreationMetadata(item.id, { isFavorite: !item.isFavorite }); }}
+                      className="absolute right-3 top-3 z-10 rounded-full bg-white/90 p-2 text-[#111111] shadow-sm transition-transform hover:scale-110"
+                    >
+                      <FiStar size={15} fill={item.isFavorite ? "#E6B800" : "none"} className={item.isFavorite ? "text-[#C99800]" : ""} />
+                    </button>
                     
                     <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200 p-4 flex flex-col justify-end pointer-events-none">
-                      <p className="text-white text-sm font-medium leading-snug line-clamp-3 mb-2">{item.prompt}</p>
+                      <p className="text-white text-sm font-semibold leading-snug line-clamp-2 mb-1">{item.title || item.prompt}</p>
+                      {item.title && <p className="text-white/75 text-xs leading-snug line-clamp-2 mb-2">{item.prompt}</p>}
                       <div className="flex items-center justify-between">
                         <span className="text-xs font-semibold text-slate-200 uppercase tracking-wider">
                           {item.aspectRatio || "9:16"}
@@ -776,7 +891,7 @@ function HomeContent() {
               </div>
 
               <div className="w-full aspect-[9/16] max-h-[55vh] my-4 bg-black rounded-2xl overflow-hidden flex items-center justify-center relative border border-[#111111]/20">
-                {selectedCreation.status === "completed" && selectedCreation.url ? (
+                {selectedCreation.status?.toLowerCase() === "completed" && selectedCreation.url ? (
                   <video
                     key={selectedCreation.url}
                     className="w-full h-full object-cover"
@@ -796,10 +911,37 @@ function HomeContent() {
               </div>
 
               <div className="space-y-3 border-t border-[#111111]/10 pt-3">
+                <div className="flex gap-2">
+                  <label className="sr-only" htmlFor="creation-title">Creation title</label>
+                  <input
+                    id="creation-title"
+                    value={editingCreationTitle}
+                    onChange={(event) => setEditingCreationTitle(event.target.value)}
+                    maxLength={120}
+                    placeholder="Add a title"
+                    className="min-w-0 flex-1 rounded-xl border border-[#111111]/15 bg-[#FAF8ED] px-3 py-2 text-sm font-semibold outline-none focus:border-[#111111]"
+                  />
+                  <button
+                    type="button"
+                    disabled={isSavingCreationMetadata || editingCreationTitle.trim() === (selectedCreation.title || "")}
+                    onClick={() => void updateCreationMetadata(selectedCreation.id, { title: editingCreationTitle.trim() || null })}
+                    className="rounded-xl border border-[#111111] bg-[#E6D9FF] px-3 py-2 text-xs font-bold disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <FiEdit2 className="inline mr-1" size={13} /> Save
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void updateCreationMetadata(selectedCreation.id, { isFavorite: !selectedCreation.isFavorite })}
+                  className="flex items-center gap-1.5 text-xs font-semibold text-[#55534E] hover:text-[#111111]"
+                >
+                  <FiStar size={15} fill={selectedCreation.isFavorite ? "#E6B800" : "none"} className={selectedCreation.isFavorite ? "text-[#C99800]" : ""} />
+                  {selectedCreation.isFavorite ? "Favorited" : "Add to favorites"}
+                </button>
                 <p className="text-sm sm:text-base font-serif text-[#111111] line-clamp-2">"{selectedCreation.prompt}"</p>
                 <div className="flex items-center justify-between text-xs sm:text-sm text-[#55534E]">
                   <span>Model: {selectedCreation.modelId || "Generic"}</span>
-                  {selectedCreation.status === "completed" && selectedCreation.url && (
+                  {selectedCreation.status?.toLowerCase() === "completed" && selectedCreation.url && (
                     <a
                       href={`/api/creations/${selectedCreation.id}/download`}
                       download={`lembda-${selectedCreation.id}.mp4`}

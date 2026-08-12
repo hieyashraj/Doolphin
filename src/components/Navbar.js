@@ -55,8 +55,34 @@ function SidebarContent() {
   const [profileName, setProfileName] = useState(session?.user?.name || "Doolphin Creator");
   const [profileEmail, setProfileEmail] = useState(session?.user?.email || "creator@doolphin.ai");
 
-  // Notifications State
-  const [completionEmailEnabled, setCompletionEmailEnabled] = useState(true);
+  // Generation alerts are a device preference: browser permission is managed by
+  // the browser itself, while this flag controls Doolphin's in-app/browser alerts.
+  const [completionNotificationsEnabled, setCompletionNotificationsEnabled] = useState(true);
+
+  useEffect(() => {
+    const savedPreference = localStorage.getItem("doolphin_generation_completion_notifications");
+    if (savedPreference !== null) setCompletionNotificationsEnabled(savedPreference === "true");
+  }, []);
+
+  const toggleCompletionNotifications = async () => {
+    const nextEnabled = !completionNotificationsEnabled;
+    setCompletionNotificationsEnabled(nextEnabled);
+    localStorage.setItem("doolphin_generation_completion_notifications", String(nextEnabled));
+
+    if (nextEnabled && "Notification" in window && Notification.permission === "default") {
+      try {
+        const permission = await Notification.requestPermission();
+        if (permission === "denied") {
+          toast("In-app alerts are on. Browser alerts are blocked in your browser settings.", { icon: "ℹ️" });
+          return;
+        }
+      } catch {
+        // In-app alerts remain available even when the browser API is unavailable.
+      }
+    }
+
+    toast.success(nextEnabled ? "Generation alerts enabled" : "Generation alerts disabled");
+  };
 
   // Smart Multi-Key Provider API Keys State
   const [muApiKey, setMuApiKey] = useState(session?.user?.customApiKey || "");
@@ -453,27 +479,26 @@ function SidebarContent() {
               {activeSettingsTab === "notifications" && (
                 <div className="bg-[#FAF8ED] p-6 rounded-2xl space-y-5 border border-[#111111] shadow-sm">
                   <div>
-                    <h4 className="text-base font-bold text-[#111111]">Email Notifications</h4>
-                    <p className="text-xs text-[#44423D] font-medium mt-1">Control the emails Doolphin sends you about your generations.</p>
+                    <h4 className="text-base font-bold text-[#111111]">Generation alerts</h4>
+                    <p className="text-xs text-[#44423D] font-medium mt-1">Choose whether Doolphin alerts you when a generation finishes or fails.</p>
                   </div>
 
                   <div className="border-t border-[#111111] pt-5 flex items-start justify-between gap-4">
                     <div className="space-y-1">
-                      <h5 className="text-xs font-bold text-[#111111]">Generation completion emails</h5>
+                      <h5 className="text-xs font-bold text-[#111111]">Completion alerts</h5>
                       <p className="text-xs text-[#44423D] font-medium leading-relaxed">
-                        Get an email each time one of your generations finishes, with a link to open it in Doolphin.
+                        Receive an in-app alert and, when allowed, a browser notification each time a generation finishes or fails.
                       </p>
                     </div>
                     <button
-                      onClick={() => {
-                        setCompletionEmailEnabled(!completionEmailEnabled);
-                        toast.success(completionEmailEnabled ? "Completion emails disabled" : "Completion emails enabled");
-                      }}
+                      onClick={toggleCompletionNotifications}
                       className={`w-12 h-7 rounded-full transition-colors flex items-center p-1 cursor-pointer border border-[#111111] ${
-                        completionEmailEnabled ? "bg-[#064E3B]" : "bg-[#EFECE1]"
+                        completionNotificationsEnabled ? "bg-[#064E3B]" : "bg-[#EFECE1]"
                       }`}
+                      aria-pressed={completionNotificationsEnabled}
+                      aria-label="Toggle generation completion alerts"
                     >
-                      <div className={`w-5 h-5 rounded-full bg-white border border-[#111111] transition-transform ${completionEmailEnabled ? "translate-x-5" : "translate-x-0"}`} />
+                      <div className={`w-5 h-5 rounded-full bg-white border border-[#111111] transition-transform ${completionNotificationsEnabled ? "translate-x-5" : "translate-x-0"}`} />
                     </button>
                   </div>
                 </div>

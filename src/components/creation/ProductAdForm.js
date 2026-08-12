@@ -2,12 +2,14 @@
 
 import { useState } from "react";
 import { FiUser, FiPlus, FiChevronDown, FiHelpCircle, FiSmartphone } from "react-icons/fi";
+import AssetLibraryPicker from "./AssetLibraryPicker";
 
 export default function ProductAdForm({
   productImages = [],
   productGroupName,
   setProductGroupName,
   onProductUpload,
+  onChooseLibraryProduct,
   selectedActor,
   onOpenActorModal,
   spokenScript,
@@ -16,6 +18,7 @@ export default function ProductAdForm({
   setAdditionalInstructions,
   uploadedImages,
   onImageUpload,
+  onChooseLibraryReference,
   onRemoveImage,
   duration,
   setDuration,
@@ -38,6 +41,7 @@ export default function ProductAdForm({
             Upload your product <span className="text-red-500">*</span>
           </label>
           <FiHelpCircle size={14} className="text-[#77746D]" title="Upload a photo of your physical product" />
+          {onChooseLibraryProduct && <AssetLibraryPicker label="Library" accept={["image/"]} onSelect={onChooseLibraryProduct} selectedAssetIds={productImages.map((asset) => asset.assetId || asset.id)} />}
         </div>
         <div className="flex items-center gap-3">
           {productImages.map((productImage) => (
@@ -136,6 +140,7 @@ export default function ProductAdForm({
         <div className="flex items-center gap-1.5">
           <label className="block text-base font-semibold text-[#111111]">Additional references</label>
           <FiHelpCircle size={14} className="text-[#77746D]" title="Optional reference imagery" />
+          {onChooseLibraryReference && <AssetLibraryPicker label="Library" accept={["image/"]} onSelect={onChooseLibraryReference} selectedAssetIds={(uploadedImages || []).map((asset) => asset.assetId || asset.id)} />}
         </div>
         <div className="flex flex-wrap gap-2">
           {uploadedImages?.filter(i => !productImages.some((product) => (product.id || product.assetId) === (i.id || i.assetId))).map((img) => (

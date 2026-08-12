@@ -16,7 +16,9 @@ import {
   FiLayers,
   FiGrid,
   FiClock,
-  FiAlertCircle
+  FiAlertCircle,
+  FiBell,
+  FiXCircle
 } from "react-icons/fi";
 import PresetHeaderCard from "./PresetHeaderCard";
 import VideoMakerForm from "./VideoMakerForm";
@@ -26,6 +28,7 @@ import ProgressTimeline from "./ProgressTimeline";
 import { PRESETS_LIBRARY } from "@/lib/presetsData";
 import CreationDetailModal from "./CreationDetailModal";
 import { listGenerationModels } from "@/lib/generation/modelRegistry";
+import toast from "react-hot-toast";
 
 const PRESET_MODES = [
   {
@@ -62,6 +65,11 @@ const STUDIO_IDS = {
   app: "APP_STUDIO"
 };
 
+const DRAFT_STORAGE_KEY = "doolphin_studio_drafts_v1";
+const DRAFT_STORAGE_VERSION = 1;
+const DRAFT_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 30;
+const DURATION_OPTIONS = new Set(["Auto", "5", "8", "12", "15"]);
+
 const blankDraft = () => ({
   sceneMotion: "",
   selectedModel: MODELS[0],
@@ -77,6 +85,54 @@ const blankDraft = () => ({
   additionalInstructions: "",
   draftAvatar: null
 });
+
+const asString = (value, maxLength = 10000) => typeof value === "string" ? value.slice(0, maxLength) : "";
+
+// Object URLs are valid only for the browser session that created them. Keep
+// server-backed asset metadata, but never restore a stale blob URL.
+const serializableAssets = (assets) => Array.isArray(assets)
+  ? assets.filter((asset) => asset && typeof asset === "object" && (asset.assetId || asset.url)).map(({ preview, ...asset }) => asset)
+  : [];
+
+const serializeDraft = (draft) => ({
+  sceneMotion: asString(draft.sceneMotion),
+  selectedModelId: draft.selectedModel?.id,
+  duration: draft.duration,
+  resolution: draft.resolution,
+  aspectRatio: draft.aspectRatio,
+  numVideos: draft.numVideos,
+  uploadedImages: serializableAssets(draft.uploadedImages),
+  productImages: serializableAssets(draft.productImages),
+  appImages: serializableAssets(draft.appImages),
+  productGroupName: asString(draft.productGroupName, 80),
+  spokenScript: asString(draft.spokenScript, 300),
+  additionalInstructions: asString(draft.additionalInstructions),
+  draftAvatar: draft.draftAvatar && typeof draft.draftAvatar === "object" ? draft.draftAvatar : null
+});
+
+const restoreDraft = (savedDraft) => {
+  const fallback = blankDraft();
+  if (!savedDraft || typeof savedDraft !== "object") return fallback;
+
+  // Models and capabilities can change between visits. Resolve the saved ID
+  // against today's registry and fall back to compatible option values.
+  const selectedModel = MODELS.find((model) => model.id === savedDraft.selectedModelId) || fallback.selectedModel;
+  return {
+    sceneMotion: asString(savedDraft.sceneMotion),
+    selectedModel,
+    duration: DURATION_OPTIONS.has(savedDraft.duration) ? savedDraft.duration : fallback.duration,
+    resolution: selectedModel.resolutions.includes(savedDraft.resolution) ? savedDraft.resolution : selectedModel.resolutions[0],
+    aspectRatio: selectedModel.aspectRatios.includes(savedDraft.aspectRatio) ? savedDraft.aspectRatio : selectedModel.aspectRatios[0],
+    numVideos: Number.isInteger(savedDraft.numVideos) && savedDraft.numVideos > 0 && savedDraft.numVideos <= 4 ? savedDraft.numVideos : fallback.numVideos,
+    uploadedImages: serializableAssets(savedDraft.uploadedImages),
+    productImages: serializableAssets(savedDraft.productImages),
+    appImages: serializableAssets(savedDraft.appImages),
+    productGroupName: asString(savedDraft.productGroupName, 80),
+    spokenScript: asString(savedDraft.spokenScript, 300),
+    additionalInstructions: asString(savedDraft.additionalInstructions),
+    draftAvatar: savedDraft.draftAvatar && typeof savedDraft.draftAvatar === "object" ? savedDraft.draftAvatar : null
+  };
+};
 
 export default function CreationHub({ 
   selectedAvatar, 
@@ -131,6 +187,9 @@ export default function CreationHub({
     product: blankDraft(),
     app: blankDraft()
   });
+  const draftSnapshotRef = useRef(null);
+  const [draftStorageReady, setDraftStorageReady] = useState(false);
+  const [draftSaveStatus, setDraftSaveStatus] = useState("");
   const [sceneMotion, setSceneMotion] = useState("");
   const [selectedModel, setSelectedModel] = useState(MODELS[0]);
   const [duration, setDuration] = useState("Auto");
@@ -156,6 +215,59 @@ export default function CreationHub({
   const [creations, setCreations] = useState([]);
   const [isLoadingCreations, setIsLoadingCreations] = useState(true);
   const [displayedCredits, setDisplayedCredits] = useState(userCredits);
+  const [cancellingCreationIds, setCancellingCreationIds] = useState(() => new Set());
+  // Statuses seen on the initial gallery load establish a baseline, preventing
+  // stale history from producing a burst of alerts after a page refresh.
+  const creationStatuses = useRef(new Map());
+  const hasLoadedCreationStatuses = useRef(false);
+  // A very fast provider can finish before the post-submit gallery refresh
+  // observes QUEUED. Keep submitted IDs so that edge case still alerts once.
+  const watchedCreationIds = useRef(new Set());
+
+  const notifyGenerationStatusChange = (nextCreations) => {
+    const previousStatuses = creationStatuses.current;
+    const initialLoad = !hasLoadedCreationStatuses.current;
+    const nextStatuses = new Map();
+
+    nextCreations.forEach((creation) => {
+      const nextStatus = String(creation.status || "").toUpperCase();
+      const previousStatus = previousStatuses.get(creation.id);
+      nextStatuses.set(creation.id, nextStatus);
+
+      if (initialLoad || previousStatus === nextStatus) return;
+      if (!previousStatus && !watchedCreationIds.current.has(creation.id)) return;
+      const completed = ["COMPLETED", "PARTIAL_COMPLETED"].includes(nextStatus);
+      const failed = ["FAILED", "QUARANTINED", "TIMED_OUT", "CANCELLED"].includes(nextStatus);
+      if (!completed && !failed) return;
+      watchedCreationIds.current.delete(creation.id);
+
+      const alertsEnabled = localStorage.getItem("doolphin_generation_completion_notifications") !== "false";
+      if (!alertsEnabled) return;
+
+      const title = creation.title || "Your generation";
+      const message = completed ? `${title} is ready to view.` : `${title} could not be completed.`;
+      if (completed) toast.success(message, { duration: 6000 });
+      else toast.error(message, { duration: 6000 });
+
+      if (alertsEnabled && "Notification" in window && Notification.permission === "granted") {
+        try {
+          const notification = new Notification(completed ? "Generation complete" : "Generation failed", {
+            body: message,
+            tag: `doolphin-generation-${creation.id}`
+          });
+          notification.onclick = () => {
+            window.focus();
+            notification.close();
+          };
+        } catch {
+          // A toast has already been shown; browser notifications are optional.
+        }
+      }
+    });
+
+    creationStatuses.current = nextStatuses;
+    hasLoadedCreationStatuses.current = true;
+  };
 
   const selectModel = (model) => {
     if (!model) return;
@@ -186,6 +298,77 @@ export default function CreationHub({
     setDraftAvatar(draft.draftAvatar);
   };
 
+  // Restore once, after hydration. Expiring malformed or old payloads avoids
+  // carrying abandoned drafts and data from an incompatible app version.
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(DRAFT_STORAGE_KEY);
+      if (!raw) return;
+      const saved = JSON.parse(raw);
+      if (saved?.version !== DRAFT_STORAGE_VERSION || !saved?.savedAt || Date.now() - saved.savedAt > DRAFT_MAX_AGE_MS) {
+        window.localStorage.removeItem(DRAFT_STORAGE_KEY);
+        return;
+      }
+      const restoredDrafts = {
+        video_maker: restoreDraft(saved.drafts?.video_maker),
+        product: restoreDraft(saved.drafts?.product),
+        app: restoreDraft(saved.drafts?.app)
+      };
+      studioDrafts.current = restoredDrafts;
+      loadDraft(restoredDrafts.video_maker);
+      setDraftSaveStatus("Draft restored");
+    } catch {
+      // Corrupt local data should never block the studio from loading.
+      window.localStorage.removeItem(DRAFT_STORAGE_KEY);
+    } finally {
+      setDraftStorageReady(true);
+    }
+  }, []);
+
+  // Keep the active form and the inactive studio snapshots in one durable,
+  // debounced payload. The pagehide handler covers closing a tab before the
+  // debounce window elapses.
+  useEffect(() => {
+    if (!draftStorageReady) return undefined;
+
+    studioDrafts.current[activeModeId] = currentDraft();
+    const snapshot = {
+      version: DRAFT_STORAGE_VERSION,
+      savedAt: Date.now(),
+      drafts: Object.fromEntries(Object.entries(studioDrafts.current).map(([studioId, draft]) => [studioId, serializeDraft(draft)]))
+    };
+    draftSnapshotRef.current = snapshot;
+    setDraftSaveStatus("Saving draft…");
+
+    const save = () => {
+      try {
+        window.localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(snapshot));
+        setDraftSaveStatus("Draft saved");
+      } catch {
+        setDraftSaveStatus("Draft could not be saved");
+      }
+    };
+    const timeout = window.setTimeout(save, 600);
+    return () => window.clearTimeout(timeout);
+  }, [
+    draftStorageReady, activeModeId, sceneMotion, selectedModel, duration,
+    resolution, aspectRatio, numVideos, uploadedImages, productImages,
+    appImages, productGroupName, spokenScript, additionalInstructions, draftAvatar
+  ]);
+
+  useEffect(() => {
+    const saveBeforeExit = () => {
+      if (!draftSnapshotRef.current) return;
+      try {
+        window.localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(draftSnapshotRef.current));
+      } catch {
+        // Storage can be unavailable in privacy-restricted browser sessions.
+      }
+    };
+    window.addEventListener("pagehide", saveBeforeExit);
+    return () => window.removeEventListener("pagehide", saveBeforeExit);
+  }, []);
+
   const switchStudio = (nextModeId) => {
     studioDrafts.current[activeModeId] = currentDraft();
     loadDraft(studioDrafts.current[nextModeId] || blankDraft());
@@ -199,6 +382,7 @@ export default function CreationHub({
       const res = await fetch("/api/creations");
       if (res.ok) {
         const data = await res.json();
+        notifyGenerationStatusChange(data);
         setCreations(data);
       }
     } catch (err) {
@@ -382,6 +566,40 @@ export default function CreationHub({
     }
   };
 
+  // Library assets have already been validated and persisted. Keep the same
+  // canonical shape as fresh uploads so preflight/generation receive the asset
+  // ID, storage key, analysis revision, and confirmed-analysis state unchanged.
+  const addLibraryAsset = (target, storedAsset) => {
+    if (!storedAsset?.assetId || storedAsset.validationStatus !== "VALID") {
+      setSubmitError("That saved asset is no longer available for generation.");
+      return;
+    }
+    const imageAsset = !storedAsset.mimeType?.startsWith("video/");
+    if (imageAsset && providerImageCount() >= 9) {
+      setSubmitError("Seedance supports one avatar plus at most eight image inputs. Remove an image before adding another.");
+      return;
+    }
+    const existing = target === "product" ? productImages : target === "app" ? appImages : uploadedImages;
+    if (existing.some((asset) => (asset.assetId || asset.id) === storedAsset.assetId)) return;
+
+    const index = existing.length;
+    const groupId = productGroupName.trim();
+    const roleData = target === "product"
+      ? {
+          role: index === 0 ? "PRIMARY_PRODUCT" : "PRODUCT_PACKAGING",
+          alias: `${groupId || storedAsset.analysis?.suggestedName || "unconfirmed_product"}_${index + 1}`,
+          groupId: groupId || storedAsset.analysis?.suggestedName || `unconfirmed_${storedAsset.assetId}`
+        }
+      : target === "app"
+        ? { role: storedAsset.mimeType?.startsWith("video/") ? "APP_SCREEN_RECORDING" : "APP_PRIMARY_SCREEN", alias: `app_asset_${index + 1}`, groupId: "app_flow_1" }
+        : { role: "STYLE_REFERENCE", alias: `style_reference_${index + 1}`, groupId: null };
+    const asset = { ...storedAsset, ...roleData, id: storedAsset.assetId, preview: storedAsset.url };
+    if (target === "product") setProductImages((previous) => [...previous, asset]);
+    else if (target === "app") setAppImages((previous) => [...previous, asset]);
+    else setUploadedImages((previous) => [...previous, asset]);
+    setSubmitError(null);
+  };
+
   const handleRemoveImage = (id) => {
     setProductImages(prev => prev.filter(img => (img.id || img.assetId) !== id));
     setAppImages(prev => prev.filter(img => (img.id || img.assetId) !== id));
@@ -438,6 +656,7 @@ export default function CreationHub({
       });
       const data = await response.json();
       if (!response.ok || !data.success) throw new Error(data.error || "Generation submission failed");
+      if (data.creationId) watchedCreationIds.current.add(data.creationId);
       setDisplayedCredits((value) => typeof value === "number" ? Math.max(0, value - (quote.costs?.totalCredits || 0)) : value);
       await fetchCreations();
     } catch (error) {
@@ -487,6 +706,55 @@ export default function CreationHub({
     }
   };
 
+  const enableCompletionNotifications = async (event) => {
+    event.stopPropagation();
+    window.localStorage.setItem("doolphin_generation_completion_notifications", "true");
+    if (!("Notification" in window)) {
+      toast("In-app completion alerts are enabled. Browser notifications are unavailable here.");
+      return;
+    }
+    if (Notification.permission === "granted") {
+      toast.success("Completion notifications are on.");
+      return;
+    }
+    if (Notification.permission === "denied") {
+      toast("In-app completion alerts are on. Enable browser notifications in your browser settings for desktop alerts.");
+      return;
+    }
+    try {
+      const permission = await Notification.requestPermission();
+      toast(permission === "granted" ? "Completion notifications are on." : "In-app completion alerts are on.");
+    } catch {
+      toast("In-app completion alerts are on.");
+    }
+  };
+
+  const handleCancelGeneration = async (event, creation) => {
+    event.stopPropagation();
+    if (!window.confirm("Cancel this generation? It can only be cancelled before it reaches the provider.")) return;
+    setCancellingCreationIds((ids) => new Set(ids).add(creation.id));
+    try {
+      const response = await fetch(`/api/generations/${creation.id}/cancel`, { method: "POST" });
+      const data = await response.json();
+      if (response.status === 409) {
+        toast("This generation has already started with the provider and can no longer be cancelled safely.");
+      } else if (!response.ok) {
+        throw new Error(data.error || "Could not cancel this generation");
+      } else {
+        toast.success("Generation cancelled. Any unsubmitted credits were released.");
+        await fetchCreations();
+      }
+    } catch (error) {
+      toast.error(error.message || "Could not cancel this generation");
+    } finally {
+      setCancellingCreationIds((ids) => {
+        const next = new Set(ids);
+        next.delete(creation.id);
+        return next;
+      });
+    }
+  };
+
   const handleRecreate = (creation) => {
     if (!creation) return;
 
@@ -508,6 +776,14 @@ export default function CreationHub({
 
   const isDelivered = (status) => ["completed", "partial_completed"].includes(String(status || "").toLowerCase());
   const isPlayable = (creation) => isDelivered(creation?.status) && Boolean(creation?.url);
+  const isCancelled = (status) => String(status || "").toLowerCase() === "cancelled";
+  const isInProgress = (status) => !isDelivered(status) && !["failed", "quarantined", "timed_out", "cancelled"].includes(String(status || "").toLowerCase());
+  const stageLabel = (stage) => String(stage || "queued").replace(/[_-]+/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+  const elapsedLabel = (creation) => {
+    const started = creation.createdAt;
+    const elapsedSeconds = started ? Math.max(0, Math.floor((Date.now() - new Date(started).getTime()) / 1000)) : 0;
+    return elapsedSeconds < 60 ? "Just started" : `${Math.floor(elapsedSeconds / 60)}m elapsed`;
+  };
 
   const assetsNeedingReview = [
     ...(activeModeId === "product" ? productImages : []),
@@ -539,6 +815,11 @@ export default function CreationHub({
             preset={activePreset}
             onChangeClick={() => setIsPresetModalOpen(true)}
           />
+          {draftSaveStatus && (
+            <p className={`-mt-2 text-right text-[11px] font-medium ${draftSaveStatus === "Draft could not be saved" ? "text-amber-700" : "text-[#77746D]"}`} aria-live="polite">
+              {draftSaveStatus}
+            </p>
+          )}
 
           {activeModeId === "video_maker" && (
             <VideoMakerForm
@@ -562,6 +843,7 @@ export default function CreationHub({
               onOpenActorModal={onOpenAvatarModal}
               uploadedImages={uploadedImages}
               onImageUpload={handleImageUpload}
+              onChooseLibraryReference={(asset) => addLibraryAsset("reference", asset)}
               onRemoveImage={handleRemoveImage}
               audioSource={audioSource}
               setAudioSource={setAudioSource}
@@ -575,6 +857,7 @@ export default function CreationHub({
               productGroupName={productGroupName}
               setProductGroupName={setProductGroupName}
               onProductUpload={handleProductUpload}
+              onChooseLibraryProduct={(asset) => addLibraryAsset("product", asset)}
               selectedActor={draftAvatar}
               onOpenActorModal={onOpenAvatarModal}
               spokenScript={spokenScript}
@@ -583,6 +866,7 @@ export default function CreationHub({
               setAdditionalInstructions={setAdditionalInstructions}
               uploadedImages={uploadedImages}
               onImageUpload={handleImageUpload}
+              onChooseLibraryReference={(asset) => addLibraryAsset("reference", asset)}
               onRemoveImage={handleRemoveImage}
               duration={duration}
               setDuration={setDuration}
@@ -602,6 +886,7 @@ export default function CreationHub({
             <AppStudioForm
               appImages={appImages}
               onAppUpload={handleAppUpload}
+              onChooseLibraryApp={(asset) => addLibraryAsset("app", asset)}
               selectedActor={draftAvatar}
               onOpenActorModal={onOpenAvatarModal}
               spokenScript={spokenScript}
@@ -610,6 +895,7 @@ export default function CreationHub({
               setAdditionalInstructions={setAdditionalInstructions}
               uploadedImages={uploadedImages}
               onImageUpload={handleImageUpload}
+              onChooseLibraryReference={(asset) => addLibraryAsset("reference", asset)}
               onRemoveImage={handleRemoveImage}
               duration={duration}
               setDuration={setDuration}
@@ -797,13 +1083,44 @@ export default function CreationHub({
                     <FiAlertCircle className="text-amber-700 text-2xl" />
                     <span className="text-[10px] bg-amber-700 text-white px-2 py-0.5 rounded-full uppercase font-bold">Preview unavailable</span>
                   </div>
+                ) : isCancelled(item.status) ? (
+                  <div className="w-full h-full flex flex-col items-center justify-center p-5 gap-3 text-center bg-[#FAF8ED]">
+                    <FiXCircle className="text-2xl text-[#77746D]" />
+                    <span className="text-[10px] bg-[#EFECE1] text-[#55534E] px-2 py-0.5 rounded-full uppercase font-bold border border-[#111111]/20">Cancelled</span>
+                    <p className="text-[11px] text-[#77746D]">This generation was stopped before provider submission.</p>
+                  </div>
                 ) : (
                   <div className="w-full h-full flex flex-col items-center justify-center gap-3 p-4 text-center bg-[#FAF8ED]">
                     <FiClock className="text-2xl text-[#111111] animate-spin" />
                     <span className="text-[10px] bg-[#EFECE1] text-[#111111] px-2 py-0.5 rounded-full uppercase font-bold border border-[#111111]/20">
-                      Creating your video
+                      {stageLabel(item.currentStage)}
                     </span>
-                    <span className="text-[11px] text-[#77746D]">This keeps running even if you leave this page.</span>
+                    <div className="w-full max-w-[160px] space-y-1.5" aria-label={`${Math.round(Number(item.progressValue) || 0)}% complete`}>
+                      <div className="h-1.5 overflow-hidden rounded-full bg-[#111111]/10">
+                        <div className="h-full rounded-full bg-[#064E3B] transition-[width] duration-500" style={{ width: `${Math.min(100, Math.max(3, Number(item.progressValue) || 0))}%` }} />
+                      </div>
+                      <p className="text-[11px] font-semibold text-[#33312C]">{Math.round(Number(item.progressValue) || 0)}% · {elapsedLabel(item)}</p>
+                    </div>
+                    <span className="text-[11px] text-[#77746D]">This keeps running if you leave this page.</span>
+                    <div className="flex flex-wrap items-center justify-center gap-2">
+                      <button
+                        type="button"
+                        onClick={enableCompletionNotifications}
+                        className="inline-flex items-center gap-1 rounded-full border border-[#111111]/20 bg-white px-2.5 py-1.5 text-[10px] font-bold hover:bg-[#F2EFE5]"
+                      >
+                        <FiBell size={11} /> Notify me
+                      </button>
+                      {isInProgress(item.status) && (
+                        <button
+                          type="button"
+                          disabled={cancellingCreationIds.has(item.id)}
+                          onClick={(event) => void handleCancelGeneration(event, item)}
+                          className="rounded-full border border-red-200 bg-white px-2.5 py-1.5 text-[10px] font-bold text-red-700 hover:bg-red-50 disabled:opacity-50"
+                        >
+                          {cancellingCreationIds.has(item.id) ? "Cancelling…" : "Cancel"}
+                        </button>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>

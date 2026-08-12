@@ -40,6 +40,8 @@ export async function GET(_req, { params }) {
 
     return NextResponse.json({
       id: creation.id,
+      title: creation.title,
+      isFavorite: creation.isFavorite,
       status: creation.status,
       stage: creation.currentStage,
       // Preserve previews for completed records created before artifacts were
