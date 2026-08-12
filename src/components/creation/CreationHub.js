@@ -141,10 +141,12 @@ export default function CreationHub({
   onOpenAvatarModal,
   onOpenPricing,
   onNavigateTab,
+  studioMode = "video_maker",
+  onStudioModeChange,
   userCredits
 }) {
   const { refreshAccount } = useAppAccount();
-  const [activeModeId, setActiveModeId] = useState("video_maker");
+  const [activeModeId, setActiveModeId] = useState(() => STUDIO_IDS[studioMode] ? studioMode : "video_maker");
   const [isPresetModalOpen, setIsPresetModalOpen] = useState(false);
   const [presetSearch, setPresetSearch] = useState("");
 
@@ -377,12 +379,24 @@ export default function CreationHub({
   }, []);
 
   const switchStudio = (nextModeId) => {
+    if (!STUDIO_IDS[nextModeId] || nextModeId === activeModeId) return;
     studioDrafts.current[activeModeId] = currentDraft();
     loadDraft(studioDrafts.current[nextModeId] || blankDraft());
     setActiveModeId(nextModeId);
     setPreflight(null);
     setSubmitError(null);
+    onStudioModeChange?.(nextModeId);
   };
+
+  // The studio remains a client-side workspace state; this only lets an
+  // authenticated /app URL restore or share the currently selected mode.
+  useEffect(() => {
+    if (STUDIO_IDS[studioMode] && studioMode !== activeModeId) {
+      switchStudio(studioMode);
+    }
+  // switchStudio intentionally reads the current draft snapshot.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [studioMode]);
 
   const fetchCreations = async () => {
     try {

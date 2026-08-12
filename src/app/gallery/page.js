@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 export default function GalleryRedirect() {
   const router = useRouter();
   useEffect(() => {
-    router.replace("/?tab=library");
+    router.replace("/app?tab=library");
   }, [router]);
 
   return (

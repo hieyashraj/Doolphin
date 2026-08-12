@@ -148,6 +148,7 @@ const FEATURED_MODES = [
     badge: "UGC Video Engine",
     cover: "/studios/video_studio.jpg",
     tab: "video",
+    studio: "video_maker",
     desc: "Turn scripts & photos into high-converting video ads."
   },
   {
@@ -165,6 +166,7 @@ const FEATURED_MODES = [
     badge: "E-Commerce Studio",
     cover: "/studios/product_studio.jpg",
     tab: "video",
+    studio: "product",
     desc: "Studio-grade product commercials & showcases."
   },
   {
@@ -173,6 +175,7 @@ const FEATURED_MODES = [
     badge: "SaaS & App Walkthrough",
     cover: "/studios/app_studio.jpg",
     tab: "video",
+    studio: "app",
     desc: "Engaging product walkthroughs & app promos."
   }
 ];
@@ -210,6 +213,12 @@ function HomeContent() {
   const router = useRouter();
   
   const currentTab = searchParams.get("tab") || "explore";
+  const currentStudio = searchParams.get("studio") || "video_maker";
+  const navigateToTab = (tab, studio) => {
+    const params = new URLSearchParams({ tab });
+    if (studio) params.set("studio", studio);
+    router.push(`/app?${params.toString()}`);
+  };
   
   const [selectedModel, setSelectedModel] = useState(MODELS[0]);
   const [selectedPreset, setSelectedPreset] = useState(null);
@@ -384,7 +393,7 @@ function HomeContent() {
             </div>
 
             <button
-              onClick={() => router.push("/?tab=explore")}
+              onClick={() => navigateToTab("explore")}
               className="bg-white hover:bg-[#F2EFE5] border border-[#111111]/15 text-[#55534E] hover:text-[#111111] font-semibold text-sm px-4.5 py-2.5 rounded-full flex items-center gap-2 transition-colors cursor-pointer shadow-sm"
             >
               <span>🌐</span>
@@ -392,7 +401,7 @@ function HomeContent() {
             </button>
 
             <button
-              onClick={() => router.push("/?tab=library")}
+              onClick={() => navigateToTab("library")}
               className="bg-white hover:bg-[#F2EFE5] border border-[#111111]/15 text-[#55534E] hover:text-[#111111] font-semibold text-sm px-4.5 py-2.5 rounded-full flex items-center gap-2 transition-colors cursor-pointer shadow-sm"
             >
               <span>📜</span>
@@ -432,7 +441,7 @@ function HomeContent() {
                     <div
                       key={mode.id}
                       onClick={() => {
-                        if (!isComingSoon) router.push(`/?tab=${mode.tab}`);
+                        if (!isComingSoon) navigateToTab(mode.tab, mode.studio);
                       }}
                       className={`relative h-80 sm:h-96 md:h-[400px] rounded-2xl md:rounded-[28px] border border-[#111111]/15 overflow-hidden group shadow-sm bg-white flex flex-col justify-between transition-all duration-300 ${
                         isComingSoon 
@@ -537,7 +546,7 @@ function HomeContent() {
                 <p className="text-sm sm:text-base text-[#55534E] mt-0.5">Select from our realistic video avatars</p>
               </div>
               <button
-                onClick={() => router.push("/?tab=video")}
+                onClick={() => navigateToTab("video", "video_maker")}
                 className="bg-[#E6D9FF] text-[#111111] border border-[#111111] px-6 py-2.5 rounded-full text-sm font-semibold hover:bg-[#DBCBFF] cursor-pointer transition-colors shadow-sm self-start sm:self-auto"
               >
                 Launch Video Studio
@@ -550,7 +559,7 @@ function HomeContent() {
                   key={avatar.id}
                   onClick={() => {
                     handleSelectAvatar(avatar);
-                    router.push("/?tab=video");
+                    navigateToTab("video", "video_maker");
                   }}
                   className="bg-white aspect-[3/4] overflow-hidden cursor-pointer relative group flex flex-col justify-between p-3 rounded-2xl md:rounded-3xl border border-[#111111]/15 shadow-sm hover:border-[#111111]/30 hover:shadow-md transition-all duration-200 active:scale-[0.98]"
                 >
@@ -578,7 +587,9 @@ function HomeContent() {
               selectedAvatar={selectedAvatar} 
               onOpenAvatarModal={() => setIsAvatarsModalOpen(true)} 
               onOpenPricing={() => setIsPricingModalOpen(true)}
-              onNavigateTab={(tab) => router.push(`/?tab=${tab}`)}
+              onNavigateTab={navigateToTab}
+              studioMode={currentStudio}
+              onStudioModeChange={(studio) => navigateToTab("video", studio)}
               userCredits={account?.credits}
             />
           </div>
@@ -657,7 +668,7 @@ function HomeContent() {
                   <p className="text-sm text-[#55534E] max-w-sm">Your completed video media will appear here.</p>
                 </div>
                 <button
-                  onClick={() => router.push("/?tab=video")}
+                  onClick={() => navigateToTab("video", "video_maker")}
                   className="bg-[#E6D9FF] text-[#111111] border border-[#111111] px-6 py-3 rounded-full text-sm font-semibold hover:bg-[#DBCBFF] cursor-pointer shadow-sm transition-colors"
                 >
                   Create First Video

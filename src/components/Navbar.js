@@ -155,25 +155,25 @@ function SidebarContent() {
       id: "explore",
       name: "Explore",
       icon: FiCompass,
-      action: () => router.push("/?tab=explore")
+      action: () => router.push("/app?tab=explore")
     },
     {
       id: "video",
       name: "Video Studio",
       icon: FiZap,
-      action: () => router.push("/?tab=video")
+      action: () => router.push("/app?tab=video&studio=video_maker")
     },
     {
       id: "avatars",
       name: "Avatars",
       icon: FiUser,
-      action: () => router.push("/?tab=avatars")
+      action: () => router.push("/app?tab=avatars")
     },
     {
       id: "library",
       name: "My Creations",
       icon: FiLayers,
-      action: () => router.push("/?tab=library")
+      action: () => router.push("/app?tab=library")
     }
   ];
 
@@ -197,7 +197,7 @@ function SidebarContent() {
                 <FiSidebar size={18} className="group-hover:scale-110 transition-transform text-[#111111]" />
               </button>
               <Link 
-                href="/" 
+                href="/app"
                 className="w-10 h-10 rounded-xl bg-white border border-[#111111]/20 flex items-center justify-center p-1.5 shadow-sm hover:scale-105 transition-transform"
                 title="Doolphin Studio"
               >
@@ -207,7 +207,7 @@ function SidebarContent() {
           ) : (
             <div className="flex items-center justify-between px-2 pt-1">
               <Link 
-                href="/" 
+                href="/app"
                 className="flex items-center gap-3 group truncate"
               >
                 <div className="w-10 h-10 rounded-xl bg-white border border-[#111111]/20 flex items-center justify-center p-1.5 shadow-sm shrink-0 group-hover:scale-105 transition-transform">
@@ -261,7 +261,7 @@ function SidebarContent() {
           {!isCollapsed ? (
             <div className="flex items-center gap-2.5 w-full">
               <button
-                onClick={() => router.push("/?tab=video")}
+                onClick={() => router.push("/app?tab=video&studio=video_maker")}
                 className="flex-1 bg-[#E6D9FF] hover:bg-[#DBCBFF] text-[#111111] font-semibold text-sm px-4 py-2.5 rounded-full border border-[#111111] flex items-center justify-center gap-2 shadow-sm transition-all active:scale-95 cursor-pointer"
               >
                 <FiZap size={16} className="text-[#111111]" />
@@ -294,7 +294,7 @@ function SidebarContent() {
           ) : (
             <div className="flex flex-col gap-2.5 items-center">
               <button
-                onClick={() => router.push("/?tab=video")}
+                onClick={() => router.push("/app?tab=video&studio=video_maker")}
                 title="Open Studio"
                 className="w-11 h-11 rounded-full bg-[#E6D9FF] hover:bg-[#DBCBFF] border border-[#111111] flex items-center justify-center text-[#111111] shadow-sm cursor-pointer transition-all active:scale-95"
               >
@@ -444,7 +444,7 @@ function SidebarContent() {
                       <button
                         onClick={() => {
                           setIsSettingsModalOpen(false);
-                          router.push("/?tab=video");
+                          router.push("/app?tab=video&studio=video_maker");
                         }}
                         className="bg-[#E6D9FF] hover:bg-[#DBCBFF] text-[#111111] border border-[#111111] rounded-full px-6 py-2.5 text-xs md:text-sm font-semibold shadow-sm cursor-pointer transition-all"
                       >
