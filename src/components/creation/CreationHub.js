@@ -815,7 +815,7 @@ export default function CreationHub({
       {/* LEFT CONTROL PANEL / DRAWER WITH INTERACTIVE DRAGGABLE RESIZER */}
       <aside
         style={{ width: `${sidebarWidth}px` }}
-        className="relative shrink-0 border-r border-[#111111]/15 flex flex-col h-full bg-white overflow-hidden select-none transition-[width] duration-75 ease-out"
+        className="studio-sidebar relative shrink-0 border-r border-[#111111]/15 flex flex-col h-full bg-white overflow-hidden select-none transition-[width] duration-75 ease-out"
       >
         {/* Interactive Drag Resizer Bar */}
         <div
@@ -829,7 +829,7 @@ export default function CreationHub({
         </div>
 
         {/* Scrollable Form Content */}
-        <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-5 scrollbar-subtle">
+        <div className="studio-sidebar-content flex-1 overflow-y-auto p-4 sm:p-5 space-y-4 scrollbar-subtle">
           <PresetHeaderCard
             preset={activePreset}
             onChangeClick={() => setIsPresetModalOpen(true)}
@@ -978,7 +978,7 @@ export default function CreationHub({
         </div>
 
         {/* STICKY BOTTOM GENERATE BUTTON */}
-        <div className="p-4 border-t border-[#111111]/10 bg-white shrink-0 space-y-2">
+        <div className="studio-generate-bar p-4 border-t border-[#111111]/10 bg-white shrink-0 space-y-2">
           {submitError && (
             <div className="p-2.5 bg-red-50 border border-red-200 rounded-xl text-xs text-red-600">
               {submitError}
@@ -988,7 +988,7 @@ export default function CreationHub({
             type="button"
             disabled={isSubmitting}
             onClick={handlePreflight}
-            className="w-full py-3.5 px-6 bg-[#E6D9FF] hover:bg-[#DBCBFF] hover:scale-[1.01] text-[#111111] rounded-full font-semibold text-sm border-[1.5px] border-[#111111] shadow-sm transition-all active:scale-[0.98] flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+            className="studio-generate-button w-full py-3.5 px-6 bg-[#E6D9FF] hover:bg-[#DBCBFF] hover:scale-[1.01] text-[#111111] rounded-full font-semibold text-sm border-[1.5px] border-[#111111] shadow-sm transition-all active:scale-[0.98] flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
           >
             <FiZap size={16} />
             <span>{isSubmitting ? "Starting generation..." : "Generate Video"}</span>

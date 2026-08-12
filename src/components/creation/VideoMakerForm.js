@@ -38,7 +38,7 @@ export default function VideoMakerForm({
   };
 
   return (
-    <div className="space-y-4 font-sans text-[#111111]">
+    <div className="studio-form space-y-3 font-sans text-[#111111]">
       {/* Write your script */}
       <div className="space-y-1.5">
         <label className="block text-base font-semibold text-[#111111]">

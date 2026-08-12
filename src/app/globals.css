@@ -452,3 +452,150 @@ input::placeholder,
 textarea::placeholder {
   color: #77746D !important;
 }
+
+/* Studio composer ---------------------------------------------------------
+   The creation panels deliberately use smaller, nested surfaces than the
+   workspace around them.  This keeps a long form easy to scan while giving
+   every input the same tactile, picker-like feel. */
+.studio-sidebar {
+  background: linear-gradient(180deg, #ffffff 0%, #fdfcf8 100%);
+  box-shadow: 12px 0 32px rgba(17, 17, 17, 0.035);
+}
+
+.studio-sidebar-content {
+  background:
+    radial-gradient(circle at 100% 0%, rgba(230, 217, 255, 0.28), transparent 26rem),
+    linear-gradient(180deg, #fffdf8 0%, #faf8ed 100%);
+}
+
+.studio-form > div {
+  position: relative;
+  padding: 12px;
+  border: 1px solid rgba(17, 17, 17, 0.10);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: 0 2px 10px rgba(17, 17, 17, 0.025);
+  transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+
+.studio-form > div:hover {
+  border-color: rgba(17, 17, 17, 0.18);
+  box-shadow: 0 5px 16px rgba(17, 17, 17, 0.045);
+}
+
+.studio-form label {
+  color: #292721;
+  font-size: 0.75rem !important;
+  font-weight: 750 !important;
+  letter-spacing: 0.015em;
+}
+
+.studio-form > div > label:not([class*="w-"])::before,
+.studio-form > div > div:first-child > label::before {
+  content: "✦";
+  display: inline-flex;
+  width: 18px;
+  height: 18px;
+  margin-right: 6px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  background: #eee6ff;
+  color: #5d3c9a;
+  font-size: 10px;
+  vertical-align: -1px;
+}
+
+.studio-form textarea,
+.studio-form input[type="text"],
+.studio-form input:not([type]),
+.studio-form select {
+  border-color: rgba(17, 17, 17, 0.11) !important;
+  border-radius: 12px !important;
+  background-color: #f7f4ec !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+.studio-form textarea {
+  min-height: 88px;
+  line-height: 1.55;
+}
+
+.studio-form select {
+  min-height: 46px;
+  font-weight: 650 !important;
+  cursor: pointer;
+}
+
+.studio-form textarea:hover,
+.studio-form input[type="text"]:hover,
+.studio-form input:not([type]):hover,
+.studio-form select:hover {
+  background-color: #fffdf8 !important;
+  border-color: rgba(17, 17, 17, 0.23) !important;
+}
+
+.studio-form textarea:focus,
+.studio-form input[type="text"]:focus,
+.studio-form input:not([type]):focus,
+.studio-form select:focus {
+  border-color: #8564c5 !important;
+  box-shadow: 0 0 0 3px rgba(230, 217, 255, 0.82), inset 0 1px 0 #fff !important;
+}
+
+/* Upload targets read as compact action buttons instead of empty boxes. */
+.studio-form label:has(input[type="file"]) {
+  border-radius: 12px !important;
+  background: linear-gradient(145deg, #f4edff, #eee6ff) !important;
+  border-color: rgba(93, 60, 154, 0.28) !important;
+  color: #5d3c9a !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.9);
+}
+
+.studio-form label:has(input[type="file"]):hover {
+  background: linear-gradient(145deg, #eadfff, #dfd0ff) !important;
+  border-color: #8564c5 !important;
+  transform: translateY(-1px);
+}
+
+.studio-form label:has(input[type="file"]) svg {
+  color: #6a48a8 !important;
+}
+
+.studio-form button:not(.asset-library-trigger) {
+  border-radius: 12px;
+}
+
+.studio-form button[type="button"]:has(svg) {
+  transition: transform 150ms ease, background-color 150ms ease, border-color 150ms ease;
+}
+
+.studio-form button[type="button"]:has(svg):hover {
+  transform: translateY(-1px);
+}
+
+.studio-form .relative.w-20,
+.studio-form .relative.w-16 {
+  border-radius: 12px !important;
+  box-shadow: 0 3px 9px rgba(17,17,17,.08);
+}
+
+.studio-generate-bar {
+  background: rgba(255,255,255,0.92);
+  backdrop-filter: blur(14px);
+}
+
+.studio-generate-button {
+  min-height: 50px;
+  background: linear-gradient(135deg, #e9ddff 0%, #d9c7ff 100%) !important;
+  box-shadow: 0 5px 0 #9a7bc9, 0 10px 20px rgba(93, 60, 154, 0.19) !important;
+}
+
+.studio-generate-button:hover:not(:disabled) {
+  box-shadow: 0 6px 0 #9a7bc9, 0 14px 24px rgba(93, 60, 154, 0.22) !important;
+}
+
+.studio-generate-button:active:not(:disabled) {
+  transform: translateY(4px) !important;
+  box-shadow: 0 1px 0 #9a7bc9, 0 4px 10px rgba(93, 60, 154, 0.18) !important;
+}

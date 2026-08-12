@@ -33,7 +33,7 @@ export default function ProductAdForm({
   modelsList = []
 }) {
   return (
-    <div className="space-y-4 font-sans text-[#111111]">
+    <div className="studio-form space-y-3 font-sans text-[#111111]">
       {/* Upload your product * (i) */}
       <div className="space-y-1.5">
         <div className="flex items-center gap-1.5">
