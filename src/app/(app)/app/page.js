@@ -155,12 +155,12 @@ const FEATURED_MODES = [
   },
   {
     id: "image-maker",
-    title: "Image Maker",
+    title: "Image Studio →",
     badge: "AI Avatars & Visuals",
     cover: "/avatars/Andrew E1.png",
-    tab: "avatars",
-    comingSoon: true,
-    desc: "Browse high-resolution realistic AI video avatars."
+    tab: "images",
+    href: "/app/images",
+    desc: "Create high-resolution images from a prompt or reference."
   },
   {
     id: "product-ad",
@@ -400,7 +400,7 @@ function HomeContent() {
               className="bg-white hover:bg-[#F2EFE5] border border-[#111111]/15 text-[#55534E] hover:text-[#111111] font-semibold text-sm px-4.5 py-2.5 rounded-full flex items-center gap-2 transition-colors cursor-pointer shadow-sm"
             >
               <span>📜</span>
-              <span>History</span>
+              <span>My Library</span>
             </button>
           </div>
         </header>
@@ -436,7 +436,7 @@ function HomeContent() {
                     <div
                       key={mode.id}
                       onClick={() => {
-                        if (!isComingSoon) navigateToTab(mode.tab, mode.studio);
+                        if (!isComingSoon) { if (mode.href) window.location.assign(mode.href); else navigateToTab(mode.tab, mode.studio); }
                       }}
                       className={`relative h-80 sm:h-96 md:h-[400px] rounded-2xl md:rounded-[28px] border border-[#111111]/15 overflow-hidden group shadow-sm bg-white flex flex-col justify-between transition-all duration-300 ${
                         isComingSoon 
@@ -595,7 +595,7 @@ function HomeContent() {
           <div className="flex-1 overflow-y-auto px-6 py-8 md:px-12 space-y-8 scrollbar-subtle select-none">
             <header className="border-b border-[#111111]/10 pb-5 flex flex-col sm:flex-row sm:items-end justify-between gap-4">
               <div>
-                <h2 className="text-2xl sm:text-3xl font-serif font-bold text-[#111111]">My Creations</h2>
+                <h2 className="text-2xl sm:text-3xl font-serif font-bold text-[#111111]">My Library</h2>
                 <p className="text-sm sm:text-base text-[#55534E] mt-0.5">Search, organize, and download your generated videos</p>
               </div>
             </header>

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useSearchParams, useRouter } from "next/navigation";
+import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import { useState, useEffect, Suspense } from "react";
 import { 
   FiCompass, 
@@ -19,6 +19,7 @@ import {
   FiExternalLink,
   FiAlertTriangle,
   FiCpu,
+  FiImage,
   FiSidebar,
   FiLogOut
 } from "react-icons/fi";
@@ -32,6 +33,7 @@ function SidebarContent() {
   const { account, setAccount } = useAppAccount();
   const searchParams = useSearchParams();
   const router = useRouter();
+  const pathname = usePathname();
   
   const currentTab = searchParams.get("tab") || "explore";
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
@@ -167,6 +169,12 @@ function SidebarContent() {
       action: () => navigateAppView({ tab: "video", studio: "video_maker" })
     },
     {
+      id: "images",
+      name: "Image Studio",
+      icon: FiImage,
+      action: () => router.push("/app/images")
+    },
+    {
       id: "avatars",
       name: "Avatars",
       icon: FiUser,
@@ -174,7 +182,7 @@ function SidebarContent() {
     },
     {
       id: "library",
-      name: "My Creations",
+      name: "My Library",
       icon: FiLayers,
       action: () => navigateAppView({ tab: "library" })
     }
@@ -235,7 +243,7 @@ function SidebarContent() {
           {/* Navigation Items (Wispr Flow Capsule Tabs with text-sm & text-base font-semibold typography scale) */}
           <nav className="flex flex-col gap-2 w-full">
             {mainNavItems.map((item) => {
-              const isActive = currentTab === item.id;
+              const isActive = currentTab === item.id || (item.id === "images" && pathname === "/app/images");
               const Icon = item.icon;
               
               return (

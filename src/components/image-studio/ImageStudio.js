@@ -1,120 +1,28 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { FiCheck, FiChevronDown, FiImage, FiLoader, FiPlus, FiSearch, FiX } from "react-icons/fi";
+import Link from "next/link";
+import { FiCheck, FiChevronDown, FiImage, FiLoader, FiPlus, FiSearch, FiUploadCloud, FiX } from "react-icons/fi";
+import StudioSelect from "@/components/studio/StudioSelect";
+import { useAppAccount } from "@/components/AppAccountProvider";
 
 const compatible = (value, values) => values.includes(value) ? value : values[0];
-
-function normalize(model, draft) {
-  const caps = model.productCapabilities;
-  return {
-    ...draft,
-    modelId: model.id,
-    aspectRatio: caps.aspectRatio.visible ? compatible(draft.aspectRatio, caps.aspectRatio.values) : undefined,
-    outputResolution: caps.outputResolution.visible ? compatible(draft.outputResolution, caps.outputResolution.values) : undefined,
-    requestedOutputCount: caps.requestedOutputCount.visible ? compatible(draft.requestedOutputCount, caps.requestedOutputCount.values) : undefined,
-    referenceAssetIds: caps.referenceImages.visible ? draft.referenceAssetIds.slice(0, caps.referenceImages.max) : [],
-  };
-}
-
-function Control({ children, className = "", ...props }) {
-  return <button type="button" className={`inline-flex min-h-10 items-center gap-2 rounded-full border border-[#111111]/15 bg-white px-3.5 text-sm font-medium text-[#33312C] shadow-sm transition-colors hover:bg-[#EFECE1] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#111111] ${className}`} {...props}>{children}</button>;
-}
-
-function SelectPill({ label, value, values, onChange }) {
-  return <label className="relative inline-flex min-w-0">
-    <span className="sr-only">{label}</span>
-    <select value={value || ""} onChange={(event) => onChange(event.target.value)} className="h-10 max-w-[132px] appearance-none rounded-full border border-[#111111]/15 bg-white py-0 pl-3.5 pr-8 text-sm font-medium text-[#33312C] shadow-sm outline-none transition-colors hover:bg-[#EFECE1] focus:border-[#111111]">
-      {values.map((entry) => <option key={entry} value={entry}>{entry}</option>)}
-    </select>
-    <FiChevronDown aria-hidden="true" className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[#66635C]" size={15} />
-  </label>;
-}
+function normalize(model, draft) { const caps = model.productCapabilities; return { ...draft, modelId: model.id, aspectRatio: caps.aspectRatio.visible ? compatible(draft.aspectRatio, caps.aspectRatio.values) : undefined, outputResolution: caps.outputResolution.visible ? compatible(draft.outputResolution, caps.outputResolution.values) : undefined, requestedOutputCount: caps.requestedOutputCount.visible ? compatible(draft.requestedOutputCount, caps.requestedOutputCount.values) : undefined, referenceAssetIds: caps.referenceImages.visible ? draft.referenceAssetIds.slice(0, caps.referenceImages.max) : [] }; }
+const Control = ({ children, className = "", ...props }) => <button type="button" className={`inline-flex min-h-10 items-center gap-2 rounded-xl border border-[#111111]/15 bg-white px-3 text-sm font-medium shadow-sm transition-colors hover:bg-[#EFECE1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#111111] ${className}`} {...props}>{children}</button>;
 
 export default function ImageStudio() {
-  const [models, setModels] = useState([]);
-  const [assets, setAssets] = useState([]);
-  const [draft, setDraft] = useState({ prompt: "", referenceAssetIds: [] });
-  const [quote, setQuote] = useState(null);
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [generation, setGeneration] = useState(null);
-  const [modelOpen, setModelOpen] = useState(false);
-  const [assetOpen, setAssetOpen] = useState(false);
-  const [modelSearch, setModelSearch] = useState("");
-  const modelPopover = useRef(null);
-
-  useEffect(() => {
-    const close = (event) => { if (modelPopover.current && !modelPopover.current.contains(event.target)) setModelOpen(false); };
-    window.addEventListener("pointerdown", close);
-    return () => window.removeEventListener("pointerdown", close);
-  }, []);
-
-  useEffect(() => {
-    Promise.all([fetch("/api/image-models").then((response) => response.json()), fetch("/api/assets").then((response) => response.json())])
-      .then(([modelData, assetData]) => {
-        const enabled = (modelData.models || []).filter((model) => model.available);
-        setModels(enabled);
-        setAssets((assetData.assets || []).filter((asset) => asset.mimeType?.startsWith("image/")));
-        if (enabled[0]) setDraft((current) => normalize(enabled[0], { ...current, aspectRatio: enabled[0].productCapabilities.aspectRatio.values[0], outputResolution: enabled[0].productCapabilities.outputResolution.values[0], requestedOutputCount: enabled[0].productCapabilities.requestedOutputCount.values[0] }));
-      })
-      .catch(() => setError("Image Studio is temporarily unavailable."))
-      .finally(() => setLoading(false));
-  }, []);
-
-  const model = models.find((item) => item.id === draft.modelId);
-  const caps = model?.productCapabilities;
-  const selectedAssets = assets.filter((asset) => draft.referenceAssetIds.includes(asset.id));
-  const filteredModels = useMemo(() => models.filter((item) => item.displayName.toLowerCase().includes(modelSearch.toLowerCase())), [models, modelSearch]);
-
-  const mutate = (next) => { setQuote(null); setError(""); setDraft((current) => ({ ...current, ...next })); };
-  const selectModel = (next) => { setQuote(null); setModelOpen(false); setModelSearch(""); setDraft((current) => normalize(next, current)); };
-  const toggleAsset = (assetId) => {
-    if (!caps) return;
-    const selected = draft.referenceAssetIds.includes(assetId);
-    mutate({ referenceAssetIds: selected ? draft.referenceAssetIds.filter((id) => id !== assetId) : [...draft.referenceAssetIds, assetId].slice(0, caps.referenceImages.max) });
-  };
-  const quoteDraft = async () => {
-    setError(""); setQuote(null);
-    const response = await fetch("/api/images/preflight", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ version: "image-generation.v1", ...draft }) });
-    const data = await response.json();
-    if (!response.ok) return setError(data.error || data.code || "Unable to quote this image.");
-    setQuote(data.quote);
-  };
-  const generate = async () => {
-    if (!quote) return quoteDraft();
-    const response = await fetch("/api/images/generations", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ quoteId: quote.id, idempotencyKey: crypto.randomUUID() }) });
-    const data = await response.json();
-    if (!response.ok) return setError(data.error || data.code || "Generation could not start.");
-    setGeneration({ id: data.creationId, status: data.status });
-  };
-
-  return <div className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-[#FAF8ED] text-[#111111]">
-    <section className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto px-4 py-8 sm:px-8 md:px-12">
-      {generation ? <div className="w-full max-w-xl rounded-3xl border border-[#111111]/15 bg-white p-6 text-center shadow-sm"><div className="mx-auto mb-4 grid h-12 w-12 place-items-center rounded-2xl bg-[#E6D9FF]"><FiLoader className="animate-spin" size={22} /></div><h1 className="font-serif text-2xl font-bold">Your image is being created</h1><p className="mt-2 text-sm text-[#55534E]">Keep this page open or return to My Images shortly.</p></div> : <div className="max-w-md text-center"><div className="mx-auto mb-4 grid h-12 w-12 place-items-center rounded-2xl border border-[#111111]/15 bg-white text-[#55534E] shadow-sm"><FiImage size={21} /></div><h1 className="font-serif text-2xl font-bold tracking-tight sm:text-3xl">Create your next image</h1><p className="mt-2 text-sm leading-6 text-[#66635C]">Describe a scene, product, character, or visual idea below.</p></div>}
-    </section>
-
-    <section className="shrink-0 px-3 pb-3 sm:px-5 sm:pb-5">
-      <div className="mx-auto max-w-5xl rounded-[26px] border border-[#111111] bg-white p-3 shadow-[0_12px_36px_rgba(17,17,17,0.12)] sm:p-4">
-        {selectedAssets.length > 0 && <div className="mb-3 flex flex-wrap gap-2">{selectedAssets.map((asset) => <div key={asset.id} className="group relative h-12 w-12 overflow-hidden rounded-xl border border-[#111111]/15 bg-[#EFECE1]"><img src={asset.url} alt="Selected reference" className="h-full w-full object-cover" /><button type="button" aria-label={`Remove ${asset.originalFileName}`} onClick={() => toggleAsset(asset.id)} className="absolute right-0.5 top-0.5 grid h-5 w-5 place-items-center rounded-full bg-[#111111] text-white opacity-90"><FiX size={12} /></button></div>)}</div>}
-        <textarea value={draft.prompt} onChange={(event) => mutate({ prompt: event.target.value })} placeholder="Describe the scene you imagine" className="min-h-[88px] w-full resize-none rounded-2xl border border-transparent bg-[#FAF8ED] px-4 py-3 text-base leading-6 text-[#111111] outline-none placeholder:text-[#77746D] focus:border-[#111111]/20" />
-        <div className="mt-3 flex flex-col gap-3 border-t border-[#111111]/10 pt-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex min-w-0 flex-wrap items-center gap-2">
-            {caps?.referenceImages.visible && <Control onClick={() => setAssetOpen((open) => !open)} aria-expanded={assetOpen}><FiPlus size={17} /> Add image{draft.referenceAssetIds.length > 0 && <span className="text-xs text-[#66635C]">{draft.referenceAssetIds.length}/{caps.referenceImages.max}</span>}</Control>}
-            <div className="relative" ref={modelPopover}>
-              <Control onClick={() => setModelOpen((open) => !open)} aria-expanded={modelOpen} className="max-w-[190px]"><span className="truncate">{loading ? "Loading models…" : model?.displayName || "No model available"}</span><FiChevronDown size={15} /></Control>
-              {modelOpen && <div className="absolute bottom-12 left-0 z-30 w-[min(320px,calc(100vw-3rem))] overflow-hidden rounded-2xl border border-[#111111]/15 bg-white p-2 shadow-xl"><label className="relative mb-2 block"><FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-[#77746D]" size={15} /><input autoFocus value={modelSearch} onChange={(event) => setModelSearch(event.target.value)} placeholder="Search models" className="w-full rounded-xl border border-[#111111]/15 bg-[#FAF8ED] py-2 pl-9 pr-3 text-sm outline-none focus:border-[#111111]" /></label><div className="max-h-56 overflow-y-auto">{filteredModels.map((entry) => <button key={entry.id} type="button" onClick={() => selectModel(entry)} className="flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left hover:bg-[#EFECE1]"><span><span className="block text-sm font-semibold">{entry.displayName}</span><span className="block text-xs text-[#77746D]">MuAPI image generation</span></span>{entry.id === model?.id && <FiCheck size={17} />}</button>)}</div></div>}
-            </div>
-            {caps?.aspectRatio.visible && <SelectPill label="Aspect ratio" value={draft.aspectRatio} values={caps.aspectRatio.values} onChange={(aspectRatio) => mutate({ aspectRatio })} />}
-            {caps?.outputResolution.visible && <SelectPill label="Resolution" value={draft.outputResolution} values={caps.outputResolution.values} onChange={(outputResolution) => mutate({ outputResolution })} />}
-            {caps?.requestedOutputCount.visible && <SelectPill label="Output count" value={draft.requestedOutputCount} values={caps.requestedOutputCount.values} onChange={(requestedOutputCount) => mutate({ requestedOutputCount: Number(requestedOutputCount) })} />}
-          </div>
-          <button disabled={!model || !draft.prompt.trim()} onClick={generate} className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-full border border-[#111111] bg-[#E6D9FF] px-5 text-sm font-semibold text-[#111111] shadow-sm transition-colors hover:bg-[#DBCBFF] disabled:cursor-not-allowed disabled:opacity-45">{quote ? `Generate · ${quote.credits} credits` : "Get quote"}</button>
-        </div>
-        {assetOpen && caps?.referenceImages.visible && <div className="mt-3 rounded-2xl border border-[#111111]/15 bg-[#FAF8ED] p-3"><div className="mb-2 flex items-center justify-between"><p className="text-sm font-semibold">Choose from My Assets</p><button type="button" onClick={() => setAssetOpen(false)} className="rounded-full p-1 hover:bg-white"><FiX /></button></div>{assets.length ? <div className="grid max-h-36 grid-cols-4 gap-2 overflow-y-auto sm:grid-cols-6">{assets.map((asset) => { const selected = draft.referenceAssetIds.includes(asset.id); return <button key={asset.id} type="button" onClick={() => toggleAsset(asset.id)} className={`relative aspect-square overflow-hidden rounded-xl border ${selected ? "border-[#111111] ring-2 ring-[#E6D9FF]" : "border-[#111111]/15"}`}><img src={asset.url} alt={asset.originalFileName} className="h-full w-full object-cover" />{selected && <span className="absolute right-1 top-1 grid h-5 w-5 place-items-center rounded-full bg-[#111111] text-white"><FiCheck size={12} /></span>}</button>; })}</div> : <p className="py-3 text-sm text-[#66635C]">No validated image assets yet.</p>}</div>}
-        {error && <p role="alert" className="mt-3 text-sm font-medium text-[#9A2C2C]">{error}</p>}
-        {!error && quote && <p className="mt-3 text-xs text-[#66635C]">Quote locked for 15 minutes.</p>}
-      </div>
-    </section>
-  </div>;
+  const { account } = useAppAccount(); const [models, setModels] = useState([]); const [assets, setAssets] = useState([]); const [draft, setDraft] = useState({ prompt: "", referenceAssetIds: [] }); const [quote, setQuote] = useState(null); const [quoteState, setQuoteState] = useState("idle"); const [error, setError] = useState(""); const [loading, setLoading] = useState(true); const [generation, setGeneration] = useState(null); const [modelOpen, setModelOpen] = useState(false); const [assetOpen, setAssetOpen] = useState(false); const [modelSearch, setModelSearch] = useState(""); const [uploading, setUploading] = useState(false); const input = useRef(null); const popover = useRef(null); const idempotencyKey = useRef(null);
+  const refreshAssets = async () => { const response = await fetch("/api/assets"); const data = await response.json(); setAssets((data.assets || []).filter((asset) => asset.mimeType?.startsWith("image/"))); };
+  useEffect(() => { Promise.all([fetch("/api/image-models").then((r) => r.json()), refreshAssets()]).then(([modelData]) => { const enabled = (modelData.models || []).filter((item) => item.available); setModels(enabled); if (enabled[0]) setDraft((current) => normalize(enabled[0], current)); }).catch(() => setError("Image Studio is temporarily unavailable. Please retry.")).finally(() => setLoading(false)); }, []);
+  const model = models.find((item) => item.id === draft.modelId); const caps = model?.productCapabilities; const selectedAssets = assets.filter((asset) => draft.referenceAssetIds.includes(asset.id)); const filtered = useMemo(() => models.filter((entry) => `${entry.displayName} ${entry.id}`.toLowerCase().includes(modelSearch.toLowerCase())), [models, modelSearch]);
+  const mutate = (next) => { setQuote(null); setQuoteState("idle"); setError(""); setDraft((current) => ({ ...current, ...next })); };
+  const selectModel = (next) => { setQuote(null); setQuoteState("idle"); setModelOpen(false); setModelSearch(""); setDraft((current) => normalize(next, current)); };
+  const toggleAsset = (assetId) => { if (!caps) return; const selected = draft.referenceAssetIds.includes(assetId); mutate({ referenceAssetIds: selected ? draft.referenceAssetIds.filter((id) => id !== assetId) : [...draft.referenceAssetIds, assetId].slice(0, caps.referenceImages.max) }); };
+  useEffect(() => { const close = (event) => { if (event.key === "Escape") { setModelOpen(false); setAssetOpen(false); } if (event.type === "pointerdown" && popover.current && !popover.current.contains(event.target)) setModelOpen(false); }; window.addEventListener("keydown", close); window.addEventListener("pointerdown", close); return () => { window.removeEventListener("keydown", close); window.removeEventListener("pointerdown", close); }; }, []);
+  useEffect(() => { if (!model || !draft.prompt.trim()) return; setQuoteState("calculating"); const timer = setTimeout(async () => { try { const response = await fetch("/api/images/preflight", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ version: "image-generation.v1", ...draft }) }); const data = await response.json(); if (!response.ok) { setQuote(null); setQuoteState(data.code === "INSUFFICIENT_CREDITS" ? "insufficient" : "unavailable"); setError(data.error || (data.code === "INSUFFICIENT_CREDITS" ? "Add credits to generate this image." : "Pricing is temporarily unavailable.")); return; } setQuote(data.quote); setQuoteState("ready"); } catch { setQuoteState("unavailable"); setError("Pricing is temporarily unavailable. Please retry."); } }, 450); return () => clearTimeout(timer); }, [draft, model]);
+  const upload = async (files) => { const file = files?.[0]; if (!file) return; if (!file.type.startsWith("image/")) return setError("Choose a PNG, JPEG, or WebP image."); if (file.size > 15 * 1024 * 1024) return setError("Images must be 15 MB or smaller."); setUploading(true); setError(""); try { const digest = await crypto.subtle.digest("SHA-256", await file.arrayBuffer()); const checksumSha256 = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join(""); const prep = await fetch("/api/uploads/presign", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ filename: file.name, contentType: file.type, fileSizeBytes: file.size, checksumSha256 }) }); const presign = await prep.json(); if (!prep.ok) throw new Error(presign.error || "Upload could not start."); if (!presign.alreadyUploaded) { const put = await fetch(presign.uploadUrl, { method: "PUT", headers: presign.requiredHeaders, body: file }); if (!put.ok) throw new Error("Upload could not be completed."); } const complete = await fetch("/api/uploads/complete", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ assetId: presign.assetId }) }); const data = await complete.json(); if (!complete.ok) throw new Error(data.error || "Image validation failed."); await refreshAssets(); mutate({ referenceAssetIds: [...draft.referenceAssetIds, data.asset.assetId].slice(0, caps.referenceImages.max) }); setAssetOpen(true); } catch (err) { setError(err.message || "Upload failed. Try again."); } finally { setUploading(false); } };
+  const generate = async () => { if (!quote || quoteState !== "ready" || generation) return; setQuoteState("submitting"); idempotencyKey.current ||= crypto.randomUUID(); try { const response = await fetch("/api/images/generations", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ quoteId: quote.id, idempotencyKey: idempotencyKey.current }) }); const data = await response.json(); if (!response.ok) throw new Error(data.error || "Generation could not start."); setGeneration({ id: data.creationId, status: data.status || "PROCESSING" }); setQuoteState("generating"); } catch (err) { idempotencyKey.current = null; setQuoteState("ready"); setError(err.message || "Generation could not start. Try again."); } };
+  useEffect(() => { if (!generation?.id || generation.status === "COMPLETED") return; const timer = setInterval(async () => { const response = await fetch(`/api/images/generations/${generation.id}/result`, { method: "POST" }); const data = await response.json(); if (response.ok) { const next = { ...data }; if (data.status === "COMPLETED") { const images = await fetch("/api/my-images").then((result) => result.json()); next.url = images.items?.find((item) => item.creationId === generation.id)?.url; } setGeneration((current) => ({ ...current, ...next })); } }, 5000); return () => clearInterval(timer); }, [generation?.id, generation?.status]);
+  const buttonText = !draft.prompt.trim() ? "Generate" : quoteState === "calculating" ? "Calculating…" : quoteState === "insufficient" ? "Insufficient credits" : quoteState === "unavailable" ? "Unavailable" : quoteState === "submitting" ? "Submitting…" : quoteState === "generating" ? "Generating…" : quote ? `Generate · ${quote.credits} credits` : "Generate";
+  return <div className="flex h-full min-h-0 w-full overflow-hidden rounded-[26px] border border-[#111111]/15 bg-[#FAF8ED] text-[#111111] shadow-sm"><aside className="flex w-full shrink-0 flex-col overflow-y-auto border-r border-[#111111]/15 bg-white p-4 sm:w-[380px] sm:p-5"><div className="mb-6"><p className="text-xs font-bold tracking-[0.16em] text-[#77746D]">IMAGE STUDIO</p><h1 className="mt-1 font-serif text-2xl font-bold">Create an image</h1><p className="mt-1 text-sm text-[#66635C]">Your balance: {account?.credits ?? "—"} credits</p></div>{loading ? <div className="space-y-3"><div className="h-24 animate-pulse rounded-2xl bg-[#EFECE1]" /><div className="h-10 animate-pulse rounded-xl bg-[#EFECE1]" /></div> : <><label className="mb-2 block text-sm font-semibold">Prompt<textarea value={draft.prompt} onChange={(event) => mutate({ prompt: event.target.value })} placeholder="Describe the image you want to create" className="mt-2 min-h-32 w-full resize-y rounded-2xl border border-[#111111]/15 bg-[#FAF8ED] p-3 text-sm leading-6 outline-none focus:border-[#111111]" /></label>{caps?.referenceImages.visible && <div className="mb-4"><p className="mb-2 text-sm font-semibold">Reference images <span className="font-normal text-[#77746D]">{draft.referenceAssetIds.length}/{caps.referenceImages.max}</span></p><div onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); upload(event.dataTransfer.files); }} className="rounded-2xl border border-dashed border-[#111111]/25 bg-[#FAF8ED] p-3"><div className="flex gap-2"><Control onClick={() => input.current?.click()} disabled={uploading}><FiUploadCloud />{uploading ? "Uploading…" : "Upload new"}</Control><Control onClick={() => setAssetOpen((open) => !open)}><FiPlus />Choose from My Assets</Control></div><input ref={input} type="file" accept="image/png,image/jpeg,image/webp" className="sr-only" onChange={(event) => { upload(event.target.files); event.target.value = ""; }} />{selectedAssets.length > 0 && <div className="mt-3 flex flex-wrap gap-2">{selectedAssets.map((asset) => <div key={asset.id} className="relative h-12 w-12 overflow-hidden rounded-xl border border-[#111111]/15"><img src={asset.url} alt={asset.originalFileName} className="h-full w-full object-cover" /><button type="button" onClick={() => toggleAsset(asset.id)} aria-label={`Remove ${asset.originalFileName}`} className="absolute right-0.5 top-0.5 rounded-full bg-[#111111] p-1 text-white"><FiX size={11} /></button></div>)}</div>}{assetOpen && <div className="mt-3 grid max-h-40 grid-cols-4 gap-2 overflow-y-auto">{assets.length ? assets.map((asset) => <button type="button" key={asset.id} onClick={() => toggleAsset(asset.id)} aria-pressed={draft.referenceAssetIds.includes(asset.id)} className={`relative aspect-square overflow-hidden rounded-xl border ${draft.referenceAssetIds.includes(asset.id) ? "border-[#111111] ring-2 ring-[#E6D9FF]" : "border-[#111111]/15"}`}><img src={asset.url} alt={asset.originalFileName} className="h-full w-full object-cover" />{draft.referenceAssetIds.includes(asset.id) && <FiCheck className="absolute right-1 top-1 rounded-full bg-white" size={15} />}</button>) : <p className="col-span-4 py-2 text-sm text-[#66635C]">Upload an image above to create your first asset.</p>}</div>}</div></div>}<div className="space-y-3 border-t border-[#111111]/10 pt-4"><div ref={popover} className="relative"><p className="mb-2 text-sm font-semibold">Model</p><Control onClick={() => setModelOpen((open) => !open)} aria-expanded={modelOpen} className="w-full justify-between"><span className="truncate">{model?.displayName || "No model available"}</span><FiChevronDown /></Control>{modelOpen && <div className="absolute bottom-12 z-40 w-full rounded-2xl border border-[#111111]/15 bg-white p-2 shadow-xl"><label className="relative block"><FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-[#77746D]" /><input autoFocus value={modelSearch} onChange={(event) => setModelSearch(event.target.value)} placeholder="Search models" className="w-full rounded-xl border border-[#111111]/15 bg-[#FAF8ED] py-2 pl-9 pr-3 text-sm outline-none" /></label><div className="mt-1 max-h-56 overflow-y-auto">{filtered.map((entry) => <button key={entry.id} type="button" onClick={() => selectModel(entry)} className="flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left hover:bg-[#EFECE1]"><span><span className="block text-sm font-semibold">{entry.displayName}</span><span className="block text-xs text-[#77746D]">{entry.productCapabilities.referenceImages.visible ? "Image reference supported" : "Text to image"}{entry.productCapabilities.outputResolution.visible ? ` · ${entry.productCapabilities.outputResolution.values.join(", ")}` : ""}</span></span>{entry.id === model?.id && <FiCheck />}</button>)}</div></div>}</div><div className="flex flex-wrap gap-2">{caps?.aspectRatio.visible && <StudioSelect label="Aspect ratio" value={draft.aspectRatio} values={caps.aspectRatio.values} onChange={(aspectRatio) => mutate({ aspectRatio })} />}{caps?.outputResolution.visible && <StudioSelect label="Resolution" value={draft.outputResolution} values={caps.outputResolution.values} onChange={(outputResolution) => mutate({ outputResolution })} />}{caps?.requestedOutputCount.visible && <StudioSelect label="Output count" value={String(draft.requestedOutputCount)} values={caps.requestedOutputCount.values.map(String)} onChange={(requestedOutputCount) => mutate({ requestedOutputCount: Number(requestedOutputCount) })} />}</div></div><button disabled={!model || !draft.prompt.trim() || quoteState === "calculating" || quoteState === "unavailable" || quoteState === "insufficient" || quoteState === "submitting" || quoteState === "generating"} onClick={generate} className="mt-5 min-h-12 w-full rounded-xl border border-[#111111] bg-[#E6D9FF] px-4 text-sm font-bold shadow-sm transition-colors hover:bg-[#DBCBFF] disabled:cursor-not-allowed disabled:opacity-50">{buttonText}</button>{error && <p role="alert" className="mt-3 text-sm text-[#9A2C2C]">{error}</p>}</>}</aside><section className="hidden min-w-0 flex-1 items-center justify-center overflow-y-auto p-6 sm:flex">{generation ? <div className="max-w-md text-center"><FiLoader className="mx-auto animate-spin" size={32} /><h2 className="mt-4 font-serif text-2xl font-bold">{generation.status === "COMPLETED" ? "Your image is ready" : "Creating your image"}</h2>{generation.status === "COMPLETED" && generation.url ? <><img src={generation.url} alt="Generated image" className="mt-5 max-h-[55vh] rounded-2xl border border-[#111111]/15" /><Link href="/app/images" className="mt-4 inline-block font-semibold underline">View My Images</Link></> : <p className="mt-2 text-sm text-[#66635C]">You can keep working or return to My Images later.</p>}</div> : <div className="max-w-md text-center"><FiImage className="mx-auto text-[#77746D]" size={38} /><h2 className="mt-4 font-serif text-3xl font-bold">Your workspace</h2><p className="mt-2 text-sm leading-6 text-[#66635C]">Choose a model and describe what you want to create. Your completed work is saved in My Images.</p></div>}</section></div>;
 }
