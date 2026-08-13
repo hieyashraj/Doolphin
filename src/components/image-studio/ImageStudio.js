@@ -5,6 +5,8 @@ import Link from "next/link";
 import {
   FiCheck,
   FiChevronDown,
+  FiCompass,
+  FiGrid,
   FiImage,
   FiLoader,
   FiPlus,
@@ -14,11 +16,20 @@ import {
 } from "react-icons/fi";
 import StudioSelect from "@/components/studio/StudioSelect";
 import { useAppAccount } from "@/components/AppAccountProvider";
+import ExploreGallery from "@/components/image-studio/ExploreGallery";
+import { EXPLORE_IMAGES, getExploreImageById } from "@/lib/explore-images-data";
 
-const compatible = (value, values) => values.includes(value) ? value : values[0];
+const compatible = (value, values) => (values.includes(value) ? value : values[0]);
 
 function normalize(model, draft) {
   const caps = model.productCapabilities;
+  const refVisible = Boolean(caps?.referenceImages?.visible);
+  const maxRef = caps?.referenceImages?.max || 0;
+
+  const exploreIds = refVisible ? (draft.exploreImageIds || []).slice(0, maxRef) : [];
+  const remainingForAssets = Math.max(0, maxRef - exploreIds.length);
+  const assetIds = refVisible ? (draft.referenceAssetIds || []).slice(0, remainingForAssets) : [];
+
   return {
     ...draft,
     modelId: model.id,
@@ -27,9 +38,8 @@ function normalize(model, draft) {
     requestedOutputCount: caps.requestedOutputCount.visible
       ? compatible(draft.requestedOutputCount, caps.requestedOutputCount.values)
       : undefined,
-    referenceAssetIds: caps.referenceImages.visible
-      ? draft.referenceAssetIds.slice(0, caps.referenceImages.max)
-      : []
+    exploreImageIds: exploreIds,
+    referenceAssetIds: assetIds
   };
 }
 
@@ -49,7 +59,7 @@ export default function ImageStudio() {
   const { account } = useAppAccount();
   const [models, setModels] = useState([]);
   const [assets, setAssets] = useState([]);
-  const [draft, setDraft] = useState({ prompt: "", referenceAssetIds: [] });
+  const [draft, setDraft] = useState({ prompt: "", referenceAssetIds: [], exploreImageIds: [] });
   const [quote, setQuote] = useState(null);
   const [quoteState, setQuoteState] = useState("idle");
   const [quoteAttempt, setQuoteAttempt] = useState(0);
@@ -60,6 +70,9 @@ export default function ImageStudio() {
   const [assetOpen, setAssetOpen] = useState(false);
   const [modelSearch, setModelSearch] = useState("");
   const [uploading, setUploading] = useState(false);
+  const [workspaceView, setWorkspaceView] = useState("explore"); // 'explore' | 'result'
+  const [mobileTab, setMobileTab] = useState("composer"); // 'composer' | 'explore'
+
   const input = useRef(null);
   const popover = useRef(null);
   const idempotencyKey = useRef(null);
@@ -83,7 +96,9 @@ export default function ImageStudio() {
 
   const model = models.find((item) => item.id === draft.modelId);
   const caps = model?.productCapabilities;
-  const selectedAssets = assets.filter((asset) => draft.referenceAssetIds.includes(asset.id));
+  const selectedAssets = assets.filter((asset) => (draft.referenceAssetIds || []).includes(asset.id));
+  const selectedExploreItems = (draft.exploreImageIds || []).map((id) => getExploreImageById(id)).filter(Boolean);
+
   const filteredModels = useMemo(
     () => models.filter((entry) => `${entry.displayName} ${entry.id}`.toLowerCase().includes(modelSearch.toLowerCase())),
     [models, modelSearch]
@@ -109,13 +124,37 @@ export default function ImageStudio() {
   };
 
   const toggleAsset = (assetId) => {
-    if (!caps?.referenceImages.visible) return;
-    const selected = draft.referenceAssetIds.includes(assetId);
-    mutate({
-      referenceAssetIds: selected
-        ? draft.referenceAssetIds.filter((id) => id !== assetId)
-        : [...draft.referenceAssetIds, assetId].slice(0, caps.referenceImages.max)
-    });
+    if (!caps?.referenceImages?.visible) return;
+    const currentAssets = draft.referenceAssetIds || [];
+    const currentExplore = draft.exploreImageIds || [];
+    const isSelected = currentAssets.includes(assetId);
+    const maxRef = caps.referenceImages.max || 0;
+
+    if (isSelected) {
+      mutate({ referenceAssetIds: currentAssets.filter((id) => id !== assetId) });
+    } else {
+      if (currentAssets.length + currentExplore.length >= maxRef) return;
+      mutate({ referenceAssetIds: [...currentAssets, assetId] });
+    }
+  };
+
+  const toggleExploreReference = (exploreId) => {
+    if (!caps?.referenceImages?.visible) return;
+    const currentAssets = draft.referenceAssetIds || [];
+    const currentExplore = draft.exploreImageIds || [];
+    const isSelected = currentExplore.includes(exploreId);
+    const maxRef = caps.referenceImages.max || 0;
+
+    if (isSelected) {
+      mutate({ exploreImageIds: currentExplore.filter((id) => id !== exploreId) });
+    } else {
+      if (currentAssets.length + currentExplore.length >= maxRef) return;
+      mutate({ exploreImageIds: [...currentExplore, exploreId] });
+      // If on mobile, switch to composer tab to see attached reference
+      if (typeof window !== "undefined" && window.innerWidth < 768) {
+        setMobileTab("composer");
+      }
+    }
   };
 
   useEffect(() => {
@@ -150,9 +189,12 @@ export default function ImageStudio() {
         if (!response.ok) {
           setQuote(null);
           setQuoteState(data.code === "INSUFFICIENT_CREDITS" ? "insufficient" : "unavailable");
-          setError(data.error || (data.code === "INSUFFICIENT_CREDITS"
-            ? "Add credits to generate this image."
-            : "Pricing is temporarily unavailable."));
+          setError(
+            data.error ||
+              (data.code === "INSUFFICIENT_CREDITS"
+                ? "Add credits to generate this image."
+                : "Pricing is temporarily unavailable.")
+          );
           return;
         }
         setQuote(data.quote);
@@ -201,7 +243,13 @@ export default function ImageStudio() {
       const data = await complete.json();
       if (!complete.ok) throw new Error(data.error || "Image validation failed.");
       await refreshAssets();
-      mutate({ referenceAssetIds: [...draft.referenceAssetIds, data.asset.assetId].slice(0, caps.referenceImages.max) });
+      
+      const currentExplore = draft.exploreImageIds || [];
+      const currentAssets = draft.referenceAssetIds || [];
+      const maxRef = caps?.referenceImages?.max || 0;
+      if (currentAssets.length + currentExplore.length < maxRef) {
+        mutate({ referenceAssetIds: [...currentAssets, data.asset.assetId] });
+      }
       setAssetOpen(true);
     } catch (uploadError) {
       setError(uploadError.message || "Upload failed. Try again.");
@@ -213,6 +261,7 @@ export default function ImageStudio() {
   const generate = async () => {
     if (!quote || quoteState !== "ready" || generation) return;
     setQuoteState("submitting");
+    setWorkspaceView("result");
     idempotencyKey.current ||= crypto.randomUUID();
     try {
       const response = await fetch("/api/images/generations", {
@@ -248,9 +297,11 @@ export default function ImageStudio() {
         const data = await response.json();
         if (!response.ok) {
           if (response.status === 404) {
-            setGeneration((current) => current?.id === generation.id
-              ? { ...current, status: "FAILED", message: "This generation is no longer available." }
-              : current);
+            setGeneration((current) =>
+              current?.id === generation.id
+                ? { ...current, status: "FAILED", message: "This generation is no longer available." }
+                : current
+            );
           }
           return;
         }
@@ -259,7 +310,7 @@ export default function ImageStudio() {
           const images = await fetch("/api/my-images").then((result) => result.json());
           next.url = images.items?.find((item) => item.creationId === generation.id)?.url;
         }
-        if (active) setGeneration((current) => current?.id === generation.id ? { ...current, ...next } : current);
+        if (active) setGeneration((current) => (current?.id === generation.id ? { ...current, ...next } : current));
       } catch {
         // Keep the persisted job in its current state and retry on the next interval.
       }
@@ -275,43 +326,364 @@ export default function ImageStudio() {
   const buttonText = !draft.prompt.trim()
     ? "Generate"
     : quoteState === "calculating"
-      ? "Calculating…"
-      : quoteState === "insufficient"
-        ? "Insufficient credits"
-        : quoteState === "unavailable"
-          ? "Unavailable"
-          : quoteState === "submitting"
-            ? "Submitting…"
-            : quoteState === "generating"
-              ? "Generating…"
-              : quote
-                ? `Generate · ${quote.credits} credits`
-                : "Generate";
+    ? "Calculating…"
+    : quoteState === "insufficient"
+    ? "Insufficient credits"
+    : quoteState === "unavailable"
+    ? "Unavailable"
+    : quoteState === "submitting"
+    ? "Submitting…"
+    : quoteState === "generating"
+    ? "Generating…"
+    : quote
+    ? `Generate · ${quote.credits} credits`
+    : "Generate";
+
+  const totalAttachedReferences = (draft.referenceAssetIds?.length || 0) + (draft.exploreImageIds?.length || 0);
 
   return (
-    <div className="flex h-full min-h-0 w-full overflow-hidden rounded-[26px] border border-[#111111]/15 bg-[#FAF8ED] text-[#111111] shadow-sm">
-      <aside className="flex w-full shrink-0 flex-col overflow-y-auto border-r border-[#111111]/15 bg-white p-4 md:w-[440px] max-w-[480px] sm:p-5">
-        <div className="mb-6">
-          <p className="text-xs font-bold tracking-[0.16em] text-[#77746D]">IMAGE STUDIO</p>
-          <h1 className="mt-1 font-serif text-2xl font-bold">Create an image</h1>
-          <p className="mt-1 text-sm text-[#66635C]">Your balance: {account?.credits ?? "—"} credits</p>
+    <div className="flex h-full min-h-0 w-full flex-col overflow-hidden rounded-[26px] border border-[#111111]/15 bg-[#FAF8ED] text-[#111111] shadow-sm md:flex-row">
+      {/* Mobile Tab Switcher */}
+      <div className="flex border-b border-[#111111]/15 bg-white md:hidden">
+        <button
+          type="button"
+          onClick={() => setMobileTab("composer")}
+          className={`flex flex-1 items-center justify-center gap-2 py-3 text-xs font-bold ${
+            mobileTab === "composer"
+              ? "border-b-2 border-[#111111] text-[#111111]"
+              : "text-[#77746D] hover:text-[#111111]"
+          }`}
+        >
+          <FiImage size={15} /> Compose Draft
+        </button>
+        <button
+          type="button"
+          onClick={() => setMobileTab("explore")}
+          className={`flex flex-1 items-center justify-center gap-2 py-3 text-xs font-bold ${
+            mobileTab === "explore"
+              ? "border-b-2 border-[#111111] text-[#111111]"
+              : "text-[#77746D] hover:text-[#111111]"
+          }`}
+        >
+          <FiCompass size={15} /> Explore Images {totalAttachedReferences > 0 && `(${totalAttachedReferences})`}
+        </button>
+      </div>
+
+      {/* Composer Sidebar */}
+      <aside
+        className={`flex w-full shrink-0 flex-col overflow-y-auto border-r border-[#111111]/15 bg-white p-4 md:w-[440px] max-w-[480px] sm:p-5 ${
+          mobileTab === "composer" ? "flex" : "hidden md:flex"
+        }`}
+      >
+        <div className="mb-5 flex items-center justify-between">
+          <div>
+            <p className="text-xs font-bold tracking-[0.16em] text-[#77746D]">IMAGE STUDIO</p>
+            <h1 className="mt-0.5 font-serif text-2xl font-bold">Create an image</h1>
+            <p className="mt-0.5 text-xs text-[#66635C]">Your balance: {account?.credits ?? "—"} credits</p>
+          </div>
+          {generation && workspaceView !== "explore" && (
+            <button
+              type="button"
+              onClick={() => setWorkspaceView("explore")}
+              className="inline-flex items-center gap-1 rounded-xl border border-[#111111]/15 bg-[#FAF8ED] px-2.5 py-1.5 text-xs font-semibold text-[#111111] hover:bg-[#EFECE1]"
+            >
+              <FiCompass size={14} /> Explore gallery
+            </button>
+          )}
         </div>
+
         {loading ? (
-          <div className="space-y-3"><div className="h-24 animate-pulse rounded-2xl bg-[#EFECE1]" /><div className="h-10 animate-pulse rounded-xl bg-[#EFECE1]" /></div>
+          <div className="space-y-3">
+            <div className="h-24 animate-pulse rounded-2xl bg-[#EFECE1]" />
+            <div className="h-10 animate-pulse rounded-xl bg-[#EFECE1]" />
+          </div>
         ) : (
           <>
-            <label className="mb-2 block text-sm font-semibold">Prompt
-              <textarea value={draft.prompt} onChange={(event) => mutate({ prompt: event.target.value })} placeholder="Describe the image you want to create" className="mt-2 min-h-32 w-full resize-y rounded-2xl border border-[#111111]/15 bg-[#FAF8ED] p-3 text-sm leading-6 outline-none focus:border-[#111111]" />
+            <label className="mb-2 block text-sm font-semibold">
+              Prompt
+              <textarea
+                value={draft.prompt}
+                onChange={(event) => mutate({ prompt: event.target.value })}
+                placeholder="Describe the image you want to create"
+                className="mt-2 min-h-28 w-full resize-y rounded-2xl border border-[#111111]/15 bg-[#FAF8ED] p-3 text-sm leading-6 outline-none focus:border-[#111111]"
+              />
             </label>
-            {caps?.referenceImages.visible && <div className="mb-4"><p className="mb-2 text-sm font-semibold">Reference images <span className="font-normal text-[#77746D]">{draft.referenceAssetIds.length}/{caps.referenceImages.max}</span></p><div onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); void upload(event.dataTransfer.files); }} className="rounded-2xl border border-dashed border-[#111111]/25 bg-[#FAF8ED] p-3"><div className="flex gap-2"><Control onClick={() => input.current?.click()} disabled={uploading}><FiUploadCloud />{uploading ? "Uploading…" : "Upload new"}</Control><Control onClick={() => setAssetOpen((open) => !open)}><FiPlus />Choose from My Assets</Control></div><input ref={input} type="file" accept="image/png,image/jpeg,image/webp" className="sr-only" onChange={(event) => { void upload(event.target.files); event.target.value = ""; }} />{selectedAssets.length > 0 && <div className="mt-3 flex flex-wrap gap-2">{selectedAssets.map((asset) => <div key={asset.id} className="relative h-12 w-12 overflow-hidden rounded-xl border border-[#111111]/15"><img src={asset.url} alt={asset.originalFileName} className="h-full w-full object-cover" /><button type="button" onClick={() => toggleAsset(asset.id)} aria-label={`Remove ${asset.originalFileName}`} className="absolute right-0.5 top-0.5 rounded-full bg-[#111111] p-1 text-white"><FiX size={11} /></button></div>)}</div>}{assetOpen && <div className="mt-3 grid max-h-40 grid-cols-4 gap-2 overflow-y-auto">{assets.length ? assets.map((asset) => <button type="button" key={asset.id} onClick={() => toggleAsset(asset.id)} aria-pressed={draft.referenceAssetIds.includes(asset.id)} className={`relative aspect-square overflow-hidden rounded-xl border ${draft.referenceAssetIds.includes(asset.id) ? "border-[#111111] ring-2 ring-[#E6D9FF]" : "border-[#111111]/15"}`}><img src={asset.url} alt={asset.originalFileName} className="h-full w-full object-cover" />{draft.referenceAssetIds.includes(asset.id) && <FiCheck className="absolute right-1 top-1 rounded-full bg-white" size={15} />}</button>) : <p className="col-span-4 py-2 text-sm text-[#66635C]">Upload an image above to create your first asset.</p>}</div>}</div></div>}
-            <div className="space-y-3 border-t border-[#111111]/10 pt-4"><div ref={popover} className="relative"><p className="mb-2 text-sm font-semibold">Model</p><Control onClick={() => setModelOpen((open) => !open)} aria-expanded={modelOpen} className="w-full justify-between"><span className="truncate">{model?.displayName || "No model available"}</span><FiChevronDown /></Control>{modelOpen && <div className="absolute bottom-12 z-40 w-full rounded-2xl border border-[#111111]/15 bg-white p-2 shadow-xl"><label className="relative block"><FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-[#77746D]" /><input autoFocus value={modelSearch} onChange={(event) => setModelSearch(event.target.value)} placeholder="Search models" className="w-full rounded-xl border border-[#111111]/15 bg-[#FAF8ED] py-2 pl-9 pr-3 text-sm outline-none" /></label><div className="mt-1 max-h-56 overflow-y-auto">{filteredModels.map((entry) => <button key={entry.id} type="button" onClick={() => selectModel(entry)} className="flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left hover:bg-[#EFECE1]"><span><span className="block text-sm font-semibold">{entry.displayName}</span><span className="block text-xs text-[#77746D]">{entry.productCapabilities.referenceImages.visible ? "Image reference supported" : "Text to image"}{entry.productCapabilities.outputResolution.visible ? ` · ${entry.productCapabilities.outputResolution.values.join(", ")}` : ""}</span></span>{entry.id === model?.id && <FiCheck />}</button>)}</div></div>}</div><div className="flex flex-wrap gap-2">{caps?.aspectRatio.visible && <StudioSelect label="Aspect ratio" value={draft.aspectRatio} values={caps.aspectRatio.values} onChange={(aspectRatio) => mutate({ aspectRatio })} />}{caps?.outputResolution.visible && <StudioSelect label="Resolution" value={draft.outputResolution} values={caps.outputResolution.values} onChange={(outputResolution) => mutate({ outputResolution})} />}{caps?.requestedOutputCount.visible && <StudioSelect label="Output count" value={String(draft.requestedOutputCount)} values={caps.requestedOutputCount.values.map(String)} onChange={(requestedOutputCount) => mutate({ requestedOutputCount: Number(requestedOutputCount) })} />}</div></div>
-            <button disabled={!model || !draft.prompt.trim() || quoteState === "calculating" || quoteState === "unavailable" || quoteState === "insufficient" || quoteState === "submitting" || quoteState === "generating"} onClick={generate} className="mt-5 min-h-12 w-full rounded-xl border border-[#111111] bg-[#E6D9FF] px-4 text-sm font-bold shadow-sm transition-colors hover:bg-[#DBCBFF] disabled:cursor-not-allowed disabled:opacity-50">{buttonText}</button>
-            {error && <p role="alert" className="mt-3 text-sm text-[#9A2C2C]">{error}</p>}
+
+            {/* Reference Images Section */}
+            {caps?.referenceImages.visible && (
+              <div className="mb-4">
+                <div className="mb-2 flex items-center justify-between">
+                  <p className="text-sm font-semibold">
+                    Reference images{" "}
+                    <span className="font-normal text-[#77746D]">
+                      {totalAttachedReferences}/{caps.referenceImages.max}
+                    </span>
+                  </p>
+                </div>
+
+                <div
+                  onDragOver={(event) => event.preventDefault()}
+                  onDrop={(event) => {
+                    event.preventDefault();
+                    void upload(event.dataTransfer.files);
+                  }}
+                  className="rounded-2xl border border-dashed border-[#111111]/25 bg-[#FAF8ED] p-3"
+                >
+                  <div className="flex flex-wrap gap-2">
+                    <Control onClick={() => input.current?.click()} disabled={uploading}>
+                      <FiUploadCloud />
+                      {uploading ? "Uploading…" : "Upload new"}
+                    </Control>
+                    <Control onClick={() => setAssetOpen((open) => !open)}>
+                      <FiPlus />
+                      My Assets
+                    </Control>
+                  </div>
+
+                  <input
+                    ref={input}
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    className="sr-only"
+                    onChange={(event) => {
+                      void upload(event.target.files);
+                      event.target.value = "";
+                    }}
+                  />
+
+                  {/* Attached References Strip */}
+                  {(selectedAssets.length > 0 || selectedExploreItems.length > 0) && (
+                    <div className="mt-3 flex flex-wrap gap-2.5">
+                      {/* Curated Explore References */}
+                      {selectedExploreItems.map((item) => (
+                        <div
+                          key={`explore-${item.id}`}
+                          className="group relative h-14 w-14 overflow-hidden rounded-xl border border-[#111111]/20 bg-white shadow-sm"
+                        >
+                          <img src={item.thumbUrl} alt={item.title} className="h-full w-full object-cover" />
+                          <span className="absolute bottom-0 inset-x-0 bg-[#111111]/80 py-0.5 text-[8px] font-bold text-white text-center tracking-tighter">
+                            CURATED
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => toggleExploreReference(item.id)}
+                            aria-label={`Remove ${item.title}`}
+                            className="absolute right-0.5 top-0.5 rounded-full bg-[#111111] p-1 text-white shadow-md hover:bg-black"
+                          >
+                            <FiX size={10} />
+                          </button>
+                        </div>
+                      ))}
+
+                      {/* User Assets References */}
+                      {selectedAssets.map((asset) => (
+                        <div
+                          key={`asset-${asset.id}`}
+                          className="group relative h-14 w-14 overflow-hidden rounded-xl border border-[#111111]/20 bg-white shadow-sm"
+                        >
+                          <img src={asset.url} alt={asset.originalFileName} className="h-full w-full object-cover" />
+                          <span className="absolute bottom-0 inset-x-0 bg-[#111111]/70 py-0.5 text-[8px] font-bold text-white text-center tracking-tighter">
+                            MY ASSET
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => toggleAsset(asset.id)}
+                            aria-label={`Remove ${asset.originalFileName}`}
+                            className="absolute right-0.5 top-0.5 rounded-full bg-[#111111] p-1 text-white shadow-md hover:bg-black"
+                          >
+                            <FiX size={10} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* My Assets Picker Drawer */}
+                  {assetOpen && (
+                    <div className="mt-3 grid max-h-40 grid-cols-4 gap-2 overflow-y-auto border-t border-[#111111]/10 pt-3">
+                      {assets.length ? (
+                        assets.map((asset) => {
+                          const isSelected = (draft.referenceAssetIds || []).includes(asset.id);
+                          return (
+                            <button
+                              type="button"
+                              key={asset.id}
+                              onClick={() => toggleAsset(asset.id)}
+                              aria-pressed={isSelected}
+                              className={`relative aspect-square overflow-hidden rounded-xl border ${
+                                isSelected ? "border-[#111111] ring-2 ring-[#E6D9FF]" : "border-[#111111]/15"
+                              }`}
+                            >
+                              <img src={asset.url} alt={asset.originalFileName} className="h-full w-full object-cover" />
+                              {isSelected && <FiCheck className="absolute right-1 top-1 rounded-full bg-white text-[#111111]" size={14} />}
+                            </button>
+                          );
+                        })
+                      ) : (
+                        <p className="col-span-4 py-2 text-xs text-[#66635C]">
+                          No uploaded assets yet. Upload an image above to add your first asset.
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Model & Configuration Controls */}
+            <div className="space-y-3 border-t border-[#111111]/10 pt-4">
+              <div ref={popover} className="relative">
+                <p className="mb-2 text-sm font-semibold">Model</p>
+                <Control onClick={() => setModelOpen((open) => !open)} aria-expanded={modelOpen} className="w-full justify-between">
+                  <span className="truncate">{model?.displayName || "No model available"}</span>
+                  <FiChevronDown />
+                </Control>
+                {modelOpen && (
+                  <div className="absolute bottom-12 z-40 w-full rounded-2xl border border-[#111111]/15 bg-white p-2 shadow-xl">
+                    <label className="relative block">
+                      <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-[#77746D]" />
+                      <input
+                        autoFocus
+                        value={modelSearch}
+                        onChange={(event) => setModelSearch(event.target.value)}
+                        placeholder="Search models"
+                        className="w-full rounded-xl border border-[#111111]/15 bg-[#FAF8ED] py-2 pl-9 pr-3 text-xs outline-none"
+                      />
+                    </label>
+                    <div className="mt-1 max-h-56 overflow-y-auto">
+                      {filteredModels.map((entry) => (
+                        <button
+                          key={entry.id}
+                          type="button"
+                          onClick={() => selectModel(entry)}
+                          className="flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left hover:bg-[#EFECE1]"
+                        >
+                          <span>
+                            <span className="block text-xs font-semibold">{entry.displayName}</span>
+                            <span className="block text-[11px] text-[#77746D]">
+                              {entry.productCapabilities.referenceImages.visible ? "Image reference supported" : "Text to image"}
+                              {entry.productCapabilities.outputResolution.visible
+                                ? ` · ${entry.productCapabilities.outputResolution.values.join(", ")}`
+                                : ""}
+                            </span>
+                          </span>
+                          {entry.id === model?.id && <FiCheck />}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                {caps?.aspectRatio.visible && (
+                  <StudioSelect
+                    label="Aspect ratio"
+                    value={draft.aspectRatio}
+                    values={caps.aspectRatio.values}
+                    onChange={(aspectRatio) => mutate({ aspectRatio })}
+                  />
+                )}
+                {caps?.outputResolution.visible && (
+                  <StudioSelect
+                    label="Resolution"
+                    value={draft.outputResolution}
+                    values={caps.outputResolution.values}
+                    onChange={(outputResolution) => mutate({ outputResolution })}
+                  />
+                )}
+                {caps?.requestedOutputCount.visible && (
+                  <StudioSelect
+                    label="Output count"
+                    value={String(draft.requestedOutputCount)}
+                    values={caps.requestedOutputCount.values.map(String)}
+                    onChange={(requestedOutputCount) => mutate({ requestedOutputCount: Number(requestedOutputCount) })}
+                  />
+                )}
+              </div>
+            </div>
+
+            <button
+              disabled={
+                !model ||
+                !draft.prompt.trim() ||
+                quoteState === "calculating" ||
+                quoteState === "unavailable" ||
+                quoteState === "insufficient" ||
+                quoteState === "submitting" ||
+                quoteState === "generating"
+              }
+              onClick={generate}
+              className="mt-5 min-h-12 w-full rounded-xl border border-[#111111] bg-[#E6D9FF] px-4 text-sm font-bold shadow-sm transition-colors hover:bg-[#DBCBFF] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {buttonText}
+            </button>
+            {error && <p role="alert" className="mt-3 text-xs text-[#9A2C2C]">{error}</p>}
           </>
         )}
       </aside>
-      <section className="hidden min-w-0 flex-1 items-center justify-center overflow-y-auto p-6 sm:flex">
-        {generation ? <div className="max-w-md text-center"><FiLoader className={`mx-auto ${generation.status === "COMPLETED" || generation.status === "FAILED" ? "hidden" : "animate-spin"}`} size={32} /><h2 className="mt-4 font-serif text-2xl font-bold">{generation.status === "COMPLETED" ? "Your image is ready" : generation.status === "FAILED" ? "Image generation didn’t complete" : "Creating your image"}</h2>{generation.status === "COMPLETED" && generation.url ? <><img src={generation.url} alt="Generated image" className="mt-5 max-h-[55vh] rounded-2xl border border-[#111111]/15" /><Link href="/app?tab=library" className="mt-4 inline-block font-semibold underline">Open My Library</Link></> : generation.status === "FAILED" ? <><p className="mt-2 text-sm text-[#66635C]">{generation.message || "Please try again. Your credits are handled safely."}</p><Control onClick={retryGeneration} className="mt-4">Try again</Control></> : <p className="mt-2 text-sm text-[#66635C]">You can keep working or return to My Library later.</p>}</div> : <div className="max-w-md text-center"><FiImage className="mx-auto text-[#77746D]" size={38} /><h2 className="mt-4 font-serif text-3xl font-bold">Your workspace</h2><p className="mt-2 text-sm leading-6 text-[#66635C]">Choose a model and describe what you want to create. Your completed work is saved in My Library.</p></div>}
+
+      {/* Main Workspace Area (Desktop Flex-1 / Mobile Tab) */}
+      <section
+        className={`min-w-0 flex-1 flex-col overflow-hidden ${
+          mobileTab === "explore" ? "flex" : "hidden md:flex"
+        }`}
+      >
+        {generation && workspaceView === "result" ? (
+          <div className="flex h-full flex-col items-center justify-center p-6 text-center overflow-y-auto">
+            <FiLoader
+              className={`mx-auto ${
+                generation.status === "COMPLETED" || generation.status === "FAILED" ? "hidden" : "animate-spin"
+              }`}
+              size={32}
+            />
+            <h2 className="mt-4 font-serif text-2xl font-bold">
+              {generation.status === "COMPLETED"
+                ? "Your image is ready"
+                : generation.status === "FAILED"
+                ? "Image generation didn’t complete"
+                : "Creating your image"}
+            </h2>
+
+            {generation.status === "COMPLETED" && generation.url ? (
+              <>
+                <img src={generation.url} alt="Generated image" className="mt-5 max-h-[55vh] rounded-2xl border border-[#111111]/15 shadow-md" />
+                <div className="mt-5 flex items-center justify-center gap-3">
+                  <Link href="/app?tab=library" className="inline-flex items-center gap-2 rounded-xl border border-[#111111]/15 bg-white px-4 py-2 text-xs font-bold shadow-sm hover:bg-[#EFECE1]">
+                    Open My Library
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={() => setWorkspaceView("explore")}
+                    className="inline-flex items-center gap-2 rounded-xl border border-[#111111] bg-[#E6D9FF] px-4 py-2 text-xs font-bold shadow-sm hover:bg-[#DBCBFF]"
+                  >
+                    <FiCompass size={14} /> Browse Explore images
+                  </button>
+                </div>
+              </>
+            ) : generation.status === "FAILED" ? (
+              <>
+                <p className="mt-2 text-xs text-[#66635C]">
+                  {generation.message || "Please try again. Your credits are handled safely."}
+                </p>
+                <Control onClick={retryGeneration} className="mt-4">
+                  Try again
+                </Control>
+              </>
+            ) : (
+              <p className="mt-2 text-xs text-[#66635C]">
+                You can keep working or return to My Library later.
+              </p>
+            )}
+          </div>
+        ) : (
+          <ExploreGallery
+            selectedModel={model}
+            selectedExploreIds={draft.exploreImageIds || []}
+            selectedAssetIds={draft.referenceAssetIds || []}
+            onToggleExploreReference={toggleExploreReference}
+          />
+        )}
       </section>
     </div>
   );
