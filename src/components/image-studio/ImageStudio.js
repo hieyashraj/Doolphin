@@ -290,7 +290,7 @@ export default function ImageStudio() {
 
   return (
     <div className="flex h-full min-h-0 w-full overflow-hidden rounded-[26px] border border-[#111111]/15 bg-[#FAF8ED] text-[#111111] shadow-sm">
-      <aside className="flex w-full shrink-0 flex-col overflow-y-auto border-r border-[#111111]/15 bg-white p-4 sm:w-[380px] sm:p-5">
+      <aside className="flex w-full shrink-0 flex-col overflow-y-auto border-r border-[#111111]/15 bg-white p-4 md:w-[440px] max-w-[480px] sm:p-5">
         <div className="mb-6">
           <p className="text-xs font-bold tracking-[0.16em] text-[#77746D]">IMAGE STUDIO</p>
           <h1 className="mt-1 font-serif text-2xl font-bold">Create an image</h1>

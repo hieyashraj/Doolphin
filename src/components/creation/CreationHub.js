@@ -812,7 +812,7 @@ export default function CreationHub({
     <div className="flex h-full w-full flex-col overflow-y-auto bg-[#FAF8ED] text-[#111111] md:flex-row md:overflow-hidden">
       {/* LEFT CONTROL PANEL / DRAWER WITH INTERACTIVE DRAGGABLE RESIZER */}
       <aside
-        style={{ width: undefined }}
+        style={{ width: isMobileViewport ? "100%" : `${sidebarWidth}px` }}
         className="studio-sidebar relative flex min-h-0 w-full shrink-0 flex-col border-b border-[#111111]/15 bg-white select-none md:h-full md:border-b-0 md:border-r md:transition-[width] md:duration-75 md:ease-out"
       >
         {/* Interactive Drag Resizer Bar */}
