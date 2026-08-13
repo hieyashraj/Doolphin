@@ -720,6 +720,9 @@ model CreationVariant {
   finalizationLeaseId        String?
   finalizationClaimedAt      DateTime?
   finalizationLeaseExpiresAt DateTime?
+  // NULL is deliberately legacy/ineligible. Only the hardened creation
+  // transaction writes the server-owned revision; there is no DB default.
+  reconciliationEngineRevision String?
   errorCode          String?
   safeError          String?              
   version            Int                  @default(1)
@@ -737,6 +740,7 @@ model CreationVariant {
 
   @@unique([creationId, variantIndex])
   @@index([status, finalizationLeaseExpiresAt])
+  @@index([reconciliationEngineRevision, status, timeoutAt])
 }
 
 // 5.10 CreationAsset

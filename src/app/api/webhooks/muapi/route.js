@@ -12,6 +12,7 @@ import { CreditEscrowService } from "@/lib/billing/CreditEscrowService";
 import { handleVerificationResult, startQualityVerification } from "@/lib/generation/qualityPipeline";
 import { userFacingGenerationMessage } from "@/lib/generation/statusMessages";
 import { fetchAuthenticatedMuapiResult, muapiCostMicroUsd } from "@/lib/generation/muapiResult";
+import { isReconciliationEligibleVariant } from "@/lib/generation/reconciliationEligibility";
 
 export const maxDuration = 300;
 
@@ -101,6 +102,13 @@ export async function POST(req) {
   const job = await prisma.providerJob.findFirst({ where: { providerRequestId }, include: { variant: { include: { creation: true } } } });
   if (!job) {
     await prisma.webhookEvent.update({ where: { id: event.id }, data: { processingStatus: "IGNORED", processedAt: new Date(), errorCode: "JOB_NOT_FOUND" } });
+    return NextResponse.json({ success: true, ignored: true });
+  }
+  // Notifications are not authority. Historical/null/unknown engine
+  // revisions may be recorded as ignored evidence, but must never trigger an
+  // authenticated provider poll, financial transition, artifact write, or QA.
+  if (!isReconciliationEligibleVariant(job.variant)) {
+    await prisma.webhookEvent.update({ where: { id: event.id }, data: { processingStatus: "IGNORED", processedAt: new Date(), errorCode: "RECONCILIATION_INELIGIBLE" } });
     return NextResponse.json({ success: true, ignored: true });
   }
   if (["SUCCEEDED", "FAILED", "CANCELLED"].includes(job.status)) {

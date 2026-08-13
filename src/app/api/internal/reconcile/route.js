@@ -10,6 +10,7 @@ import { userFacingGenerationMessage } from "@/lib/generation/statusMessages";
 import { claimProviderSubmission, clearSubmissionLease, newSubmissionOwner, submissionOwnerWhere } from "@/lib/generation/providerSubmissionLease";
 import { replayFinalization } from "@/lib/generation/qualityPipeline";
 import { isStagingEnvironment } from "@/lib/generation-models/types";
+import { isReconciliationEligibleVariant, reconciliationEligibleVariantWhere } from "@/lib/generation/reconciliationEligibility";
 
 export const maxDuration = 300;
 
@@ -44,8 +45,10 @@ async function refreshCreationAfterRecovery(creationId) {
 }
 
 async function recordSubmissionFailure(outbox, error) {
+  const providerJobId = JSON.parse(outbox.payload).providerJobId;
+  const providerJob = await prisma.providerJob.findUnique({ where: { id: providerJobId }, include: { variant: { select: { reconciliationEngineRevision: true } } } });
+  if (!providerJob || !isReconciliationEligibleVariant(providerJob.variant)) return "EXCLUDED_LEGACY";
   if (error.submissionOutcomeUnknown) {
-    const providerJobId = JSON.parse(outbox.payload).providerJobId;
     await prisma.$transaction([
       prisma.providerJob.updateMany({ where: submissionOwnerWhere(providerJobId, error.submissionOwner), data: { status: "SUBMISSION_UNKNOWN", errorCode: "PROVIDER_SUBMISSION_UNKNOWN", safeError: "Provider submission could not be confirmed", submissionLeaseExpiresAt: new Date() } }),
       prisma.queueOutbox.update({ where: { id: outbox.id }, data: { status: "DEAD_LETTER", attemptCount: { increment: 1 }, lastError: "Submission outcome is ambiguous; provider reconciliation required" } }),
@@ -53,8 +56,7 @@ async function recordSubmissionFailure(outbox, error) {
     return "AMBIGUOUS_STOPPED";
   }
   if (error.knownRejected) {
-    const providerJobId = JSON.parse(outbox.payload).providerJobId;
-    const job = await prisma.providerJob.findUnique({ where: { id: providerJobId } });
+    const job = providerJob;
     if (!job) return "JOB_MISSING";
     await CreditEscrowService.releaseVariantReservations(job.creationVariantId, "PROVIDER_SUBMISSION_REJECTED");
     await prisma.$transaction([
@@ -69,8 +71,7 @@ async function recordSubmissionFailure(outbox, error) {
     await prisma.queueOutbox.update({ where: { id: outbox.id }, data: { status: "FAILED", attemptCount, nextAttemptAt: new Date(Date.now() + 60_000), lastError: error.message } });
     return "RETRY_SCHEDULED";
   }
-  const providerJobId = JSON.parse(outbox.payload).providerJobId;
-  const job = await prisma.providerJob.findUnique({ where: { id: providerJobId } });
+  const job = providerJob;
   if (!job) return "JOB_MISSING";
   await CreditEscrowService.releaseVariantReservations(job.creationVariantId, "PROVIDER_SUBMISSION_UNAVAILABLE");
   await prisma.$transaction([
@@ -87,6 +88,7 @@ async function submitPrepared(outbox, baseUrl) {
   const body = JSON.parse(outbox.payload);
   const job = await prisma.providerJob.findUnique({ where: { id: body.providerJobId }, include: { variant: { include: { creation: true } } } });
   if (!job) return "SKIPPED";
+  if (!isReconciliationEligibleVariant(job.variant)) return "EXCLUDED_LEGACY";
   if (["QUEUED", "PROCESSING", "SUCCEEDED"].includes(job.status)) {
     await prisma.queueOutbox.update({ where: { id: outbox.id }, data: { status: "DISPATCHED" } });
     return "ALREADY_SUBMITTED";
@@ -178,7 +180,12 @@ export async function POST(req) {
   if (!baseUrl?.startsWith("https://")) return NextResponse.json({ error: "Public HTTPS base URL required" }, { status: 503 });
   const now = new Date();
   const actions = [];
-  const pending = await prisma.queueOutbox.findMany({ where: { eventType: "SUBMIT_MUAPI_SEEDANCE", OR: [{ status: "PENDING" }, { status: "FAILED", nextAttemptAt: { lte: now } }] }, orderBy: { createdAt: "asc" }, take: 10 });
+  // QueueOutbox predates a relational variant key. Resolve the durable,
+  // server-owned variant revision before selecting work; legacy aggregate IDs
+  // never reach a provider-submission handler.
+  const eligibleVariants = await prisma.creationVariant.findMany({ where: reconciliationEligibleVariantWhere(), select: { id: true } });
+  const eligibleVariantIds = eligibleVariants.map((variant) => variant.id);
+  const pending = eligibleVariantIds.length ? await prisma.queueOutbox.findMany({ where: { aggregateId: { in: eligibleVariantIds }, eventType: "SUBMIT_MUAPI_SEEDANCE", OR: [{ status: "PENDING" }, { status: "FAILED", nextAttemptAt: { lte: now } }] }, orderBy: { createdAt: "asc" }, take: 10 }) : [];
   for (const outbox of pending) {
     try { actions.push({ outboxId: outbox.id, result: await submitPrepared(outbox, baseUrl) }); }
     catch (error) {
@@ -187,7 +194,7 @@ export async function POST(req) {
   }
 
   const webhookUrl = buildMuapiWebhookUrl(baseUrl);
-  const activeJobs = await prisma.providerJob.findMany({ where: { status: { in: ["QUEUED", "PROCESSING"] }, providerRequestId: { not: null }, OR: [{ lastCheckedAt: null }, { lastCheckedAt: { lt: new Date(Date.now() - 30_000) } }] }, take: 20 });
+  const activeJobs = await prisma.providerJob.findMany({ where: { variant: { is: reconciliationEligibleVariantWhere() }, status: { in: ["QUEUED", "PROCESSING"] }, providerRequestId: { not: null }, OR: [{ lastCheckedAt: null }, { lastCheckedAt: { lt: new Date(Date.now() - 30_000) } }] }, take: 20 });
   for (const job of activeJobs) {
     try { actions.push({ providerJobId: job.id, result: await pollJob(job, webhookUrl) }); }
     catch (error) { actions.push({ providerJobId: job.id, result: "POLL_FAILED", error: error.message }); }
@@ -197,7 +204,7 @@ export async function POST(req) {
   // worker died during final R2/DB/settlement.  Replay from persisted evidence;
   // no provider request is sent and the finalization lease admits one worker.
   const finalizationRetries = await prisma.creationVariant.findMany({
-    where: { status: "PROCESSING", currentStage: { in: ["delivery_retry", "delivery_finalizing"] } },
+    where: { ...reconciliationEligibleVariantWhere(), status: "PROCESSING", currentStage: { in: ["delivery_retry", "delivery_finalizing"] } },
     select: { id: true, creationId: true }, take: 20,
   });
   for (const variant of finalizationRetries) {
@@ -209,7 +216,7 @@ export async function POST(req) {
     catch (error) { actions.push({ variantId: variant.id, result: "FINALIZATION_RETRY_FAILED", error: error.message }); }
   }
 
-  const timedOut = await prisma.creationVariant.findMany({ where: { status: { in: ["QUEUED", "PROCESSING"] }, timeoutAt: { lt: now } } });
+  const timedOut = await prisma.creationVariant.findMany({ where: { ...reconciliationEligibleVariantWhere(), status: { in: ["QUEUED", "PROCESSING"] }, timeoutAt: { lt: now } } });
   for (const variant of timedOut) {
     await CreditEscrowService.releaseVariantReservations(variant.id, "WORKFLOW_TIMEOUT");
     await prisma.creationVariant.update({ where: { id: variant.id }, data: { status: "TIMED_OUT", errorCode: "WORKFLOW_TIMEOUT", safeError: userFacingGenerationMessage("TIMED_OUT", "WORKFLOW_TIMEOUT") } });

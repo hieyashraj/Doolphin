@@ -10,6 +10,7 @@ import { getProviderAdapter } from "@/lib/adapters";
 import { buildMuapiWebhookUrl } from "@/lib/generation/webhookSecurity";
 import { userFacingGenerationMessage } from "@/lib/generation/statusMessages";
 import { claimProviderSubmission, clearSubmissionLease, newSubmissionOwner, submissionOwnerWhere } from "@/lib/generation/providerSubmissionLease";
+import { HARDENED_RECONCILIATION_ENGINE_REVISION } from "@/lib/generation/reconciliationEligibility";
 
 function publicAssetUrl(url, requestUrl) {
   if (url.startsWith("https://")) return new URL(url).toString();
@@ -206,6 +207,7 @@ async function handleGenerationSubmission(req) {
           totalStages: 4,
           timeoutAt: new Date(Date.now() + 25 * 60 * 1000),
           reservedCredits: variantAmounts[index],
+          reconciliationEngineRevision: HARDENED_RECONCILIATION_ENGINE_REVISION,
         },
       });
       await tx.workflowSnapshot.create({

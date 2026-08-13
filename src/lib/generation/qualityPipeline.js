@@ -9,6 +9,7 @@ import { composeExactBroll, extractVerificationFrames, runFfprobe } from "@/lib/
 import { createVerificationMontage } from "@/lib/media/verificationMontage";
 import { parseStrictJsonOutput, transcriptPasses } from "@/lib/generation/qualityVerification";
 import { CreditEscrowService } from "@/lib/billing/CreditEscrowService";
+import { isReconciliationEligibleVariant } from "@/lib/generation/reconciliationEligibility";
 
 const WHISPER_ENDPOINT = "https://api.muapi.ai/api/v1/openai-whisper";
 const VISION_ENDPOINT = "https://api.muapi.ai/api/v1/gemini-2-5-flash";
@@ -124,6 +125,7 @@ async function finalizeDeliverable({ variant, rawArtifact, evidence, ownerId }) 
 
 export async function startQualityVerification({ seedanceJob, videoUrl, buffer, probe, webhookUrl }) {
   const variant = seedanceJob.variant;
+  if (!isReconciliationEligibleVariant(variant)) return null;
   const creation = variant.creation;
   const existingVerificationJobs = await prisma.providerJob.findMany({
     where: { creationVariantId: variant.id, internalModelId: { in: ["muapi.openai-whisper", "muapi.gemini-2.5-flash-verifier"] } },
@@ -204,6 +206,7 @@ export async function startQualityVerification({ seedanceJob, videoUrl, buffer, 
 }
 
 export async function handleVerificationResult(job, payload) {
+  if (!isReconciliationEligibleVariant(job.variant)) return { terminal: false, ignored: true, reason: "RECONCILIATION_INELIGIBLE" };
   const providerStatus = String(payload.status || "").toLowerCase();
   if (["failed", "error", "cancelled"].includes(providerStatus) || payload.error) {
     await prisma.providerJob.update({ where: { id: job.id }, data: { status: "FAILED", completedAt: new Date(), errorCode: "VERIFICATION_PROVIDER_FAILED", safeError: String(payload.error || "Verification failed") } });
@@ -258,6 +261,8 @@ export async function handleVerificationResult(job, payload) {
 // before final delivery/settlement.  Provider output is never requested again;
 // this reuses the persisted verification evidence and deterministic R2 keys.
 export async function replayFinalization(creationVariantId) {
+  const variant = await prisma.creationVariant.findUnique({ where: { id: creationVariantId }, select: { reconciliationEngineRevision: true } });
+  if (!isReconciliationEligibleVariant(variant)) return { replayed: false, reason: "RECONCILIATION_INELIGIBLE" };
   const jobs = await prisma.providerJob.findMany({
     where: { creationVariantId, internalModelId: { in: ["muapi.openai-whisper", "muapi.gemini-2.5-flash-verifier"] }, status: "SUCCEEDED" },
     orderBy: { createdAt: "asc" },
