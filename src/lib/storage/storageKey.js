@@ -1,4 +1,4 @@
-const WRITE_NAMESPACES = new Set(["uploads", "final", "images", "thumbnails", "quarantine", "verification"]);
+const WRITE_NAMESPACES = new Set(["uploads", "final", "images", "thumbnails", "quarantine", "verification", "curated"]);
 
 function isStaging(env = process.env) {
   return env.DOOLPHIN_ENV === "staging" && env.VERCEL_ENV !== "production";
