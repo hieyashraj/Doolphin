@@ -27,7 +27,7 @@ import {
 import { FaCoins } from "react-icons/fa";
 import { useEffect, useState, useRef, Suspense } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import toast, { Toaster } from "react-hot-toast";
 import { PRESETS_LIBRARY } from "@/lib/presetsData";
 import CreationHub from "@/components/creation/CreationHub";
@@ -207,6 +207,7 @@ function calculateScriptDuration(text) {
 function HomeContent() {
   const { account } = useAppAccount();
   const searchParams = useSearchParams();
+  const router = useRouter();
   
   const currentTab = searchParams.get("tab") || "explore";
   const currentStudio = searchParams.get("studio") || "video_maker";
@@ -436,7 +437,7 @@ function HomeContent() {
                     <div
                       key={mode.id}
                       onClick={() => {
-                        if (!isComingSoon) { if (mode.href) window.location.assign(mode.href); else navigateToTab(mode.tab, mode.studio); }
+                        if (!isComingSoon) { if (mode.href) router.push(mode.href); else navigateToTab(mode.tab, mode.studio); }
                       }}
                       className={`relative h-80 sm:h-96 md:h-[400px] rounded-2xl md:rounded-[28px] border border-[#111111]/15 overflow-hidden group shadow-sm bg-white flex flex-col justify-between transition-all duration-300 ${
                         isComingSoon 
