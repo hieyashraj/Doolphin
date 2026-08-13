@@ -9,6 +9,8 @@ import { R2StorageService } from "@/lib/storage/r2StorageService";
 import { claimProviderSubmission, clearSubmissionLease, newSubmissionOwner, submissionOwnerWhere } from "@/lib/generation/providerSubmissionLease";
 import { HARDENED_RECONCILIATION_ENGINE_REVISION } from "@/lib/generation/reconciliationEligibility";
 
+import { resolveCuratedSignedUrls } from "@/lib/generation/curatedReferenceResolver";
+
 const providerEndpoint = (endpoint) => new URL(endpoint, "https://api.muapi.ai").toString();
 
 export async function POST(req) {
@@ -23,10 +25,12 @@ export async function POST(req) {
     if (quote.consumedAt || quote.expiresAt <= new Date()) return NextResponse.json({ code: quote.consumedAt ? "QUOTE_CONSUMED" : "QUOTE_EXPIRED" }, { status: 409 });
     const request = JSON.parse(quote.requestSnapshot); const routing = JSON.parse(quote.routingSnapshot); const model = getImageModel(quote.selectedModelId);
     if (!model || !canGenerate(model) || routing.quoteBreakdown?.pricingRevisionId !== quote.pricingRevision) return NextResponse.json({ code: "QUOTE_STALE" }, { status: 409 });
-    const assets = request.referenceAssetIds.length ? await prisma.uploadedAsset.findMany({ where: { id: { in: request.referenceAssetIds }, userId: appUser.id, validationStatus: "VALID" } }) : [];
-    if (assets.length !== request.referenceAssetIds.length) return NextResponse.json({ code: "IMAGE_REFERENCE_OWNERSHIP_FAILED" }, { status: 403 });
+    const refIds = request.referenceAssetIds || [];
+    const assets = refIds.length ? await prisma.uploadedAsset.findMany({ where: { id: { in: refIds }, userId: appUser.id, validationStatus: "VALID" } }) : [];
+    if (assets.length !== refIds.length) return NextResponse.json({ code: "IMAGE_REFERENCE_OWNERSHIP_FAILED" }, { status: 403 });
     const referenceUrls = await Promise.all(assets.map((asset) => R2StorageService.generateSignedUrl({ storageKey: asset.storageKey, expiresInSeconds: 3600 })));
-    const payload = model.adapter.buildProviderPayload(model, { request, referenceUrls });
+    const exploreUrls = await resolveCuratedSignedUrls(request.exploreImageIds);
+    const payload = model.adapter.buildProviderPayload(model, { request, referenceUrls, exploreUrls });
     const fingerprint = crypto.createHash("sha256").update(JSON.stringify(payload)).digest("hex");
     if (fingerprint !== routing.providerPayloadFingerprint) return NextResponse.json({ code: "QUOTE_STALE" }, { status: 409 });
     const created = await prisma.$transaction(async (tx) => {

@@ -4,7 +4,8 @@ export const imageGenerationV1Schema = z.object({
   version: z.literal("image-generation.v1"),
   modelId: z.string().min(1),
   prompt: z.string().trim().min(1).max(20_000),
-  referenceAssetIds: z.array(z.string().min(1)).max(16),
+  referenceAssetIds: z.array(z.string().min(1)).max(16).optional().default([]),
+  exploreImageIds: z.array(z.string().min(1)).max(16).optional().default([]),
   aspectRatio: z.string().optional(),
   outputResolution: z.enum(["1K", "2K", "4K"]).optional(),
   requestedOutputCount: z.number().int().min(1).max(4).optional(),
@@ -17,8 +18,12 @@ export function validateImageRequest(definition, input) {
   const errors = [];
   if (request.modelId !== definition.id) errors.push({ code: "MODEL_MISMATCH", message: "Request model does not match adapter." });
   const caps = definition.productCapabilities;
-  const references = request.referenceAssetIds.length;
-  if (references < caps.referenceImages.min || references > caps.referenceImages.max) errors.push({ code: "REFERENCE_COUNT_UNSUPPORTED", message: `This model accepts ${caps.referenceImages.min}-${caps.referenceImages.max} reference images.` });
+  const totalReferences = (request.referenceAssetIds?.length || 0) + (request.exploreImageIds?.length || 0);
+  if (!caps.referenceImages.visible && totalReferences > 0) {
+    errors.push({ code: "REFERENCE_IMAGES_UNSUPPORTED", message: "This model does not support reference images." });
+  } else if (caps.referenceImages.visible && (totalReferences < caps.referenceImages.min || totalReferences > caps.referenceImages.max)) {
+    errors.push({ code: "REFERENCE_COUNT_UNSUPPORTED", message: `This model accepts ${caps.referenceImages.min}-${caps.referenceImages.max} reference images.` });
+  }
   if (!caps.aspectRatio.visible && request.aspectRatio !== undefined) errors.push({ code: "ASPECT_RATIO_UNSUPPORTED", message: "Aspect ratio is not supported for this model." });
   if (caps.aspectRatio.visible && (!request.aspectRatio || !caps.aspectRatio.values.includes(request.aspectRatio))) errors.push({ code: "ASPECT_RATIO_UNSUPPORTED", message: "Selected aspect ratio is unsupported." });
   if (!caps.outputResolution.visible && request.outputResolution !== undefined) errors.push({ code: "OUTPUT_RESOLUTION_UNSUPPORTED", message: "Output resolution is not supported for this model." });
@@ -41,13 +46,15 @@ function extractOutputs(payload) {
 export function createMuapiImageAdapter({ resolutionCase = "upper", nativeMap = {}, requiredReferences = false } = {}) {
   return Object.freeze({
     validateNormalizedRequest(definition, input) { return validateImageRequest(definition, input); },
-    buildProviderPayload(definition, { request, referenceUrls = [], webhookUrl }) {
+    buildProviderPayload(definition, { request, referenceUrls = [], exploreUrls = [], webhookUrl }) {
       const checked = validateImageRequest(definition, request);
       if (!checked.valid) { const error = new Error(checked.errors[0].message); error.code = checked.errors[0].code; throw error; }
-      if (requiredReferences && !referenceUrls.length) throw new Error("This model requires a reference image.");
-      if (referenceUrls.length !== request.referenceAssetIds.length) throw new Error("Reference URL ownership resolution is incomplete.");
+      const combinedUrls = [...referenceUrls, ...exploreUrls];
+      if (requiredReferences && !combinedUrls.length) throw new Error("This model requires a reference image.");
+      const totalExpected = (request.referenceAssetIds?.length || 0) + (request.exploreImageIds?.length || 0);
+      if (combinedUrls.length !== totalExpected) throw new Error("Reference URL ownership resolution is incomplete.");
       const payload = { prompt: request.prompt, ...definition.fixedProviderDefaults };
-      if (definition.productCapabilities.referenceImages.visible && (referenceUrls.length || requiredReferences)) payload.images_list = referenceUrls;
+      if (definition.productCapabilities.referenceImages.visible && (combinedUrls.length || requiredReferences)) payload.images_list = combinedUrls;
       if (definition.productCapabilities.aspectRatio.visible) payload.aspect_ratio = request.aspectRatio;
       if (definition.productCapabilities.outputResolution.visible) payload.resolution = resolutionCase === "lower" ? request.outputResolution.toLowerCase() : request.outputResolution;
       if (definition.productCapabilities.requestedOutputCount.visible) payload.num_images = request.requestedOutputCount;

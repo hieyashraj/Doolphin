@@ -8,6 +8,8 @@ import { canGenerate } from "@/lib/generation-models/types";
 import { estimateImageQuote } from "@/lib/generation-models/imageEstimate";
 import { R2StorageService } from "@/lib/storage/r2StorageService";
 
+import { resolveCuratedSignedUrls } from "@/lib/generation/curatedReferenceResolver";
+
 function payloadFingerprint(payload) { return crypto.createHash("sha256").update(JSON.stringify(payload)).digest("hex"); }
 
 export async function POST(req) {
@@ -20,11 +22,13 @@ export async function POST(req) {
     if (!validation.valid) return NextResponse.json({ code: "IMAGE_PREFLIGHT_INVALID", errors: validation.errors }, { status: 422 });
     const workspace = await prisma.workspace.findUnique({ where: { id: appUser.defaultWorkspaceId } });
     if (!workspace || workspace.status !== "ACTIVE") return NextResponse.json({ code: "WORKSPACE_UNAVAILABLE" }, { status: 403 });
-    const assets = validation.request.referenceAssetIds.length ? await prisma.uploadedAsset.findMany({ where: { id: { in: validation.request.referenceAssetIds }, userId: appUser.id, validationStatus: "VALID" } }) : [];
-    if (assets.length !== validation.request.referenceAssetIds.length || assets.some((asset) => !asset.mimeType.startsWith("image/"))) return NextResponse.json({ code: "IMAGE_REFERENCE_OWNERSHIP_FAILED", error: "References must be validated image assets owned by you." }, { status: 403 });
+    const refIds = validation.request.referenceAssetIds || [];
+    const assets = refIds.length ? await prisma.uploadedAsset.findMany({ where: { id: { in: refIds }, userId: appUser.id, validationStatus: "VALID" } }) : [];
+    if (assets.length !== refIds.length || assets.some((asset) => !asset.mimeType.startsWith("image/"))) return NextResponse.json({ code: "IMAGE_REFERENCE_OWNERSHIP_FAILED", error: "References must be validated image assets owned by you." }, { status: 403 });
     const referenceUrls = await Promise.all(assets.map((asset) => R2StorageService.generateSignedUrl({ storageKey: asset.storageKey, expiresInSeconds: 3600 })));
-    const payload = model.adapter.buildProviderPayload(model, { request: validation.request, referenceUrls });
-    const quoteBreakdown = await estimateImageQuote({ model, request: validation.request, payload: model.adapter.buildEstimatePayload(model, { request: validation.request, referenceUrls }) });
+    const exploreUrls = await resolveCuratedSignedUrls(validation.request.exploreImageIds);
+    const payload = model.adapter.buildProviderPayload(model, { request: validation.request, referenceUrls, exploreUrls });
+    const quoteBreakdown = await estimateImageQuote({ model, request: validation.request, payload: model.adapter.buildEstimatePayload(model, { request: validation.request, referenceUrls, exploreUrls }) });
     if (!quoteBreakdown.priced) return NextResponse.json({ code: quoteBreakdown.code, error: quoteBreakdown.reason }, { status: 503 });
     const account = await prisma.creditAccount.findUnique({ where: { workspaceId: workspace.id } });
     if (!account || account.availableCredits < quoteBreakdown.totalCredits) return NextResponse.json({ code: "INSUFFICIENT_CREDITS", requiredCredits: quoteBreakdown.totalCredits, availableCredits: account?.availableCredits || 0 }, { status: 402 });
