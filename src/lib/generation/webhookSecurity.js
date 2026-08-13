@@ -1,14 +1,17 @@
 import crypto from "crypto";
 
 export function getMuapiWebhookToken() {
-  const secret = process.env.MUAPI_WEBHOOK_SECRET || process.env.NEXTAUTH_SECRET;
+  // This is Doolphin's callback-filter secret, not a provider signature and
+  // not an auth-framework secret. MuAPI result data is still authenticated by
+  // a server-side result fetch before any durable transition.
+  const secret = process.env.MUAPI_WEBHOOK_SECRET;
   if (!secret) return null;
   return crypto.createHmac("sha256", secret).update("doolphin:muapi:webhook:v1").digest("hex");
 }
 
 export function buildMuapiWebhookUrl(baseUrl) {
   const token = getMuapiWebhookToken();
-  if (!token) throw new Error("MUAPI_WEBHOOK_SECRET or NEXTAUTH_SECRET is required");
+  if (!token) throw new Error("MUAPI_WEBHOOK_SECRET is required to create a Doolphin callback URL");
   const url = new URL("/api/webhooks/muapi", baseUrl);
   url.searchParams.set("token", token);
   return url.toString();

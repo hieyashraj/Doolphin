@@ -193,8 +193,10 @@ export async function POST(req) {
     }
   }
 
-  const webhookUrl = buildMuapiWebhookUrl(baseUrl);
   const activeJobs = await prisma.providerJob.findMany({ where: { variant: { is: reconciliationEligibleVariantWhere() }, status: { in: ["QUEUED", "PROCESSING"] }, providerRequestId: { not: null }, OR: [{ lastCheckedAt: null }, { lastCheckedAt: { lt: new Date(Date.now() - 30_000) } }] }, take: 20 });
+  // A no-op reconciliation must not require callback credentials. Construct
+  // the callback filter only when an eligible provider result can need it.
+  const webhookUrl = activeJobs.length ? buildMuapiWebhookUrl(baseUrl) : null;
   for (const job of activeJobs) {
     try { actions.push({ providerJobId: job.id, result: await pollJob(job, webhookUrl) }); }
     catch (error) { actions.push({ providerJobId: job.id, result: "POLL_FAILED", error: error.message }); }

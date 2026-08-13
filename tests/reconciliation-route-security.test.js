@@ -12,3 +12,9 @@ test("reconciliation rejects GET and is server-gated to staging before mutation"
   assert.match(source, /if \(!process\.env\.MUAPI_API_KEY\) return NextResponse\.json\(\{ error: "Sandbox provider credential required" \}, \{ status: 503 \}\)/);
   assert.doesNotMatch(source, /UGC_API_KEY/);
 });
+
+test("a no-op reconciliation does not construct a callback URL or require its filter secret", () => {
+  const callbackConstruction = source.indexOf("const webhookUrl = activeJobs.length ? buildMuapiWebhookUrl(baseUrl) : null;");
+  const activeQuery = source.indexOf("const activeJobs = await prisma.providerJob.findMany");
+  assert.ok(activeQuery >= 0 && callbackConstruction > activeQuery);
+});
