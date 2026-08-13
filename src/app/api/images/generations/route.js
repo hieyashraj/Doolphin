@@ -28,22 +28,23 @@ export async function POST(req) {
     const refIds = request.referenceAssetIds || [];
     const assets = refIds.length ? await prisma.uploadedAsset.findMany({ where: { id: { in: refIds }, userId: appUser.id, validationStatus: "VALID" } }) : [];
     if (assets.length !== refIds.length) return NextResponse.json({ code: "IMAGE_REFERENCE_OWNERSHIP_FAILED" }, { status: 403 });
-    const referenceUrls = await Promise.all(assets.map((asset) => R2StorageService.generateSignedUrl({ storageKey: asset.storageKey, expiresInSeconds: 3600 })));
-    const explorePlaceholderUrls = (request.exploreImageIds || []).map((id) => `https://curated.doolphin.internal/explore/${id}.png`);
-    const payload = model.adapter.buildProviderPayload(model, { request, referenceUrls, exploreUrls: explorePlaceholderUrls });
-    const fingerprint = crypto.createHash("sha256").update(JSON.stringify(payload)).digest("hex");
-    if (fingerprint !== routing.providerPayloadFingerprint) return NextResponse.json({ code: "QUOTE_STALE" }, { status: 409 });
     
-    // Resolve fresh, provider-readable signed R2 URLs just-in-time for provider submission payload
+    const exploreReqIds = request.exploreImageIds || [];
+    const validatedExploreItems = validateExploreImageIds(exploreReqIds);
+    if (validatedExploreItems.length !== exploreReqIds.length) return NextResponse.json({ code: "INVALID_CURATED_REFERENCE" }, { status: 422 });
+
+    const referenceUrls = await Promise.all(assets.map((asset) => R2StorageService.generateSignedUrl({ storageKey: asset.storageKey, expiresInSeconds: 3600 })));
     const exploreSignedUrls = await resolveCuratedSignedUrls(request.exploreImageIds);
     const providerPayload = model.adapter.buildProviderPayload(model, { request, referenceUrls, exploreUrls: exploreSignedUrls });
+    const fingerprint = crypto.createHash("sha256").update(JSON.stringify({ ...providerPayload, images_list: providerPayload.images_list?.map(() => "[SIGNED_REFERENCE]") })).digest("hex");
+
     const created = await prisma.$transaction(async (tx) => {
       const claimed = await tx.preflightQuote.updateMany({ where: { id: quote.id, consumedAt: null, expiresAt: { gt: new Date() } }, data: { consumedAt: new Date() } }); if (claimed.count !== 1) throw new Error("QUOTE_CONCURRENTLY_CONSUMED");
       const creation = await tx.creation.create({ data: { workspaceId: quote.workspaceId, userId: appUser.id, generationType: "IMAGE_STUDIO", workflowVersion: "image-generation.v1", presetId: "image-studio", title: "Image Studio generation", prompt: request.prompt, compiledPrompt: request.prompt, numberOfVideos: 1, status: "QUEUED", currentStage: "provider_submission", totalStages: 3, quoteId: quote.id, idempotencyKey: body.idempotencyKey, timeoutAt: new Date(Date.now() + 25 * 60_000), modelId: model.id, provider: model.provider, aspectRatio: request.aspectRatio || null, resolution: request.outputResolution || null, inputImages: JSON.stringify(request.referenceAssetIds), reservedCredits: quote.internalCreditsToReserve } });
       const variant = await tx.creationVariant.create({ data: { creationId: creation.id, variantIndex: 0, status: "QUEUED", currentStage: "provider_submission", totalStages: 3, timeoutAt: creation.timeoutAt, reservedCredits: quote.internalCreditsToReserve, reconciliationEngineRevision: HARDENED_RECONCILIATION_ENGINE_REVISION } });
       await tx.workflowSnapshot.create({ data: { creationVariantId: variant.id, workflowType: "IMAGE_STUDIO", workflowVersion: "image-generation.v1", presetId: "image-studio", stageGraph: JSON.stringify(["provider_submission", "provider_generation", "delivery"]), capabilityRequirements: JSON.stringify({ modelId: model.id, locked: true }), assetRoleMapping: JSON.stringify(request.referenceAssetIds), speechPlan: "{}", compositionPlan: "{}", routingInput: JSON.stringify({ endpoint: model.endpoint, payloadFingerprint: fingerprint }) } });
       await CreditEscrowService.reserveCredits({ workspaceId: quote.workspaceId, creationId: creation.id, creationVariantId: variant.id, amount: quote.internalCreditsToReserve, idempotencyKey: `reserve_image_${creation.id}`, userId: appUser.id, tx });
-      const job = await tx.providerJob.create({ data: { creationVariantId: variant.id, provider: model.provider, internalModelId: model.id, providerModelVersion: model.id, endpoint: model.endpoint, status: "PREPARED", stageIdempotencyKey: `image_provider_${variant.id}`, inputFingerprint: fingerprint, registryRevision: quote.registryRevision, pricingRevision: quote.pricingRevision, adapterVersion: quote.adapterVersion, routingSnapshot: JSON.stringify({ imageRequest: request, quote: routing.quoteBreakdown }), capabilitySnapshot: quote.capabilitySummary || "{}", sanitizedRequestPayload: JSON.stringify({ ...payload, images_list: payload.images_list?.map(() => "[SIGNED_REFERENCE]") }), estimatedCostMinMicroUsd: quote.estimatedProviderCostMinMicroUsd, estimatedCostMaxMicroUsd: quote.estimatedProviderCostMaxMicroUsd } });
+      const job = await tx.providerJob.create({ data: { creationVariantId: variant.id, provider: model.provider, internalModelId: model.id, providerModelVersion: model.id, endpoint: model.endpoint, status: "PREPARED", stageIdempotencyKey: `image_provider_${variant.id}`, inputFingerprint: fingerprint, registryRevision: quote.registryRevision, pricingRevision: quote.pricingRevision, adapterVersion: quote.adapterVersion, routingSnapshot: JSON.stringify({ imageRequest: request, quote: routing.quoteBreakdown }), capabilitySnapshot: quote.capabilitySummary || "{}", sanitizedRequestPayload: JSON.stringify({ ...providerPayload, images_list: providerPayload.images_list?.map(() => "[SIGNED_REFERENCE]") }), estimatedCostMinMicroUsd: quote.estimatedProviderCostMinMicroUsd, estimatedCostMaxMicroUsd: quote.estimatedProviderCostMaxMicroUsd } });
       return { creation, variant, job };
     }, { isolationLevel: "Serializable" });
     const owner = newSubmissionOwner("image-api"); const claim = await claimProviderSubmission({ prisma, providerJobId: created.job.id, ownerId: owner });
