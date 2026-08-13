@@ -8,7 +8,7 @@ import { canGenerate } from "@/lib/generation-models/types";
 import { estimateImageQuote } from "@/lib/generation-models/imageEstimate";
 import { R2StorageService } from "@/lib/storage/r2StorageService";
 
-import { resolveCuratedSignedUrls } from "@/lib/generation/curatedReferenceResolver";
+import { validateExploreImageIds } from "@/lib/generation/curatedReferenceResolver";
 
 function payloadFingerprint(payload) { return crypto.createHash("sha256").update(JSON.stringify(payload)).digest("hex"); }
 
@@ -22,13 +22,22 @@ export async function POST(req) {
     if (!validation.valid) return NextResponse.json({ code: "IMAGE_PREFLIGHT_INVALID", errors: validation.errors }, { status: 422 });
     const workspace = await prisma.workspace.findUnique({ where: { id: appUser.defaultWorkspaceId } });
     if (!workspace || workspace.status !== "ACTIVE") return NextResponse.json({ code: "WORKSPACE_UNAVAILABLE" }, { status: 403 });
+    
+    // Validate user uploaded reference assets
     const refIds = validation.request.referenceAssetIds || [];
     const assets = refIds.length ? await prisma.uploadedAsset.findMany({ where: { id: { in: refIds }, userId: appUser.id, validationStatus: "VALID" } }) : [];
     if (assets.length !== refIds.length || assets.some((asset) => !asset.mimeType.startsWith("image/"))) return NextResponse.json({ code: "IMAGE_REFERENCE_OWNERSHIP_FAILED", error: "References must be validated image assets owned by you." }, { status: 403 });
+    
+    // Validate curated explore reference IDs against manifest without minting signed R2 URLs during preflight
+    const exploreReqIds = validation.request.exploreImageIds || [];
+    const validatedExploreItems = validateExploreImageIds(exploreReqIds);
+    if (validatedExploreItems.length !== exploreReqIds.length) return NextResponse.json({ code: "INVALID_CURATED_REFERENCE", error: "Curated reference image is invalid or unavailable." }, { status: 422 });
+
     const referenceUrls = await Promise.all(assets.map((asset) => R2StorageService.generateSignedUrl({ storageKey: asset.storageKey, expiresInSeconds: 3600 })));
-    const exploreUrls = await resolveCuratedSignedUrls(validation.request.exploreImageIds);
-    const payload = model.adapter.buildProviderPayload(model, { request: validation.request, referenceUrls, exploreUrls });
-    const quoteBreakdown = await estimateImageQuote({ model, request: validation.request, payload: model.adapter.buildEstimatePayload(model, { request: validation.request, referenceUrls, exploreUrls }) });
+    const explorePlaceholderUrls = validatedExploreItems.map((item) => `https://curated.doolphin.internal/explore/${item.id}.png`);
+    
+    const payload = model.adapter.buildProviderPayload(model, { request: validation.request, referenceUrls, exploreUrls: explorePlaceholderUrls });
+    const quoteBreakdown = await estimateImageQuote({ model, request: validation.request, payload: model.adapter.buildEstimatePayload(model, { request: validation.request, referenceUrls, exploreUrls: explorePlaceholderUrls }) });
     if (!quoteBreakdown.priced) return NextResponse.json({ code: quoteBreakdown.code, error: quoteBreakdown.reason }, { status: 503 });
     const account = await prisma.creditAccount.findUnique({ where: { workspaceId: workspace.id } });
     if (!account || account.availableCredits < quoteBreakdown.totalCredits) return NextResponse.json({ code: "INSUFFICIENT_CREDITS", requiredCredits: quoteBreakdown.totalCredits, availableCredits: account?.availableCredits || 0 }, { status: 402 });

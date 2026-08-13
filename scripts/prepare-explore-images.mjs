@@ -73,19 +73,20 @@ async function prepare() {
       fs.copyFileSync(filePath, localImagePath);
     }
 
-    const storageKey = buildStorageKey("curated", ["explore-images", `${checksumSha256}${ext}`]);
+    const storageKey = buildStorageKey("curated", ["explore-images", `${checksumSha256}${ext}`], { DOOLPHIN_ENV: "production" });
+    const activeStorageKey = buildStorageKey("curated", ["explore-images", `${checksumSha256}${ext}`]);
 
     // Perform R2 sync only if R2 is configured and in staging environment
     if (R2StorageService.isConfigured() && process.env.DOOLPHIN_ENV === "staging") {
       try {
-        const check = await R2StorageService.checkObjectExists(storageKey);
+        const check = await R2StorageService.checkObjectExists(activeStorageKey);
         if (!check.exists) {
           await R2StorageService.uploadFile({
-            storageKey,
+            storageKey: activeStorageKey,
             buffer,
             contentType: mimeType,
           });
-          console.log(`[EXPLORE_PREPARE] Uploaded ${filename} to R2 (${storageKey})`);
+          console.log(`[EXPLORE_PREPARE] Uploaded ${filename} to R2 (${activeStorageKey})`);
         }
       } catch (err) {
         console.warn(`[EXPLORE_PREPARE] R2 upload skipped for ${filename}:`, err.message);
