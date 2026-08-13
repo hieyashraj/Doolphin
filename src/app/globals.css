@@ -308,6 +308,39 @@ select:-webkit-autofill {
   box-shadow: 0 4px 14px rgba(17, 17, 17, 0.18);
 }
 
+/* Primary Auth CTA Root Styling Contract */
+.auth-primary-btn {
+  background-color: #111111 !important;
+  color: #FFFFFF !important;
+  border: 1px solid #111111 !important;
+}
+
+.auth-primary-btn,
+.auth-primary-btn *,
+.auth-primary-btn span,
+.auth-primary-btn svg {
+  color: #FFFFFF !important;
+  fill: currentColor;
+}
+
+.auth-primary-btn:hover {
+  background-color: #33312C !important;
+  color: #FFFFFF !important;
+}
+
+.auth-primary-btn:focus-visible {
+  outline: 2px solid #111111 !important;
+  outline-offset: 2px !important;
+}
+
+.auth-primary-btn:disabled,
+.auth-primary-btn[aria-busy="true"] {
+  background-color: #4A4842 !important;
+  color: #FFFFFF !important;
+  opacity: 1 !important;
+}
+
+
 /* WCAG AAA Contrast Chips, Badges & Tooltips with Strict #111111 Borders */
 .flow-badge-emerald, .badge-emerald {
   background-color: #064E3B;
