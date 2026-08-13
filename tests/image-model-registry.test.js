@@ -2,19 +2,23 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { IMAGE_MODELS, getImageModel, listImageModels } from "../src/lib/generation-models/imageRegistry.js";
 
-test("all thirteen requested image models are declarative, disabled, and environment-safe", () => {
+test("eleven contract-proven image models are staging-only and provider-contract failures stay disabled", () => {
   assert.equal(IMAGE_MODELS.length, 13);
   assert.equal(new Set(IMAGE_MODELS.map((model) => model.id)).size, 13);
   for (const model of IMAGE_MODELS) {
     assert.equal(model.mediaType, "IMAGE");
     assert.equal(model.provider, "MUAPI");
-    assert.equal(model.deployments.staging, "DISABLED_PENDING_STAGING_POC");
     assert.equal(model.deployments.production, "DISABLED");
     assert.equal(model.settlementMode, "ATOMIC_JOB");
     assert.equal(model.qaProfile.derivativeFailureIsNonTerminal, true);
   }
   assert.ok(getImageModel("muapi.gpt-image-2-t2i"));
-  assert.equal(listImageModels({ DOOLPHIN_ENV: "staging" }).every((model) => model.available === false), true);
+  assert.equal(getImageModel("muapi.seedream-5-pro-t2i").endpoint, null);
+  assert.equal(getImageModel("muapi.grok-imagine-t2i").providerCapabilities.output.expectedCount, 1);
+  const staging = listImageModels({ DOOLPHIN_ENV: "staging", VERCEL_ENV: "preview" });
+  assert.equal(staging.filter((model) => model.available).length, 11);
+  assert.equal(staging.find((model) => model.id === "muapi.seedream-5-pro-t2i").available, false);
+  assert.equal(staging.find((model) => model.id === "muapi.grok-imagine-image-2").available, false);
   assert.equal(listImageModels({ VERCEL_ENV: "preview" }).every((model) => model.available === false), true);
   assert.equal(listImageModels({ DOOLPHIN_ENV: "staging", VERCEL_ENV: "production" }).every((model) => model.available === false), true);
 });

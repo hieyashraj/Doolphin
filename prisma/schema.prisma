@@ -95,6 +95,7 @@ enum CreditReservationStatus {
 }
 
 enum GenerationType {
+  IMAGE_STUDIO
   PRODUCT_AD
   PRODUCT_STUDIO
   APP_STUDIO
@@ -175,6 +176,9 @@ enum ProviderBillingStatus {
 }
 
 enum ArtifactType {
+  FINAL_IMAGE
+  IMAGE_THUMBNAIL
+  IMAGE_CARD
   TTS_AUDIO
   RAW_PROVIDER_VIDEO
   NATIVE_AUDIO_VIDEO
@@ -859,6 +863,7 @@ model ProviderJob {
   estimatedCostMinMicroUsd    BigInt
   estimatedCostMaxMicroUsd    BigInt
   actualCostMicroUsd          BigInt?
+  actualContributionMarginMicroUsd BigInt?
   providerBillingStatus       ProviderBillingStatus @default(UNKNOWN)
   billableUnits               Float?
   providerLatencyMs           Int?
@@ -906,6 +911,10 @@ model GeneratedArtifact {
   creationVariantId     String
   generationStageId     String?
   type                  ArtifactType
+  // Stable provider-output ordinal for image jobs.  Video artifacts leave this
+  // null; image finalization uses it to make replay safe for atomic multi-output
+  // jobs without inventing extra financial variants.
+  outputIndex           Int?
   storageKey            String
   checksumSha256        String
   mimeType              String
@@ -931,6 +940,7 @@ model GeneratedArtifact {
   // Finalization uses deterministic keys; the database is the backstop if a
   // stale worker resumes after another worker completed the same replay.
   @@unique([creationVariantId, type, storageKey])
+  @@unique([creationVariantId, type, outputIndex])
 }
 
 // 5.16 ArtifactDeliveryCheck

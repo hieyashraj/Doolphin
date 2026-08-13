@@ -11,6 +11,9 @@ import { claimProviderSubmission, clearSubmissionLease, newSubmissionOwner, subm
 import { replayFinalization } from "@/lib/generation/qualityPipeline";
 import { isStagingEnvironment } from "@/lib/generation-models/types";
 import { isReconciliationEligibleVariant, reconciliationEligibleVariantWhere } from "@/lib/generation/reconciliationEligibility";
+import { getImageModel } from "@/lib/generation-models/imageRegistry";
+import { fetchAuthenticatedMuapiResult } from "@/lib/generation/muapiResult";
+import { processAuthenticatedImageResult } from "@/lib/generation/imagePipeline";
 
 export const maxDuration = 300;
 
@@ -163,6 +166,11 @@ async function pollJob(job, webhookUrl) {
   return "ACTIVE";
 }
 
+async function pollImageJob(job) {
+  const payload = await fetchAuthenticatedMuapiResult(job.providerRequestId);
+  return processAuthenticatedImageResult(job, payload);
+}
+
 export async function GET() {
   return NextResponse.json({ error: "Method not allowed" }, { status: 405, headers: { Allow: "POST" } });
 }
@@ -196,9 +204,9 @@ export async function POST(req) {
   const activeJobs = await prisma.providerJob.findMany({ where: { variant: { is: reconciliationEligibleVariantWhere() }, status: { in: ["QUEUED", "PROCESSING"] }, providerRequestId: { not: null }, OR: [{ lastCheckedAt: null }, { lastCheckedAt: { lt: new Date(Date.now() - 30_000) } }] }, take: 20 });
   // A no-op reconciliation must not require callback credentials. Construct
   // the callback filter only when an eligible provider result can need it.
-  const webhookUrl = activeJobs.length ? buildMuapiWebhookUrl(baseUrl) : null;
+  const webhookUrl = activeJobs.some((job) => !getImageModel(job.internalModelId)) ? buildMuapiWebhookUrl(baseUrl) : null;
   for (const job of activeJobs) {
-    try { actions.push({ providerJobId: job.id, result: await pollJob(job, webhookUrl) }); }
+    try { actions.push({ providerJobId: job.id, result: getImageModel(job.internalModelId) ? await pollImageJob(await prisma.providerJob.findUnique({ where: { id: job.id }, include: { variant: { include: { creation: true } } } })) : await pollJob(job, webhookUrl) }); }
     catch (error) { actions.push({ providerJobId: job.id, result: "POLL_FAILED", error: error.message }); }
   }
 
