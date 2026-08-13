@@ -3,11 +3,8 @@ import { NextResponse } from "next/server";
 import { requireActivatedAccount } from "@/lib/access/authorization";
 import { prisma } from "@/lib/prisma";
 import { CreditEscrowService } from "@/lib/billing/CreditEscrowService";
-import {
-  calculateGenerationQuote,
-  fingerprintGenerationRequest,
-  normalizeAndValidateGenerationRequest,
-} from "@/lib/generation/contract";
+import { fingerprintGenerationRequest, normalizeAndValidateGenerationRequest } from "@/lib/generation/contract";
+import { calculateAuthoritativeGenerationQuote } from "@/lib/generation/modelCostRegistry";
 import { compileCanonicalPrompt } from "@/lib/generation/promptCompiler";
 import { getProviderAdapter } from "@/lib/adapters";
 import { buildMuapiWebhookUrl } from "@/lib/generation/webhookSecurity";
@@ -131,7 +128,17 @@ async function handlePreflight(req) {
     return NextResponse.json({ success: false, code: "DATABASE_UNAVAILABLE", error: "Preflight cannot continue without durable workspace storage" }, { status: 503 });
   }
 
-  const quoteBreakdown = calculateGenerationQuote(request, model);
+  const quoteBreakdown = calculateAuthoritativeGenerationQuote(request, model);
+  // Pricing must be known before a quote is persisted. In particular, never
+  // translate legacy credit placeholders into a provider-spend authorization.
+  if (!quoteBreakdown.priced) {
+    return NextResponse.json({
+      success: false,
+      code: quoteBreakdown.code,
+      error: "This generation configuration is temporarily unavailable because its approved cost is not configured. No credits were reserved and no provider call was made.",
+      reason: quoteBreakdown.reason,
+    }, { status: 503 });
+  }
   const requestFingerprint = fingerprintGenerationRequest(request);
   const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
   const roleMap = compiled.roleMap.map(({ url, ...entry }) => entry);
@@ -139,6 +146,7 @@ async function handlePreflight(req) {
     model: safeModelSnapshot(model),
     webhookUrl,
     requestFingerprint,
+    quoteCostSnapshot: quoteBreakdown,
     providerPayloadFingerprint: crypto.createHash("sha256").update(JSON.stringify(providerPayload)).digest("hex"),
   };
 
@@ -154,11 +162,11 @@ async function handlePreflight(req) {
       provider: model.provider,
       providerEndpoint: model.endpoint,
       registryRevision: model.capabilityRevision,
-      pricingRevision: model.pricingRevision,
+      pricingRevision: quoteBreakdown.pricingRevisionId,
       adapterVersion: model.adapterVersion,
-      estimatedProviderCostMinMicroUsd: BigInt(quoteBreakdown.generationCredits * 10000),
-      estimatedProviderCostMaxMicroUsd: BigInt(quoteBreakdown.totalCredits * 10000),
-      infrastructureCostEstimateMicroUsd: BigInt((quoteBreakdown.analysisCredits + quoteBreakdown.verificationCredits) * 10000),
+      estimatedProviderCostMinMicroUsd: BigInt(quoteBreakdown.components.providerGeneration),
+      estimatedProviderCostMaxMicroUsd: BigInt(quoteBreakdown.components.providerGeneration),
+      infrastructureCostEstimateMicroUsd: BigInt(quoteBreakdown.fullyLoadedCostMicroUsd) - BigInt(quoteBreakdown.components.providerGeneration),
       expectedFailureLossMicroUsd: BigInt(0),
       internalCreditsToReserve: quoteBreakdown.totalCredits,
       warnings: JSON.stringify([]),

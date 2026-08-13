@@ -714,6 +714,12 @@ model CreationVariant {
   completedAt        DateTime?
   reservedCredits    Int                  @default(0)
   finalArtifactId    String?
+  // Durable single-owner lease for final R2/DB/credit settlement.  This is
+  // separate from provider submission ownership because finalization can be
+  // replayed after a provider job has completed.
+  finalizationLeaseId        String?
+  finalizationClaimedAt      DateTime?
+  finalizationLeaseExpiresAt DateTime?
   errorCode          String?
   safeError          String?              
   version            Int                  @default(1)
@@ -730,6 +736,7 @@ model CreationVariant {
   routingDecisions   RoutingDecision[]
 
   @@unique([creationId, variantIndex])
+  @@index([status, finalizationLeaseExpiresAt])
 }
 
 // 5.10 CreationAsset
@@ -831,6 +838,12 @@ model ProviderJob {
   sanitizedResultPayload      String?                // JSON
   sanitizedResponseHeaders    String?                // JSON
   providerQueueStatusHistory  String?                // JSON
+  // A durable submission lease is the single-writer guard around a paid
+  // provider POST.  It is deliberately stored on the job (rather than in a
+  // process lock) so a second web/API worker cannot submit the same job.
+  submissionLeaseId           String?
+  submissionClaimedAt         DateTime?
+  submissionLeaseExpiresAt    DateTime?
   providerRequestCreatedAt    DateTime?
   submittedAt                 DateTime?
   acceptedAt                  DateTime?
@@ -853,6 +866,8 @@ model ProviderJob {
 
   variant                     CreationVariant       @relation(fields: [creationVariantId], references: [id], onDelete: Cascade)
   costLedgers                 ProviderCostLedger[]
+
+  @@index([status, submissionLeaseExpiresAt])
 }
 
 // 5.14 ProviderCostLedger
@@ -908,6 +923,10 @@ model GeneratedArtifact {
   variant               CreationVariant          @relation(fields: [creationVariantId], references: [id], onDelete: Cascade)
   stage                 GenerationStage?         @relation(fields: [generationStageId], references: [id], onDelete: SetNull)
   deliveryChecks        ArtifactDeliveryCheck[]
+
+  // Finalization uses deterministic keys; the database is the backstop if a
+  // stale worker resumes after another worker completed the same replay.
+  @@unique([creationVariantId, type, storageKey])
 }
 
 // 5.16 ArtifactDeliveryCheck

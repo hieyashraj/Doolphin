@@ -11,7 +11,7 @@ export async function GET(req, { params }) {
     const { id } = await params;
 
     const creation = await prisma.creation.findFirst({
-      where: { id, userId: appUser.id },
+      where: { id, userId: appUser.id, workspaceId: appUser.defaultWorkspaceId },
       include: { variants: { where: { status: "COMPLETED" }, include: { artifacts: { where: { type: "FINAL_VIDEO", validationStatus: "VALID" } } } } },
     });
 

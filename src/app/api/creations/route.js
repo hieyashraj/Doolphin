@@ -118,7 +118,7 @@ export async function PATCH(request) {
 
   try {
     const result = await prisma.creation.updateMany({
-      where: { id: body.id, userId: appUser.id },
+      where: { id: body.id, userId: appUser.id, workspaceId: appUser.defaultWorkspaceId },
       data
     });
     if (!result.count) return NextResponse.json({ error: "Not found" }, { status: 404 });

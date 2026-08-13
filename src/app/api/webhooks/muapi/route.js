@@ -11,6 +11,7 @@ import { runFfprobe } from "@/lib/media/FfmpegRunner";
 import { CreditEscrowService } from "@/lib/billing/CreditEscrowService";
 import { handleVerificationResult, startQualityVerification } from "@/lib/generation/qualityPipeline";
 import { userFacingGenerationMessage } from "@/lib/generation/statusMessages";
+import { fetchAuthenticatedMuapiResult, muapiCostMicroUsd } from "@/lib/generation/muapiResult";
 
 export const maxDuration = 300;
 
@@ -86,7 +87,10 @@ export async function POST(req) {
       providerEventId: payload.event_id || null,
       eventType: String(payload.status || "result"),
       payloadHash,
-      signatureStatus: "VERIFIED",
+      // MuAPI currently documents no provider-signed webhook scheme. The
+      // callback URL token is only a filter; authenticated result polling is
+      // the authority for processing, so do not label this body verified.
+      signatureStatus: "UNVERIFIED",
       processingStatus: "RECEIVED",
       payload: rawBody.slice(0, 100000),
       sanitizedHeaders: JSON.stringify({ "content-type": req.headers.get("content-type") }),
@@ -104,18 +108,27 @@ export async function POST(req) {
     return NextResponse.json({ success: true, terminal: true });
   }
 
+  // The URL token filters unsolicited traffic, but it is not a provider
+  // signature. Fetch the result with Doolphin's server-side MuAPI credential
+  // and use that response—not the callback body—for every paid transition.
+  let providerPayload;
+  try {
+    providerPayload = await fetchAuthenticatedMuapiResult(providerRequestId);
+  } catch (error) {
+    await prisma.webhookEvent.update({ where: { id: event.id }, data: { processingStatus: "FAILED", processedAt: new Date(), errorCode: error.code || "RESULT_AUTH_FAILED" } });
+    return NextResponse.json({ error: "Provider result verification is temporarily unavailable" }, { status: 503 });
+  }
   if (["muapi.openai-whisper", "muapi.gemini-2.5-flash-verifier"].includes(job.internalModelId)) {
-    const verification = await handleVerificationResult(job, payload);
+    const verification = await handleVerificationResult(job, providerPayload);
     await prisma.webhookEvent.update({ where: { id: event.id }, data: { processingStatus: "PROCESSED", processedAt: new Date() } });
     if (verification.terminal) await updateCreationAggregate(job.variant.creationId);
     return NextResponse.json({ success: true, ...verification });
   }
-
-  const providerStatus = String(payload.status || "").toLowerCase();
-  if (["failed", "error", "cancelled", "canceled"].includes(providerStatus) || payload.error) {
+  const providerStatus = String(providerPayload.status || "").toLowerCase();
+  if (["failed", "error", "cancelled", "canceled"].includes(providerStatus) || providerPayload.error) {
     await CreditEscrowService.releaseVariantReservations(job.creationVariantId, "PROVIDER_GENERATION_FAILED");
     await prisma.$transaction([
-      prisma.providerJob.update({ where: { id: job.id }, data: { status: "FAILED", completedAt: new Date(), errorCode: "PROVIDER_GENERATION_FAILED", safeError: String(payload.error || "Provider generation failed"), sanitizedResultPayload: JSON.stringify({ status: providerStatus, error: String(payload.error || "failed") }) } }),
+      prisma.providerJob.update({ where: { id: job.id }, data: { status: "FAILED", completedAt: new Date(), errorCode: "PROVIDER_GENERATION_FAILED", safeError: String(providerPayload.error || "Provider generation failed"), sanitizedResultPayload: JSON.stringify({ status: providerStatus, error: String(providerPayload.error || "failed") }) } }),
       prisma.creationVariant.update({ where: { id: job.creationVariantId }, data: { status: "FAILED", errorCode: "PROVIDER_GENERATION_FAILED", safeError: userFacingGenerationMessage("FAILED", "PROVIDER_GENERATION_FAILED") } }),
       prisma.webhookEvent.update({ where: { id: event.id }, data: { processingStatus: "PROCESSED", processedAt: new Date() } }),
     ]);
@@ -123,7 +136,7 @@ export async function POST(req) {
     return NextResponse.json({ success: true });
   }
 
-  const videoUrl = extractVideoUrl(payload);
+  const videoUrl = extractVideoUrl(providerPayload);
   if (!videoUrl) {
     await prisma.providerJob.update({ where: { id: job.id }, data: { status: "PROCESSING", lastCheckedAt: new Date(), webhookCount: { increment: 1 } } });
     await prisma.webhookEvent.update({ where: { id: event.id }, data: { processingStatus: "PROCESSED", processedAt: new Date() } });
@@ -160,7 +173,7 @@ export async function POST(req) {
     }
 
     await prisma.$transaction([
-      prisma.providerJob.update({ where: { id: job.id }, data: { status: "PROCESSING", actualCostMicroUsd: job.estimatedCostMinMicroUsd, providerBillingStatus: "ESTIMATED", sanitizedResultPayload: JSON.stringify({ status: providerStatus, output: "[STORED_IN_R2]" }) } }),
+      prisma.providerJob.update({ where: { id: job.id }, data: { status: "PROCESSING", actualCostMicroUsd: muapiCostMicroUsd(providerPayload) || job.estimatedCostMinMicroUsd, providerBillingStatus: muapiCostMicroUsd(providerPayload) === null ? "ESTIMATED" : "BILLED", sanitizedResultPayload: JSON.stringify({ status: providerStatus, cost: providerPayload.cost ? "[RECORDED]" : null, output: "[STORED_IN_R2]" }) } }),
       prisma.creationVariant.update({ where: { id: job.creationVariantId }, data: { status: "PROCESSING", currentStage: "quality_verification", progressValue: 70 } }),
       prisma.webhookEvent.update({ where: { id: event.id }, data: { processingStatus: "PROCESSED", processedAt: new Date() } }),
     ]);
@@ -169,8 +182,15 @@ export async function POST(req) {
     await updateCreationAggregate(job.variant.creationId);
     return NextResponse.json({ success: true, verification: "PROCESSING" });
   } catch (error) {
-    await prisma.webhookEvent.update({ where: { id: event.id }, data: { processingStatus: "FAILED", processedAt: new Date(), errorCode: "RESULT_PROCESSING_FAILED" } });
-    return NextResponse.json({ error: "Result processing failed" }, { status: 500 });
+    // The provider already produced an output.  Keep it recoverable rather
+    // than silently leaving the creation in provider processing or charging
+    // for a result we did not deliver. Reconciliation will poll/replay it.
+    await prisma.$transaction([
+      prisma.providerJob.update({ where: { id: job.id }, data: { status: "PROCESSING", errorCode: "RESULT_PROCESSING_RETRYABLE", safeError: "Provider output is being recovered", lastCheckedAt: new Date() } }),
+      prisma.creationVariant.update({ where: { id: job.creationVariantId }, data: { status: "PROCESSING", currentStage: "result_processing_retry", errorCode: "RESULT_PROCESSING_RETRYABLE", safeError: "Output processing is being recovered" } }),
+      prisma.webhookEvent.update({ where: { id: event.id }, data: { processingStatus: "FAILED", processedAt: new Date(), errorCode: "RESULT_PROCESSING_RETRYABLE" } }),
+    ]);
+    return NextResponse.json({ error: "Result processing is recoverable" }, { status: 503 });
   } finally {
     if (tempPath) await fs.promises.unlink(tempPath).catch(() => {});
   }

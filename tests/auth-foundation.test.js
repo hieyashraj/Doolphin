@@ -22,10 +22,10 @@ test("annual plans grant monthly allowances rather than twelve months upfront", 
 });
 
 test("migration contains database-enforced Explorer and webhook uniqueness", async () => {
-  const sql = await readFile(new URL("../prisma/migrations/20260811_auth_entitlements_ledger_v2/migration.sql", import.meta.url), "utf8");
+  const sql = await readFile(new URL("../prisma/canonical_migrations/20260813_canonical_staging_baseline/migration.sql", import.meta.url), "utf8");
   assert.match(sql, /Explorer_one_per_user/);
   assert.match(sql, /Explorer_one_per_workspace/);
   assert.match(sql, /Explorer_one_per_customer/);
-  assert.match(sql, /polarEventId.*UNIQUE/);
+  assert.match(sql, /BillingWebhookEvent_polarEventId_key/);
   assert.match(sql, /LEGACY_OPENING_BALANCE/);
 });

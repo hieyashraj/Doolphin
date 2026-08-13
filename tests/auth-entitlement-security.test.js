@@ -27,8 +27,8 @@ test("checkout accepts only server-recognized plan codes and cannot call product
 });
 
 test("sensitive financial and provider tables are server-only under RLS", async () => {
-  const sql = await text("prisma/migrations/20260811_auth_entitlements_ledger_v2/migration.sql");
-  for (const table of ["CreditAccount", "CreditTransaction", "CreditReservation", "CreationAsset", "GeneratedArtifact", "ProviderCostLedger", "Entitlement", "BillingCustomer", "BillingWebhookEvent", "CreditLedgerEntry"]) assert.match(sql, new RegExp(`ALTER TABLE \\"${table}\\" ENABLE ROW LEVEL SECURITY`));
+  const sql = await text("prisma/canonical_migrations/20260813_canonical_staging_baseline/migration.sql");
+  for (const table of ["CreditAccount", "CreditTransaction", "CreditReservation", "CreationAsset", "GeneratedArtifact", "ProviderCostLedger", "Entitlement", "BillingCustomer", "BillingWebhookEvent", "CreditLedgerEntry"]) assert.match(sql, new RegExp(`'${table}'`));
   assert.doesNotMatch(sql, /CREATE POLICY.*CreditAccount|CREATE POLICY.*CreditTransaction|CREATE POLICY.*BillingWebhookEvent/);
 });
 

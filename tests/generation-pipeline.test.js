@@ -139,8 +139,8 @@ test("boundary, quote, transcript, and SSRF checks fail closed", () => {
 
   const valid = normalizeAndValidateGenerationRequest(scenarioRequest("VIDEO_STUDIO", "one", "avatar_dialogue", "none", 2));
   const quote = calculateGenerationQuote(valid.request, getGenerationModel(modelId));
-  assert.equal(quote.generationCredits, 150);
-  assert.equal(quote.verificationCredits, 4);
+  assert.equal(quote.priced, false);
+  assert.equal(quote.code, "GENERATION_CONFIGURATION_UNPRICED");
   assert.equal(transcriptPasses("Hello, world!", "hello world").passed, true);
   assert.equal(transcriptPasses("Use only this script", "penguins are surfing").passed, false);
   assert.equal(validateSsrfTargetUrl("http://127.0.0.1/admin").safe, false);

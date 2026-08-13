@@ -3,18 +3,24 @@ import { NextResponse } from "next/server";
 import { requireActivatedAccount } from "@/lib/access/authorization";
 import { prisma } from "@/lib/prisma";
 import { R2StorageService } from "@/lib/storage/r2StorageService";
+import { buildStorageKey } from "@/lib/storage/storageKey";
 
 const ALLOWED = new Set(["image/jpeg", "image/png", "image/webp", "video/mp4", "video/quicktime"]);
 
 export async function POST(req) {
   let session; try { const { appUser } = await requireActivatedAccount(); session = { user: { id: appUser.id } }; } catch (error) { return NextResponse.json({ error: error.code || "Activation required" }, { status: error.status || 401 }); }
-  if (!R2StorageService.isConfigured()) return NextResponse.json({ directUpload: false });
+  // There is no server-upload fallback route. Failing explicitly prevents the
+  // Studio from continuing into a guaranteed 404 and makes the unavailable
+  // storage dependency visible to the customer before any local state changes.
+  if (!R2StorageService.isConfigured()) {
+    return NextResponse.json({ error: "Asset uploads are temporarily unavailable" }, { status: 503 });
+  }
   const body = await req.json().catch(() => null);
   if (!body || !ALLOWED.has(body.contentType) || !Number.isInteger(body.fileSizeBytes) || !/^[a-f0-9]{64}$/i.test(body.checksumSha256 || "")) return NextResponse.json({ error: "Invalid upload metadata" }, { status: 422 });
   const max = body.contentType.startsWith("video/") ? 50 * 1024 * 1024 : 15 * 1024 * 1024;
   if (body.fileSizeBytes <= 0 || body.fileSizeBytes > max) return NextResponse.json({ error: "File exceeds the allowed size" }, { status: 413 });
   const extension = (path.extname(body.filename || "") || (body.contentType.startsWith("video/") ? ".mp4" : ".png")).toLowerCase();
-  const storageKey = `uploads/${session.user.id}/${body.checksumSha256}${extension}`;
+  const storageKey = buildStorageKey("uploads", [session.user.id, `${body.checksumSha256}${extension}`]);
   const asset = await prisma.uploadedAsset.upsert({
     where: { userId_checksumSha256: { userId: session.user.id, checksumSha256: body.checksumSha256 } },
     update: { storageKey, originalFileName: body.filename || `upload${extension}`, mimeType: body.contentType, fileSizeBytes: BigInt(body.fileSizeBytes), mediaType: body.contentType.startsWith("video/") ? "VIDEO" : "IMAGE" },

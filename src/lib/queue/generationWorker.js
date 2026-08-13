@@ -1,9 +1,11 @@
 import { prisma } from "../prisma.js";
 import { CreditEscrowService } from "../billing/CreditEscrowService.js";
 import { R2StorageService } from "../storage/r2StorageService.js";
+import { buildStorageKey } from "../storage/storageKey.js";
 import { ArtifactDeliveryValidator } from "../storage/ArtifactValidator.js";
 import { renderAppStudioVideo } from "../media/FfmpegRunner.js";
 import fs from "fs";
+import path from "path";
 
 /**
  * Dedicated Generation Worker.
@@ -40,9 +42,9 @@ export class GenerationWorker {
     });
 
     try {
-      const outputKey = `final/${workspaceId}/${creationId}/variant_${variant.variantIndex}.mp4`;
+      const outputKey = buildStorageKey("final", [workspaceId, creationId, `variant_${variant.variantIndex}.mp4`]);
       const localOutputPath = `./public/storage/${outputKey}`;
-      fs.mkdirSync(`./public/storage/final/${workspaceId}/${creationId}`, { recursive: true });
+      fs.mkdirSync(path.dirname(localOutputPath), { recursive: true });
 
       // Execute App Studio or Product Ad render
       const renderRes = await renderAppStudioVideo({

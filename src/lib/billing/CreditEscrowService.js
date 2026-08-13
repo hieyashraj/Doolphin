@@ -20,9 +20,12 @@ export class CreditEscrowService {
   static async settleVerifiedVariant(creationVariantId, passed) {
     const reservations = await prisma.creditReservation.findMany({ where: { creationVariantId } });
     for (const reservation of reservations) {
-      const isGeneration = reservation.idempotencyKey.includes("_generation_");
-      if (passed || !isGeneration) await this.commitCredits({ reservationId: reservation.id });
-      else await this.releaseCredits({ reservationId: reservation.id, reason: "QUALITY_GATE_FAILED" });
+      // A customer is charged only after a usable final video is delivered.  In
+      // particular, analysis/verification are internal costs when Doolphin
+      // quarantines or cannot deliver the result; charging those reservations
+      // would leave a customer paying for an unusable generation.
+      if (passed) await this.commitCredits({ reservationId: reservation.id });
+      else await this.releaseCredits({ reservationId: reservation.id, reason: "NO_DELIVERABLE" });
     }
   }
 
@@ -283,7 +286,10 @@ export class CreditEscrowService {
           creditReservationId: reservation.id,
           type: "RELEASE",
           amount: reservation.amount,
-          idempotencyKey: `tx_release_${reservation.id}_${Date.now()}`,
+          // A release is a one-way terminal settlement for this reservation.
+          // Keep its ledger key stable so a replay racing the status update
+          // cannot credit the same reservation twice.
+          idempotencyKey: `tx_release_${reservation.id}`,
           balanceBefore: account.availableCredits,
           balanceAfter: updatedAccount.availableCredits,
           reservedBefore: account.reservedCredits,

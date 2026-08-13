@@ -5,6 +5,7 @@ import { requireActivatedAccount } from "@/lib/access/authorization";
 import { R2StorageService } from "@/lib/storage/r2StorageService";
 import { prisma } from "@/lib/prisma";
 import { validateUploadedMedia } from "@/lib/media/uploadValidation";
+import { buildStorageKey } from "@/lib/storage/storageKey";
 
 const MAX_IMAGE_BYTES = 15 * 1024 * 1024;
 const MAX_VIDEO_BYTES = 50 * 1024 * 1024;
@@ -40,7 +41,7 @@ async function handleUpload(req) {
 
   const checksumSha256 = crypto.createHash("sha256").update(buffer).digest("hex");
   const safeExtension = path.extname(file.name || "") || (file.type.startsWith("video/") ? ".mp4" : ".png");
-  const storageKey = `uploads/${session.user.id}/${checksumSha256}${safeExtension.toLowerCase()}`;
+  const storageKey = buildStorageKey("uploads", [session.user.id, `${checksumSha256}${safeExtension.toLowerCase()}`]);
   await R2StorageService.uploadFile({ storageKey, buffer, contentType: file.type });
   const uploadedAsset = await prisma.uploadedAsset.upsert({
     where: { userId_checksumSha256: { userId: session.user.id, checksumSha256 } },

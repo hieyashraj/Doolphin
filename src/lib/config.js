@@ -21,7 +21,10 @@ const config = {
     },
   },
   ai: {
-    apiKey: process.env.MUAPI_API_KEY || process.env.UGC_API_KEY,
+    // Provider generation reads only the canonical credential.  In a staging
+    // deployment this must be the sandbox value; a legacy variable can never
+    // silently select a paid credential.
+    apiKey: process.env.MUAPI_API_KEY,
     falKey: process.env.FAL_KEY,
     elevenLabsApiKey: process.env.ELEVENLABS_API_KEY,
     generationCost: 10,

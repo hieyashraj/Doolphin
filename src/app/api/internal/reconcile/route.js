@@ -7,6 +7,9 @@ import { buildMuapiWebhookUrl } from "@/lib/generation/webhookSecurity";
 import { R2StorageService } from "@/lib/storage/r2StorageService";
 import { CreditEscrowService } from "@/lib/billing/CreditEscrowService";
 import { userFacingGenerationMessage } from "@/lib/generation/statusMessages";
+import { claimProviderSubmission, clearSubmissionLease, newSubmissionOwner, submissionOwnerWhere } from "@/lib/generation/providerSubmissionLease";
+import { replayFinalization } from "@/lib/generation/qualityPipeline";
+import { isStagingEnvironment } from "@/lib/generation-models/types";
 
 export const maxDuration = 300;
 
@@ -32,7 +35,35 @@ async function updateTimedOutCreation(creationId) {
   await prisma.creation.update({ where: { id: creationId }, data: { status, completedAt: new Date(), currentStage: status === "PARTIAL_COMPLETED" ? "delivery" : "quality_verification", progressValue: variants.length ? completed / variants.length * 100 : 0, errorCode, safeError: errorCode ? userFacingGenerationMessage(status, errorCode) : null } });
 }
 
+async function refreshCreationAfterRecovery(creationId) {
+  const variants = await prisma.creationVariant.findMany({ where: { creationId }, select: { status: true } });
+  if (!variants.length || variants.some((variant) => ["QUEUED", "PROCESSING"].includes(variant.status))) return;
+  const completed = variants.filter((variant) => variant.status === "COMPLETED").length;
+  const status = completed === variants.length ? "COMPLETED" : completed ? "PARTIAL_COMPLETED" : variants.some((variant) => variant.status === "QUARANTINED") ? "QUARANTINED" : "FAILED";
+  await prisma.creation.update({ where: { id: creationId }, data: { status, currentStage: status.includes("COMPLETED") ? "delivery" : "quality_verification", completedAt: new Date(), progressValue: completed / variants.length * 100 } });
+}
+
 async function recordSubmissionFailure(outbox, error) {
+  if (error.submissionOutcomeUnknown) {
+    const providerJobId = JSON.parse(outbox.payload).providerJobId;
+    await prisma.$transaction([
+      prisma.providerJob.updateMany({ where: submissionOwnerWhere(providerJobId, error.submissionOwner), data: { status: "SUBMISSION_UNKNOWN", errorCode: "PROVIDER_SUBMISSION_UNKNOWN", safeError: "Provider submission could not be confirmed", submissionLeaseExpiresAt: new Date() } }),
+      prisma.queueOutbox.update({ where: { id: outbox.id }, data: { status: "DEAD_LETTER", attemptCount: { increment: 1 }, lastError: "Submission outcome is ambiguous; provider reconciliation required" } }),
+    ]);
+    return "AMBIGUOUS_STOPPED";
+  }
+  if (error.knownRejected) {
+    const providerJobId = JSON.parse(outbox.payload).providerJobId;
+    const job = await prisma.providerJob.findUnique({ where: { id: providerJobId } });
+    if (!job) return "JOB_MISSING";
+    await CreditEscrowService.releaseVariantReservations(job.creationVariantId, "PROVIDER_SUBMISSION_REJECTED");
+    await prisma.$transaction([
+      prisma.providerJob.updateMany({ where: submissionOwnerWhere(providerJobId, error.submissionOwner), data: { status: "FAILED", completedAt: new Date(), errorCode: "PROVIDER_SUBMISSION_REJECTED", safeError: "Provider rejected submission", ...clearSubmissionLease() } }),
+      prisma.creationVariant.update({ where: { id: job.creationVariantId }, data: { status: "FAILED", errorCode: "PROVIDER_SUBMISSION_REJECTED", safeError: userFacingGenerationMessage("FAILED", "PROVIDER_SUBMISSION_REJECTED") } }),
+      prisma.queueOutbox.update({ where: { id: outbox.id }, data: { status: "DEAD_LETTER", attemptCount: { increment: 1 }, lastError: error.message } }),
+    ]);
+    return "FAILED_REFUNDED";
+  }
   const attemptCount = outbox.attemptCount + 1;
   if (attemptCount < 3) {
     await prisma.queueOutbox.update({ where: { id: outbox.id }, data: { status: "FAILED", attemptCount, nextAttemptAt: new Date(Date.now() + 60_000), lastError: error.message } });
@@ -60,9 +91,20 @@ async function submitPrepared(outbox, baseUrl) {
     await prisma.queueOutbox.update({ where: { id: outbox.id }, data: { status: "DISPATCHED" } });
     return "ALREADY_SUBMITTED";
   }
-  if (job.status !== "PREPARED") {
+  const submissionOwner = newSubmissionOwner("reconcile");
+  const claim = await claimProviderSubmission({ prisma, providerJobId: job.id, ownerId: submissionOwner });
+  if (!claim.claimed) {
+    if (claim.state === "ALREADY_SUBMITTED") {
+      await prisma.queueOutbox.update({ where: { id: outbox.id }, data: { status: "DISPATCHED" } });
+      return "ALREADY_SUBMITTED";
+    }
+    if (claim.state === "CLAIMED_BY_OTHER") return "CLAIMED_BY_OTHER";
+    if (claim.state === "SUBMISSION_UNKNOWN") {
+      await prisma.queueOutbox.update({ where: { id: outbox.id }, data: { status: "DEAD_LETTER", lastError: "Submission lease expired; provider reconciliation required" } });
+      return "AMBIGUOUS_STOPPED";
+    }
     await prisma.$transaction([
-      prisma.providerJob.update({ where: { id: job.id }, data: { status: "SUBMISSION_UNKNOWN", errorCode: "SUBMISSION_AMBIGUOUS", safeError: "Automatic retry stopped to prevent duplicate billing" } }),
+      prisma.providerJob.updateMany({ where: { id: job.id, status: "PREPARED" }, data: { status: "SUBMISSION_UNKNOWN", errorCode: "SUBMISSION_AMBIGUOUS", safeError: "Automatic retry stopped to prevent duplicate billing" } }),
       prisma.queueOutbox.update({ where: { id: outbox.id }, data: { status: "DEAD_LETTER", lastError: "Submission state is ambiguous; manual reconciliation required" } })
     ]);
     return "AMBIGUOUS_STOPPED";
@@ -76,12 +118,27 @@ async function submitPrepared(outbox, baseUrl) {
   const compiled = compileCanonicalPrompt(request);
   const webhookUrl = buildMuapiWebhookUrl(baseUrl);
   const payload = getProviderAdapter("seedance-2").formatPayload({ prompt: compiled.compiledPrompt, settings: { duration: request.settings.durationSeconds, resolution: request.settings.resolution, aspect_ratio: request.settings.aspectRatio }, images: compiled.imageUrls, webhookUrl });
-  await prisma.providerJob.update({ where: { id: job.id }, data: { status: "SUBMITTING", submissionCount: { increment: 1 } } });
-  const response = await fetch(job.endpoint, { method: "POST", headers: { "Content-Type": "application/json", "x-api-key": process.env.MUAPI_API_KEY }, body: JSON.stringify(payload), signal: AbortSignal.timeout(30000) });
+  let response;
+  try {
+    response = await fetch(job.endpoint, { method: "POST", headers: { "Content-Type": "application/json", "x-api-key": process.env.MUAPI_API_KEY }, body: JSON.stringify(payload), signal: AbortSignal.timeout(30000) });
+  } catch (cause) {
+    const error = new Error("Provider submission could not be confirmed");
+    error.submissionOutcomeUnknown = true;
+    error.submissionOwner = submissionOwner;
+    error.cause = cause;
+    throw error;
+  }
   const result = await response.json().catch(() => ({}));
-  if (!response.ok || !result.request_id) throw new Error(`Provider submission was not confirmed (${response.status})`);
+  if (!response.ok || !result.request_id) {
+    // A parsed provider HTTP response is an explicit rejection, unlike a
+    // network timeout where the provider may have accepted a paid request.
+    const error = new Error(`Provider submission was rejected (${response.status})`);
+    error.knownRejected = true;
+    error.submissionOwner = submissionOwner;
+    throw error;
+  }
   await prisma.$transaction([
-    prisma.providerJob.update({ where: { id: job.id }, data: { status: "QUEUED", providerRequestId: result.request_id, submittedAt: new Date(), acceptedAt: new Date(), sanitizedInitialResponse: JSON.stringify({ request_id: result.request_id, status: result.status || "processing" }) } }),
+    prisma.providerJob.updateMany({ where: submissionOwnerWhere(job.id, submissionOwner), data: { status: "QUEUED", providerRequestId: result.request_id, submittedAt: new Date(), acceptedAt: new Date(), sanitizedInitialResponse: JSON.stringify({ request_id: result.request_id, status: result.status || "processing" }), ...clearSubmissionLease() } }),
     prisma.creationVariant.update({ where: { id: job.creationVariantId }, data: { status: "PROCESSING", currentStage: "provider_generation" } }),
     prisma.creation.update({ where: { id: job.variant.creationId }, data: { status: "PROCESSING", currentStage: "provider_generation" } }),
     prisma.queueOutbox.update({ where: { id: outbox.id }, data: { status: "DISPATCHED" } })
@@ -104,9 +161,20 @@ async function pollJob(job, webhookUrl) {
   return "ACTIVE";
 }
 
-export async function GET(req) {
+export async function GET() {
+  return NextResponse.json({ error: "Method not allowed" }, { status: 405, headers: { Allow: "POST" } });
+}
+
+export async function POST(req) {
+  // Reconciliation may reserve/release/settle durable state. It is staging
+  // only, server-to-server only, and never trusts caller-controlled input to
+  // choose its environment.
+  if (!isStagingEnvironment()) return NextResponse.json({ error: "Unavailable" }, { status: 404 });
   if (!authorized(req)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const baseUrl = process.env.WEBHOOK_URL || process.env.NEXTAUTH_URL;
+  if (!process.env.MUAPI_API_KEY) return NextResponse.json({ error: "Sandbox provider credential required" }, { status: 503 });
+  // WEBHOOK_URL is the explicit provider/reconciliation callback base. Do not
+  // couple new staging infrastructure to legacy NextAuth compatibility URLs.
+  const baseUrl = process.env.WEBHOOK_URL;
   if (!baseUrl?.startsWith("https://")) return NextResponse.json({ error: "Public HTTPS base URL required" }, { status: 503 });
   const now = new Date();
   const actions = [];
@@ -123,6 +191,22 @@ export async function GET(req) {
   for (const job of activeJobs) {
     try { actions.push({ providerJobId: job.id, result: await pollJob(job, webhookUrl) }); }
     catch (error) { actions.push({ providerJobId: job.id, result: "POLL_FAILED", error: error.message }); }
+  }
+
+  // A webhook may have completed both verification jobs immediately before a
+  // worker died during final R2/DB/settlement.  Replay from persisted evidence;
+  // no provider request is sent and the finalization lease admits one worker.
+  const finalizationRetries = await prisma.creationVariant.findMany({
+    where: { status: "PROCESSING", currentStage: { in: ["delivery_retry", "delivery_finalizing"] } },
+    select: { id: true, creationId: true }, take: 20,
+  });
+  for (const variant of finalizationRetries) {
+    try {
+      const result = await replayFinalization(variant.id);
+      if (result.completed || result.quarantined) await refreshCreationAfterRecovery(variant.creationId);
+      actions.push({ variantId: variant.id, result });
+    }
+    catch (error) { actions.push({ variantId: variant.id, result: "FINALIZATION_RETRY_FAILED", error: error.message }); }
   }
 
   const timedOut = await prisma.creationVariant.findMany({ where: { status: { in: ["QUEUED", "PROCESSING"] }, timeoutAt: { lt: now } } });

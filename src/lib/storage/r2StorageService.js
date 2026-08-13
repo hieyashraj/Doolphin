@@ -1,6 +1,7 @@
 import fs from "fs";
 import crypto from "crypto";
 import { createRequire } from "module";
+import { assertWritableStorageKey } from "./storageKey.js";
 
 const req = createRequire(import.meta.url);
 
@@ -13,7 +14,7 @@ const req = createRequire(import.meta.url);
 const accountId = process.env.R2_ACCOUNT_ID;
 const accessKeyId = process.env.R2_ACCESS_KEY_ID;
 const secretAccessKey = process.env.R2_SECRET_ACCESS_KEY;
-const bucketName = process.env.R2_BUCKET_NAME || "doolphin-staging";
+const bucketName = process.env.R2_BUCKET_NAME;
 
 let s3ClientInstance = null;
 
@@ -39,6 +40,7 @@ export class R2StorageService {
   }
 
   static async uploadFile({ storageKey, filePath, buffer, contentType }) {
+    storageKey = assertWritableStorageKey(storageKey);
     let data = buffer;
     if (!data && filePath) {
       data = fs.readFileSync(filePath);
@@ -91,6 +93,7 @@ export class R2StorageService {
   }
 
   static async generateUploadUrl({ storageKey, contentType, expiresInSeconds = 900 }) {
+    storageKey = assertWritableStorageKey(storageKey);
     const s3 = getS3Client();
     if (!s3) return null;
     const { PutObjectCommand } = req("@aws-sdk/client-s3");

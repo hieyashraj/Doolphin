@@ -4,10 +4,12 @@ import { requireActivatedAccount } from "@/lib/access/authorization";
 import { prisma } from "@/lib/prisma";
 import { CreditEscrowService } from "@/lib/billing/CreditEscrowService";
 import { compileCanonicalPrompt } from "@/lib/generation/promptCompiler";
-import { calculateGenerationQuote, normalizeAndValidateGenerationRequest } from "@/lib/generation/contract";
+import { normalizeAndValidateGenerationRequest } from "@/lib/generation/contract";
+import { calculateAuthoritativeGenerationQuote } from "@/lib/generation/modelCostRegistry";
 import { getProviderAdapter } from "@/lib/adapters";
 import { buildMuapiWebhookUrl } from "@/lib/generation/webhookSecurity";
 import { userFacingGenerationMessage } from "@/lib/generation/statusMessages";
+import { claimProviderSubmission, clearSubmissionLease, newSubmissionOwner, submissionOwnerWhere } from "@/lib/generation/providerSubmissionLease";
 
 function publicAssetUrl(url, requestUrl) {
   if (url.startsWith("https://")) return new URL(url).toString();
@@ -58,6 +60,22 @@ async function handleGenerationSubmission(req) {
     return NextResponse.json({ success: false, code: "SNAPSHOT_INVALID", error: validation.errors[0]?.message, errors: validation.errors }, { status: 422 });
   }
   const { request, model } = validation;
+  const authoritativeQuote = calculateAuthoritativeGenerationQuote(request, model);
+  if (!authoritativeQuote.priced) {
+    return NextResponse.json({ success: false, code: authoritativeQuote.code, error: "This generation configuration is temporarily unavailable because its approved cost is not configured." }, { status: 503 });
+  }
+  let quotedCostSnapshot;
+  try { quotedCostSnapshot = JSON.parse(quote.routingSnapshot || "{}").quoteCostSnapshot; } catch { quotedCostSnapshot = null; }
+  // A quote is a price commitment for exactly its normalized request and
+  // registry revision. Re-price server-side to prevent stale/forged records
+  // from reserving a different amount after a cost-registry change.
+  if (!quotedCostSnapshot
+    || quotedCostSnapshot.registryRevision !== authoritativeQuote.registryRevision
+    || quotedCostSnapshot.totalCredits !== authoritativeQuote.totalCredits
+    || quotedCostSnapshot.fullyLoadedCostMicroUsd !== authoritativeQuote.fullyLoadedCostMicroUsd
+    || quote.internalCreditsToReserve !== authoritativeQuote.totalCredits) {
+    return NextResponse.json({ success: false, code: "QUOTE_STALE", error: "This quote is no longer current. Review the generation price again before submitting." }, { status: 409 });
+  }
 
   const workspace = await prisma.workspace.findUnique({ where: { id: quote.workspaceId } });
   if (!workspace || workspace.status !== "ACTIVE") {
@@ -97,9 +115,10 @@ async function handleGenerationSubmission(req) {
     webhookUrl,
   });
   const payloadFingerprint = crypto.createHash("sha256").update(JSON.stringify(providerPayload)).digest("hex");
-  const quoteCosts = calculateGenerationQuote(request, model);
-  const perVariantBase = quoteCosts.perVariantGenerationCredits + model.verificationCreditsPerVariant;
-  const variantAmounts = Array.from({ length: request.settings.outputCount }, (_, index) => perVariantBase + (index === 0 ? quoteCosts.analysisCreditsToReserve : 0));
+  // The cost registry quote is a single, immutable charge for this creation.
+  // It is reserved on the first variant; output counts are included in the
+  // authoritative calculation rather than accepted from the browser here.
+  const variantAmounts = Array.from({ length: request.settings.outputCount }, (_, index) => index === 0 ? authoritativeQuote.totalCredits : 0);
 
   const existing = await prisma.creation.findUnique({
     where: { workspaceId_idempotencyKey: { workspaceId: quote.workspaceId, idempotencyKey: body.idempotencyKey } },
@@ -203,24 +222,17 @@ async function handleGenerationSubmission(req) {
           routingInput: JSON.stringify({ endpoint: model.endpoint, payloadFingerprint, variantIndex: index, variationPolicy: "provider_stochastic_no_seed_field" }),
         },
       });
-      await CreditEscrowService.reserveCredits({
-        workspaceId: quote.workspaceId,
-        creationId: creation.id,
-        creationVariantId: variant.id,
-        amount: quoteCosts.perVariantGenerationCredits,
-        idempotencyKey: `reserve_generation_${creation.id}_${index}`,
-        userId: session.user.id,
-        tx,
-      });
-      await CreditEscrowService.reserveCredits({
-        workspaceId: quote.workspaceId,
-        creationId: creation.id,
-        creationVariantId: variant.id,
-        amount: model.verificationCreditsPerVariant + (index === 0 ? quoteCosts.analysisCreditsToReserve : 0),
-        idempotencyKey: `reserve_verification_${creation.id}_${index}`,
-        userId: session.user.id,
-        tx,
-      });
+      if (variantAmounts[index] > 0) {
+        await CreditEscrowService.reserveCredits({
+          workspaceId: quote.workspaceId,
+          creationId: creation.id,
+          creationVariantId: variant.id,
+          amount: variantAmounts[index],
+          idempotencyKey: `reserve_generation_${creation.id}_${index}`,
+          userId: session.user.id,
+          tx,
+        });
+      }
       const providerJob = await tx.providerJob.create({
         data: {
           creationVariantId: variant.id,
@@ -237,8 +249,8 @@ async function handleGenerationSubmission(req) {
           routingSnapshot: quote.routingSnapshot,
           capabilitySnapshot: quote.capabilitySummary || "{}",
           sanitizedRequestPayload: JSON.stringify(sanitizePayload(providerPayload)),
-          estimatedCostMinMicroUsd: BigInt(quoteCosts.perVariantGenerationCredits * 10000),
-          estimatedCostMaxMicroUsd: BigInt((quoteCosts.perVariantGenerationCredits + model.verificationCreditsPerVariant) * 10000),
+          estimatedCostMinMicroUsd: BigInt(authoritativeQuote.components.providerGeneration) / BigInt(request.settings.outputCount),
+          estimatedCostMaxMicroUsd: BigInt(authoritativeQuote.components.providerGeneration) / BigInt(request.settings.outputCount),
         },
       });
       await tx.queueOutbox.create({
@@ -269,7 +281,14 @@ async function handleGenerationSubmission(req) {
 
   const submissionResults = [];
   for (const item of created.variants) {
-    await prisma.providerJob.update({ where: { id: item.providerJob.id }, data: { status: "SUBMITTING", submissionCount: { increment: 1 } } });
+    const submissionOwner = newSubmissionOwner("generation-api");
+    const claim = await claimProviderSubmission({ prisma, providerJobId: item.providerJob.id, ownerId: submissionOwner });
+    if (!claim.claimed) {
+      // Another durable worker owns the provider POST.  Never race it with a
+      // second paid request; the creation remains recoverable via the outbox.
+      submissionResults.push({ variantId: item.variant.id, status: claim.state === "ALREADY_SUBMITTED" ? "PROCESSING" : "QUEUED" });
+      continue;
+    }
     try {
       const response = await fetch(model.endpoint, {
         method: "POST",
@@ -287,9 +306,9 @@ async function handleGenerationSubmission(req) {
       }
       if (!result.request_id) throw new Error("MuAPI response did not confirm a request id");
       await prisma.$transaction([
-        prisma.providerJob.update({
-          where: { id: item.providerJob.id },
-          data: { status: "QUEUED", providerRequestId: result.request_id, submittedAt: new Date(), acceptedAt: new Date(), sanitizedInitialResponse: JSON.stringify({ request_id: result.request_id, status: result.status || "processing" }) },
+        prisma.providerJob.updateMany({
+          where: submissionOwnerWhere(item.providerJob.id, submissionOwner),
+          data: { status: "QUEUED", providerRequestId: result.request_id, submittedAt: new Date(), acceptedAt: new Date(), sanitizedInitialResponse: JSON.stringify({ request_id: result.request_id, status: result.status || "processing" }), ...clearSubmissionLease() },
         }),
         prisma.creationVariant.update({ where: { id: item.variant.id }, data: { status: "PROCESSING", currentStage: "provider_generation" } }),
         prisma.queueOutbox.update({ where: { deterministicJobId: `submit_muapi_${item.variant.id}` }, data: { status: "DISPATCHED" } }),
@@ -299,14 +318,14 @@ async function handleGenerationSubmission(req) {
       if (error.knownRejected) {
         await CreditEscrowService.releaseVariantReservations(item.variant.id, "PROVIDER_SUBMISSION_REJECTED");
         await prisma.$transaction([
-          prisma.providerJob.update({ where: { id: item.providerJob.id }, data: { status: "FAILED", errorCode: "PROVIDER_SUBMISSION_REJECTED", safeError: error.message } }),
+          prisma.providerJob.updateMany({ where: submissionOwnerWhere(item.providerJob.id, submissionOwner), data: { status: "FAILED", errorCode: "PROVIDER_SUBMISSION_REJECTED", safeError: error.message, ...clearSubmissionLease() } }),
           prisma.creationVariant.update({ where: { id: item.variant.id }, data: { status: "FAILED", errorCode: "PROVIDER_SUBMISSION_REJECTED", safeError: userFacingGenerationMessage("FAILED", "PROVIDER_SUBMISSION_REJECTED") } }),
           prisma.queueOutbox.update({ where: { deterministicJobId: `submit_muapi_${item.variant.id}` }, data: { status: "DEAD_LETTER", attemptCount: { increment: 1 }, lastError: error.message } }),
         ]);
         submissionResults.push({ variantId: item.variant.id, status: "FAILED", error: error.message });
       } else {
         await prisma.$transaction([
-          prisma.providerJob.update({ where: { id: item.providerJob.id }, data: { status: "SUBMISSION_UNKNOWN", errorCode: "PROVIDER_SUBMISSION_UNKNOWN", safeError: "Provider submission could not be confirmed" } }),
+          prisma.providerJob.updateMany({ where: submissionOwnerWhere(item.providerJob.id, submissionOwner), data: { status: "SUBMISSION_UNKNOWN", errorCode: "PROVIDER_SUBMISSION_UNKNOWN", safeError: "Provider submission could not be confirmed", submissionLeaseExpiresAt: new Date() } }),
           prisma.creationVariant.update({ where: { id: item.variant.id }, data: { status: "QUEUED", currentStage: "provider_submission" } }),
           prisma.queueOutbox.update({ where: { deterministicJobId: `submit_muapi_${item.variant.id}` }, data: { status: "FAILED", attemptCount: { increment: 1 }, nextAttemptAt: new Date(Date.now() + 60_000), lastError: error.message } }),
         ]);

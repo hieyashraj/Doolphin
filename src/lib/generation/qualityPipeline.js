@@ -4,6 +4,7 @@ import os from "os";
 import path from "path";
 import { prisma } from "@/lib/prisma";
 import { R2StorageService } from "@/lib/storage/r2StorageService";
+import { buildStorageKey } from "@/lib/storage/storageKey";
 import { composeExactBroll, extractVerificationFrames, runFfprobe } from "@/lib/media/FfmpegRunner";
 import { createVerificationMontage } from "@/lib/media/verificationMontage";
 import { parseStrictJsonOutput, transcriptPasses } from "@/lib/generation/qualityVerification";
@@ -51,9 +52,74 @@ async function submitVerificationJob(job, payload) {
 }
 
 async function quarantineVariant(variantId, errorCode, safeError) {
-  if (errorCode.startsWith("QUALITY") || errorCode.startsWith("VERIFICATION")) await CreditEscrowService.settleVerifiedVariant(variantId, false);
-  else await CreditEscrowService.releaseVariantReservations(variantId, errorCode);
+  // No final artifact means no charge.  This is deliberately independent of
+  // which internal stage (generation, analysis, or verification) failed.
+  await CreditEscrowService.releaseVariantReservations(variantId, errorCode || "NO_DELIVERABLE");
   await prisma.creationVariant.update({ where: { id: variantId }, data: { status: "QUARANTINED", currentStage: "quality_verification", errorCode, safeError } });
+}
+
+const FINALIZATION_LEASE_MS = 2 * 60_000;
+
+/**
+ * Claims final delivery work with an expiring, database-backed lease.  R2 and
+ * Postgres cannot share a transaction, so every later step is deterministic
+ * and replayable.  A worker that dies after uploading the final object can be
+ * replaced once its lease is stale.
+ */
+async function claimFinalization(variantId) {
+  const ownerId = crypto.randomUUID();
+  const now = new Date();
+  const claimed = await prisma.creationVariant.updateMany({
+    where: {
+      id: variantId,
+      status: "PROCESSING",
+      OR: [{ finalizationLeaseId: null }, { finalizationLeaseExpiresAt: { lt: now } }],
+    },
+    data: { currentStage: "delivery_finalizing", finalizationLeaseId: ownerId, finalizationClaimedAt: now, finalizationLeaseExpiresAt: new Date(now.getTime() + FINALIZATION_LEASE_MS) },
+  });
+  return claimed.count === 1 ? ownerId : null;
+}
+
+function finalizationOwnerWhere(variantId, ownerId) {
+  return { id: variantId, status: "PROCESSING", finalizationLeaseId: ownerId, finalizationLeaseExpiresAt: { gt: new Date() } };
+}
+
+async function stillOwnFinalization(variantId, ownerId) {
+  return (await prisma.creationVariant.count({ where: finalizationOwnerWhere(variantId, ownerId) })) === 1;
+}
+
+async function ensureDeliveryCheck(finalArtifact, evidence) {
+  const existing = await prisma.artifactDeliveryCheck.findFirst({ where: { generatedArtifactId: finalArtifact.id } });
+  if (existing) return existing;
+  return prisma.artifactDeliveryCheck.create({ data: { generatedArtifactId: finalArtifact.id, objectExists: true, metadataValid: true, authorizedRangeGetSucceeded: true, contentTypeValid: true, nonEmpty: true, ffprobeSucceeded: true, durationValid: true, dimensionsValid: true, videoCodecValid: true, audioCodecValid: true, previewSucceeded: true, downloadSucceeded: true, checksumVerified: true, evidence: JSON.stringify({ qualityEvidence: evidence }) } });
+}
+
+async function finalizeDeliverable({ variant, rawArtifact, evidence, ownerId }) {
+  const finalStorageKey = buildStorageKey("final", [variant.creation.workspaceId, variant.creation.id, `variant_${variant.variantIndex}.mp4`]);
+  if (!await stillOwnFinalization(variant.id, ownerId)) return null;
+  // A replay after an upload/DB boundary first adopts the deterministic final
+  // artifact.  This prevents a second artifact/settlement on duplicate events.
+  let finalArtifact = await prisma.generatedArtifact.findFirst({ where: { creationVariantId: variant.id, type: "FINAL_VIDEO", storageKey: finalStorageKey }, orderBy: { createdAt: "asc" } });
+  if (!finalArtifact) {
+    const finalBuffer = await R2StorageService.downloadBuffer(rawArtifact.storageKey);
+    const finalStored = await R2StorageService.uploadFile({ storageKey: finalStorageKey, buffer: finalBuffer, contentType: "video/mp4" });
+    // The unique key is a second backstop if an old process wakes after its
+    // lease expired.  Both workers may write the same deterministic R2 key,
+    // but Postgres admits exactly one artifact row.
+    finalArtifact = await prisma.generatedArtifact.upsert({
+      where: { creationVariantId_type_storageKey: { creationVariantId: variant.id, type: "FINAL_VIDEO", storageKey: finalStorageKey } },
+      create: { workspaceId: rawArtifact.workspaceId, creationVariantId: variant.id, type: "FINAL_VIDEO", storageKey: finalStorageKey, checksumSha256: finalStored.checksumSha256, mimeType: rawArtifact.mimeType, fileSizeBytes: finalStored.fileSizeBytes, width: rawArtifact.width, height: rawArtifact.height, durationMs: rawArtifact.durationMs, frameRate: rawArtifact.frameRate, videoCodec: rawArtifact.videoCodec, audioCodec: rawArtifact.audioCodec, validationStatus: "VALID", validationMetadata: JSON.stringify(evidence), sourceProviderUrlHost: rawArtifact.sourceProviderUrlHost, validatedAt: new Date() },
+      update: {},
+    });
+  }
+  if (!await stillOwnFinalization(variant.id, ownerId)) return null;
+  await ensureDeliveryCheck(finalArtifact, evidence);
+  await prisma.generatedArtifact.update({ where: { id: rawArtifact.id }, data: { validationStatus: "VALID", validationMetadata: JSON.stringify(evidence), validatedAt: new Date() } });
+  // Each reservation settlement is independently idempotent.  If this process
+  // crashes after settlement but before COMPLETED, a replay simply completes it.
+  await CreditEscrowService.settleVerifiedVariant(variant.id, true);
+  const completed = await prisma.creationVariant.updateMany({ where: finalizationOwnerWhere(variant.id, ownerId), data: { status: "COMPLETED", currentStage: "delivery", completedAt: new Date(), finalArtifactId: finalArtifact.id, progressValue: 100, errorCode: null, safeError: null, finalizationLeaseId: null, finalizationClaimedAt: null, finalizationLeaseExpiresAt: null } });
+  return completed.count === 1 ? finalArtifact : null;
 }
 
 export async function startQualityVerification({ seedanceJob, videoUrl, buffer, probe, webhookUrl }) {
@@ -93,7 +159,7 @@ export async function startQualityVerification({ seedanceJob, videoUrl, buffer, 
       probe = await runFfprobe(composedPath);
       await fs.promises.copyFile(composedPath, candidatePath);
     }
-    const rawStorageKey = `quarantine/${creation.workspaceId}/${creation.id}/variant_${variant.variantIndex}.mp4`;
+    const rawStorageKey = buildStorageKey("quarantine", [creation.workspaceId, creation.id, `variant_${variant.variantIndex}.mp4`]);
     const stored = await R2StorageService.uploadFile({ storageKey: rawStorageKey, buffer, contentType: "video/mp4" });
     const videoStream = probe.streams.find((stream) => stream.codec_type === "video");
     const audioStream = probe.streams.find((stream) => stream.codec_type === "audio");
@@ -101,7 +167,7 @@ export async function startQualityVerification({ seedanceJob, videoUrl, buffer, 
     const rawArtifact = await prisma.generatedArtifact.create({ data: { workspaceId: creation.workspaceId, creationVariantId: variant.id, type: brollAssets.length ? "COMPOSED_VIDEO" : "RAW_PROVIDER_VIDEO", storageKey: rawStorageKey, checksumSha256: stored.checksumSha256, mimeType: "video/mp4", fileSizeBytes: stored.fileSizeBytes, width: videoStream.width, height: videoStream.height, durationMs: Math.round(duration * 1000), frameRate: videoStream.avg_frame_rate ? Number(videoStream.avg_frame_rate.split("/")[0]) / Number(videoStream.avg_frame_rate.split("/")[1] || 1) : null, videoCodec: videoStream.codec_name, audioCodec: audioStream.codec_name, validationStatus: "PENDING", validationMetadata: JSON.stringify({ mediaChecksPassed: true, hybridComposition: brollAssets.map((asset) => asset.id), transcript: "PENDING", visual: "PENDING" }), sourceProviderUrlHost: new URL(videoUrl).hostname } });
     const framePaths = await extractVerificationFrames(candidatePath, tempDirectory, 4);
     const montage = await createVerificationMontage({ assets, framePaths });
-    const montageKey = `verification/${creation.workspaceId}/${creation.id}/variant_${variant.variantIndex}.jpg`;
+    const montageKey = buildStorageKey("verification", [creation.workspaceId, creation.id, `variant_${variant.variantIndex}.jpg`]);
     await R2StorageService.uploadFile({ storageKey: montageKey, buffer: montage.buffer, contentType: "image/jpeg" });
     const [candidateUrl, montageUrl] = await Promise.all([
       R2StorageService.generateSignedUrl({ storageKey: rawStorageKey, expiresInSeconds: 3600 }),
@@ -174,13 +240,32 @@ export async function handleVerificationResult(job, payload) {
     return { terminal: true, quarantined: true };
   }
 
-  const finalStorageKey = `final/${variant.creation.workspaceId}/${variant.creation.id}/variant_${variant.variantIndex}.mp4`;
-  const finalBuffer = await R2StorageService.downloadBuffer(rawArtifact.storageKey);
-  const finalStored = await R2StorageService.uploadFile({ storageKey: finalStorageKey, buffer: finalBuffer, contentType: "video/mp4" });
-  const finalArtifact = await prisma.generatedArtifact.create({ data: { workspaceId: rawArtifact.workspaceId, creationVariantId: variant.id, type: "FINAL_VIDEO", storageKey: finalStorageKey, checksumSha256: finalStored.checksumSha256, mimeType: rawArtifact.mimeType, fileSizeBytes: finalStored.fileSizeBytes, width: rawArtifact.width, height: rawArtifact.height, durationMs: rawArtifact.durationMs, frameRate: rawArtifact.frameRate, videoCodec: rawArtifact.videoCodec, audioCodec: rawArtifact.audioCodec, validationStatus: "VALID", validationMetadata: JSON.stringify(evidence), sourceProviderUrlHost: rawArtifact.sourceProviderUrlHost, validatedAt: new Date() } });
-  await prisma.artifactDeliveryCheck.create({ data: { generatedArtifactId: finalArtifact.id, objectExists: true, metadataValid: true, authorizedRangeGetSucceeded: true, contentTypeValid: true, nonEmpty: true, ffprobeSucceeded: true, durationValid: true, dimensionsValid: true, videoCodecValid: true, audioCodecValid: true, previewSucceeded: true, downloadSucceeded: true, checksumVerified: finalStored.checksumSha256 === rawArtifact.checksumSha256, evidence: JSON.stringify({ qualityEvidence: evidence }) } });
-  await prisma.generatedArtifact.update({ where: { id: rawArtifact.id }, data: { validationStatus: "VALID", validationMetadata: JSON.stringify(evidence), validatedAt: new Date() } });
-  await CreditEscrowService.settleVerifiedVariant(variant.id, true);
-  await prisma.creationVariant.update({ where: { id: variant.id }, data: { status: "COMPLETED", currentStage: "delivery", completedAt: new Date(), finalArtifactId: finalArtifact.id, progressValue: 100 } });
+  const finalizationOwner = await claimFinalization(variant.id);
+  if (!finalizationOwner) return { terminal: false, finalization: "IN_PROGRESS" };
+  try {
+    const finalArtifact = await finalizeDeliverable({ variant, rawArtifact, evidence, ownerId: finalizationOwner });
+    if (!finalArtifact) return { terminal: false, finalization: "LEASE_LOST" };
+  } catch (error) {
+    // Do not strand a result in PROCESSING or make a temporary object-store/DB
+    // error terminal. Reconciliation can re-enter finalization after the lease.
+    await prisma.creationVariant.updateMany({ where: finalizationOwnerWhere(variant.id, finalizationOwner), data: { status: "PROCESSING", currentStage: "delivery_retry", errorCode: "FINALIZATION_RETRYABLE", safeError: "Final delivery is being recovered", finalizationLeaseId: null, finalizationClaimedAt: null, finalizationLeaseExpiresAt: null } });
+    throw error;
+  }
   return { terminal: true, completed: true };
+}
+
+// Reconciliation entry point for a process that died after verification but
+// before final delivery/settlement.  Provider output is never requested again;
+// this reuses the persisted verification evidence and deterministic R2 keys.
+export async function replayFinalization(creationVariantId) {
+  const jobs = await prisma.providerJob.findMany({
+    where: { creationVariantId, internalModelId: { in: ["muapi.openai-whisper", "muapi.gemini-2.5-flash-verifier"] }, status: "SUCCEEDED" },
+    orderBy: { createdAt: "asc" },
+  });
+  if (jobs.length !== 2) return { replayed: false, reason: "VERIFICATION_NOT_COMPLETE" };
+  const source = jobs[0];
+  let payload;
+  try { payload = JSON.parse(source.sanitizedResultPayload || "{}"); } catch { return { replayed: false, reason: "VERIFICATION_RESULT_UNAVAILABLE" }; }
+  const result = await handleVerificationResult(source, payload);
+  return { replayed: true, ...result };
 }

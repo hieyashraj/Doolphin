@@ -7,7 +7,7 @@ export const GENERATION_MODELS = Object.freeze({
     endpoint: "https://api.muapi.ai/api/v1/seedance-2-omni-reference-no-video-fast",
     adapterVersion: "2.0.0",
     capabilityRevision: "2026-08-08",
-    pricingRevision: "2026-08-08",
+    pricingRevision: "2026-08-13-launch-safety-v1",
     resolutions: ["720p"],
     aspectRatios: ["9:16", "16:9", "3:4", "4:3"],
     minDuration: 4,
@@ -16,9 +16,6 @@ export const GENERATION_MODELS = Object.freeze({
     maxAudioReferences: 3,
     supportsNativeAudio: true,
     supportsVideoReferences: false,
-    flatGenerationCredits: 75,
-    analysisCreditsPerAsset: 1,
-    verificationCreditsPerVariant: 2,
   }),
 });
 

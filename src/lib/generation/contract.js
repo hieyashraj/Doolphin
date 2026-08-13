@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import { z } from "zod";
 import { getGenerationModel } from "./modelRegistry.js";
+import { calculateAuthoritativeGenerationQuote } from "./modelCostRegistry.js";
 
 export const STUDIO_TYPES = ["VIDEO_STUDIO", "PRODUCT_STUDIO", "APP_STUDIO"];
 export const DELIVERY_TYPES = ["AVATAR_DIALOGUE", "VOICEOVER", "MIXED"];
@@ -233,22 +234,5 @@ export function fingerprintGenerationRequest(request) {
 }
 
 export function calculateGenerationQuote(request, model) {
-  const analysisAssets = request.assets.filter((asset) => !["ACTOR_REFERENCE", "APP_SCREEN_RECORDING"].includes(asset.role));
-  const uniqueAnalysisAssets = new Set(analysisAssets.map((asset) => asset.checksumSha256 || asset.assetId)).size;
-  const analysisCredits = uniqueAnalysisAssets * model.analysisCreditsPerAsset;
-  const analysisCreditsAlreadyPaid = analysisAssets.reduce((sum, asset) => sum + Number(asset.analysis?._billing?.creditsCharged || 0), 0);
-  const analysisCreditsToReserve = Math.max(0, analysisCredits - analysisCreditsAlreadyPaid);
-  const perVariantGenerationCredits = model.flatGenerationCredits;
-  const generationCredits = perVariantGenerationCredits * request.settings.outputCount;
-  const verificationCredits = model.verificationCreditsPerVariant * request.settings.outputCount;
-  return {
-    analysisCredits,
-    analysisCreditsAlreadyPaid,
-    analysisCreditsToReserve,
-    generationCredits,
-    verificationCredits,
-    totalCredits: analysisCreditsToReserve + generationCredits + verificationCredits,
-    totalProjectCredits: analysisCreditsAlreadyPaid + analysisCreditsToReserve + generationCredits + verificationCredits,
-    perVariantGenerationCredits,
-  };
+  return calculateAuthoritativeGenerationQuote(request, model);
 }
