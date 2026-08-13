@@ -253,24 +253,10 @@ function SidebarContent() {
               <button
                 onClick={() => setIsSettingsModalOpen(true)}
                 title="Settings"
-                className="relative flex min-h-10 w-full items-center justify-center gap-2 rounded-full border border-[#111111] bg-white px-3 text-sm font-semibold text-[#111111] shadow-sm transition-all hover:bg-[#F2EFE5]"
+                className="flex min-h-10 w-full items-center justify-center gap-2 rounded-full border border-[#111111] bg-white px-3 text-sm font-semibold text-[#111111] shadow-sm transition-all hover:bg-[#F2EFE5]"
               >
                 <FiSettings size={18} className="text-[#44423D] hover:text-[#111111]" />
                 <span>Settings</span>
-                {isApiKeyActive ? (
-                  <span 
-                    title="API Keys Configured"
-                    className="absolute -top-0.5 -right-0.5 w-3 h-3 bg-[#064E3B] rounded-full border-2 border-[#111111] shadow-sm"
-                  />
-                ) : (
-                  <span 
-                    title="API Keys Missing"
-                    className="absolute -top-0.5 -right-0.5 flex h-3 w-3"
-                  >
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#B91C1C] opacity-75" />
-                    <span className="relative inline-flex rounded-full h-3 w-3 bg-[#B91C1C] border-2 border-[#111111]" />
-                  </span>
-                )}
               </button>
               <button onClick={handleSignOut} disabled={signingOut} title="Sign out" aria-busy={signingOut} className="flex min-h-10 w-full items-center justify-center gap-2 rounded-full border border-[#111111] bg-white px-3 text-sm font-semibold text-[#111111] shadow-sm transition-all hover:bg-[#F2EFE5] disabled:cursor-not-allowed disabled:opacity-60"><FiLogOut size={18} /><span>{signingOut ? "Signing out…" : "Sign out"}</span></button>
             </div>
@@ -279,12 +265,9 @@ function SidebarContent() {
               <button
                 onClick={() => setIsSettingsModalOpen(true)}
                 title="Settings"
-                className="w-11 h-11 rounded-full flex items-center justify-center text-[#44423D] hover:text-[#111111] hover:bg-[#EFECE1] transition-all cursor-pointer relative bg-white border border-[#111111]"
+                className="w-11 h-11 rounded-full flex items-center justify-center text-[#44423D] hover:text-[#111111] hover:bg-[#EFECE1] transition-all cursor-pointer bg-white border border-[#111111]"
               >
                 <FiSettings size={20} />
-                {isApiKeyActive && (
-                  <span className="absolute top-0 right-0 w-3 h-3 bg-[#064E3B] rounded-full border-2 border-[#111111] shadow-sm" />
-                )}
               </button>
               <button onClick={handleSignOut} disabled={signingOut} title={signingOut ? "Signing out…" : "Sign out"} aria-busy={signingOut} className="w-11 h-11 rounded-full flex items-center justify-center text-[#111111] hover:bg-[#EFECE1] transition-all cursor-pointer relative bg-white border border-[#111111] disabled:cursor-not-allowed disabled:opacity-60"><FiLogOut size={20} /><span className="sr-only">{signingOut ? "Signing out…" : "Sign out"}</span></button>
             </div>

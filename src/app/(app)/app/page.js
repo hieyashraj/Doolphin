@@ -368,44 +368,7 @@ function HomeContent() {
         }} 
       />
 
-      {/* FLOATING TOP HEADER FOR NON-STUDIO TABS */}
-      {currentTab !== "video" && (
-        <header className="absolute right-3 top-3 z-30 max-w-[calc(100%-1.5rem)] pointer-events-auto sm:right-6 sm:top-4">
-          <div className="flex max-w-full flex-wrap justify-end gap-2">
-            <button
-              onClick={() => setIsPricingModalOpen(true)}
-              className="bg-[#E6D9FF] hover:bg-[#DBCBFF] text-[#111111] border border-[#111111] font-semibold text-sm px-4.5 py-2.5 rounded-full flex items-center gap-2 shadow-sm transition-all active:scale-95 cursor-pointer"
-            >
-              <FiZap size={15} />
-              <span>Upgrade</span>
-              <span className="hidden bg-[#064E3B] text-white text-xs font-bold px-2 py-0.5 rounded-full sm:inline-block">
-                30% OFF
-              </span>
-            </button>
 
-            <div className="bg-white border border-[#111111]/15 px-4 py-2.5 rounded-full flex items-center gap-2 text-sm font-semibold text-[#111111] shadow-sm">
-              <span className="text-[#111111]">💎</span>
-              <span>{account?.credits ?? "—"} credits</span>
-            </div>
-
-            <button
-              onClick={() => navigateToTab("explore")}
-              className="bg-white hover:bg-[#F2EFE5] border border-[#111111]/15 text-[#55534E] hover:text-[#111111] font-semibold text-sm px-4.5 py-2.5 rounded-full flex items-center gap-2 transition-colors cursor-pointer shadow-sm"
-            >
-              <span>🌐</span>
-              <span className="hidden sm:inline">Community</span>
-            </button>
-
-            <button
-              onClick={() => navigateToTab("library")}
-              className="bg-white hover:bg-[#F2EFE5] border border-[#111111]/15 text-[#55534E] hover:text-[#111111] font-semibold text-sm px-4.5 py-2.5 rounded-full flex items-center gap-2 transition-colors cursor-pointer shadow-sm"
-            >
-              <span>📜</span>
-              <span className="hidden sm:inline">My Library</span>
-            </button>
-          </div>
-        </header>
-      )}
 
       {/* MAIN CONTENT VIEWS */}
       <div className="flex-1 flex overflow-hidden min-h-0 relative z-10">

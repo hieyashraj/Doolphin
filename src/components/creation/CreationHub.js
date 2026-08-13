@@ -1015,40 +1015,7 @@ export default function CreationHub({
 
       {/* RIGHT MAIN CONTENT VIEW */}
       <main className="min-h-0 flex-1 overflow-y-auto bg-[#FAF8ED] p-4 scrollbar-subtle md:h-full md:p-6 space-y-5">
-        {/* Top Header Bar */}
-        <div className="flex items-center justify-end gap-2.5 mb-2">
-          <button
-            onClick={() => onOpenPricing?.()}
-            className="bg-[#E6D9FF] hover:bg-[#DBCBFF] text-[#111111] font-semibold text-xs px-4 py-2 rounded-full border border-[#111111] flex items-center gap-1.5 shadow-sm transition-all active:scale-95 cursor-pointer"
-          >
-            <FiZap size={13} />
-            <span>Upgrade</span>
-            <span className="bg-[#064E3B] text-white text-[9px] font-extrabold px-1.5 py-0.5 rounded-full">
-              30% OFF
-            </span>
-          </button>
 
-          <div className="bg-white border border-[#111111]/15 px-3.5 py-2 rounded-full flex items-center gap-1.5 text-xs font-semibold text-[#111111] shadow-sm">
-            <span>💎</span>
-            <span>{displayedCredits !== undefined ? displayedCredits : "—"} credits</span>
-          </div>
-
-          <button
-            onClick={() => onNavigateTab?.("explore")}
-            className="bg-white hover:bg-[#F2EFE5] border border-[#111111]/15 text-[#55534E] hover:text-[#111111] font-semibold text-xs px-4 py-2 rounded-full flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm"
-          >
-            <span>🌐</span>
-            <span>Community</span>
-          </button>
-
-          <button
-            onClick={() => onNavigateTab?.("library")}
-            className="bg-white hover:bg-[#F2EFE5] border border-[#111111]/15 text-[#55534E] hover:text-[#111111] font-semibold text-xs px-4 py-2 rounded-full flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm"
-          >
-            <span>📜</span>
-            <span>History</span>
-          </button>
-        </div>
 
         {/* 4-COLUMN CREATIONS HISTORY GRID */}
         {isLoadingCreations ? (
