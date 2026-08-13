@@ -164,7 +164,7 @@ function SidebarContent() {
       router.push(getAppDestinationHref(destination.id));
       return;
     }
-    navigateToAppDestination(destination.id);
+    navigateToAppDestination(destination.id, { router });
   };
 
   return (

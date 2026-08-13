@@ -70,32 +70,54 @@ export function getActiveAppDestination({ pathname = "/app", tab, studio } = {})
   return destinationByTab.get(currentTab)?.id || "explore";
 }
 
-// Tab and studio selection are local /app view state. Using the browser
-// history API keeps shareable URLs and Back/Forward while avoiding an App
-// Router RSC navigation that would re-run protected server layout work.
-export function navigateAppView({ tab = "explore", studio, replace = false } = {}) {
-  const url = new URL(window.location.href);
-  url.pathname = "/app";
-  url.search = "";
-  url.searchParams.set("tab", tab);
-  if (studio) url.searchParams.set("studio", studio);
-  window.history[replace ? "replaceState" : "pushState"](null, "", url);
-  // Next synchronizes useSearchParams with native history updates. The event
-  // also makes this work consistently in browsers where the update is async.
-  window.dispatchEvent(new PopStateEvent("popstate"));
+export function navigateAppView({ tab = "explore", studio, avatarId, router, replace = false } = {}) {
+  if (router && typeof router.push === "function") {
+    const params = new URLSearchParams({ tab });
+    if (studio) params.set("studio", studio);
+    if (avatarId) params.set("avatarId", avatarId);
+    const href = `/app?${params.toString()}`;
+    if (replace) {
+      router.replace(href, { scroll: false });
+    } else {
+      router.push(href, { scroll: false });
+    }
+    return;
+  }
+
+  if (typeof window !== "undefined") {
+    const url = new URL(window.location.href);
+    url.pathname = "/app";
+    url.search = "";
+    url.searchParams.set("tab", tab);
+    if (studio) url.searchParams.set("studio", studio);
+    if (avatarId) url.searchParams.set("avatarId", avatarId);
+    window.history[replace ? "replaceState" : "pushState"](null, "", url);
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  }
 }
 
-export function navigateToAppDestination(id, { replace = false } = {}) {
+export function navigateToAppDestination(id, { router, avatarId, replace = false } = {}) {
   const destination = getAppDestination(id);
   if (!destination) {
-    navigateAppView({ tab: "explore", replace });
+    navigateAppView({ tab: "explore", router, avatarId, replace });
     return false;
   }
 
   if (destination.type === "view") {
-    navigateAppView({ tab: destination.tab, studio: destination.studio, replace });
+    navigateAppView({ tab: destination.tab, studio: destination.studio, avatarId, router, replace });
+    return true;
+  }
+
+  if (destination.type === "route" && router && typeof router.push === "function") {
+    if (replace) {
+      router.replace(destination.href);
+    } else {
+      router.push(destination.href);
+    }
     return true;
   }
 
   return false;
 }
+
+
