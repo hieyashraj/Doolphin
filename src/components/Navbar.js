@@ -175,6 +175,12 @@ function SidebarContent() {
       action: () => router.push("/app/images")
     },
     {
+      id: "my-images",
+      name: "My Images",
+      icon: FiImage,
+      action: () => router.push("/app/images/library")
+    },
+    {
       id: "avatars",
       name: "Avatars",
       icon: FiUser,
@@ -243,7 +249,7 @@ function SidebarContent() {
           {/* Navigation Items (Wispr Flow Capsule Tabs with text-sm & text-base font-semibold typography scale) */}
           <nav className="flex flex-col gap-2 w-full">
             {mainNavItems.map((item) => {
-              const isActive = currentTab === item.id || (item.id === "images" && pathname === "/app/images");
+              const isActive = currentTab === item.id || (item.id === "images" && pathname === "/app/images") || (item.id === "my-images" && pathname === "/app/images/library");
               const Icon = item.icon;
               
               return (

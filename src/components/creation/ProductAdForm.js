@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { FiUser, FiPlus, FiChevronDown, FiHelpCircle, FiSmartphone } from "react-icons/fi";
 import AssetLibraryPicker from "./AssetLibraryPicker";
+import StudioModelPicker from "@/components/studio/StudioModelPicker";
 
 export default function ProductAdForm({
   productImages = [],
@@ -41,7 +42,7 @@ export default function ProductAdForm({
             Upload your product <span className="text-red-500">*</span>
           </label>
           <FiHelpCircle size={14} className="text-[#77746D]" title="Upload a photo of your physical product" />
-          {onChooseLibraryProduct && <AssetLibraryPicker label="Library" accept={["image/"]} onSelect={onChooseLibraryProduct} selectedAssetIds={productImages.map((asset) => asset.assetId || asset.id)} />}
+          {onChooseLibraryProduct && <AssetLibraryPicker label="My Assets" accept={["image/"]} onSelect={onChooseLibraryProduct} selectedAssetIds={productImages.map((asset) => asset.assetId || asset.id)} />}
         </div>
         <div className="flex items-center gap-3">
           {productImages.map((productImage) => (
@@ -140,7 +141,7 @@ export default function ProductAdForm({
         <div className="flex items-center gap-1.5">
           <label className="block text-base font-semibold text-[#111111]">Additional references</label>
           <FiHelpCircle size={14} className="text-[#77746D]" title="Optional reference imagery" />
-          {onChooseLibraryReference && <AssetLibraryPicker label="Library" accept={["image/"]} onSelect={onChooseLibraryReference} selectedAssetIds={(uploadedImages || []).map((asset) => asset.assetId || asset.id)} />}
+          {onChooseLibraryReference && <AssetLibraryPicker label="My Assets" accept={["image/"]} onSelect={onChooseLibraryReference} selectedAssetIds={(uploadedImages || []).map((asset) => asset.assetId || asset.id)} />}
         </div>
         <div className="flex flex-wrap gap-2">
           {uploadedImages?.filter(i => !productImages.some((product) => (product.id || product.assetId) === (i.id || i.assetId))).map((img) => (
@@ -165,16 +166,7 @@ export default function ProductAdForm({
       {/* Duration */}
       <div className="space-y-1.5">
         <label className="block text-base font-semibold text-[#111111]">AI Model</label>
-        <div className="relative flex items-center">
-          <select
-            value={selectedModel?.id || ""}
-            onChange={(event) => setSelectedModel(modelsList.find((model) => model.id === event.target.value))}
-            className="w-full bg-[#F2EFE5] px-3.5 py-3 pr-10 text-sm font-medium border border-[#111111]/15 appearance-none rounded-xl focus:outline-none focus:ring-2 focus:ring-[#111111]"
-          >
-            {modelsList.map((model) => <option key={model.id} value={model.id}>{model.name}</option>)}
-          </select>
-          <FiChevronDown className="absolute right-3.5 text-[#77746D] pointer-events-none" size={16} />
-        </div>
+        <StudioModelPicker models={modelsList} value={selectedModel?.id} onChange={setSelectedModel} />
       </div>
 
       {/* Duration */}

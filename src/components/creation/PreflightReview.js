@@ -16,6 +16,7 @@ export default function PreflightReview({
   quote,
   selectedModel,
   creditCost,
+  insufficientCredits = false,
   isSubmitting = false,
   submitError = null,
   onConfirm,
@@ -76,18 +77,19 @@ export default function PreflightReview({
           <section>
             <h4 className="text-sm font-bold mb-2">Credit quote</h4>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              <ReviewValue label="Asset analysis (paid)" value={`${costs.analysisCreditsAlreadyPaid || 0} credits`} />
-              <ReviewValue label="Video generation" value={`${costs.generationCredits || 0} credits`} />
-              <ReviewValue label="Verification" value={`${costs.verificationCredits || 0} credits`} />
+              <ReviewValue label="Fully-loaded cost" value={costs.fullyLoadedCostMicroUsd ? `$${(Number(costs.fullyLoadedCostMicroUsd) / 1_000_000).toFixed(2)}` : "Server priced"} />
+              <ReviewValue label="Raw required credits" value={costs.rawRequiredCredits ? `${costs.rawRequiredCredits} credits` : "—"} />
+              <ReviewValue label="Pricing revision" value={costs.pricingRevisionId || "—"} />
               <ReviewValue label="Total reserved" value={`${creditCost || 0} credits`} strong />
             </div>
-            <p className="text-xs text-[#66635D] mt-2">Failed or quarantined variants release their video-generation reservation. Analysis and verification follow this displayed quote.</p>
+            <p className="text-xs text-[#66635D] mt-2">This amount is calculated by Doolphin’s server. No provider request or credit reservation has happened yet.</p>
+            {insufficientCredits && <p className="text-xs font-semibold text-red-700 mt-2">You do not have enough available credits for this generation.</p>}
           </section>
         </div>
 
         <div className="p-6 border-t border-[#111111]/10 bg-[#FAF8ED] flex justify-end gap-3">
           <button onClick={onCancel} disabled={isSubmitting} className="px-5 py-2.5 rounded-full text-sm font-semibold border border-[#111111]/20 hover:bg-white disabled:opacity-50">Edit request</button>
-          <button onClick={onConfirm} disabled={isSubmitting} className="px-5 py-2.5 rounded-full text-sm font-semibold bg-[#E6D9FF] border border-[#111111] hover:bg-[#DBCBFF] disabled:opacity-50">
+          <button onClick={onConfirm} disabled={isSubmitting || insufficientCredits} className="px-5 py-2.5 rounded-full text-sm font-semibold bg-[#E6D9FF] border border-[#111111] hover:bg-[#DBCBFF] disabled:opacity-50">
             {isSubmitting ? "Reserving & submitting…" : `Approve & reserve ${creditCost || 0} credits`}
           </button>
         </div>

@@ -395,7 +395,6 @@ export default function CreationHub({
       switchStudio(studioMode);
     }
   // switchStudio intentionally reads the current draft snapshot.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [studioMode]);
 
   const fetchCreations = async () => {
@@ -516,12 +515,6 @@ export default function CreationHub({
         const completeResponse = await fetch("/api/uploads/complete", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ assetId: presign.assetId }) });
         data = await completeResponse.json();
         if (!completeResponse.ok) throw new Error(data.error || `Could not verify ${file.name}`);
-      } else {
-        const body = new FormData();
-        body.append("file", file);
-        const response = await fetch("/api/upload", { method: "POST", body });
-        data = await response.json();
-        if (!response.ok) throw new Error(data.error || `Could not upload ${file.name}`);
       }
       const roleData = roleFactory(file, index, data.asset);
       uploaded.push({
@@ -626,6 +619,9 @@ export default function CreationHub({
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState(null);
+  const [preparedQuote, setPreparedQuote] = useState(null);
+  const [preparedQuoteRequest, setPreparedQuoteRequest] = useState(null);
+  const [quoteUnavailableRequest, setQuoteUnavailableRequest] = useState(null);
 
   const buildCanonicalRequest = () => {
     const avatarUrl = draftAvatar?.imageUrl || draftAvatar?.image || draftAvatar?.avatar_url;
@@ -665,6 +661,15 @@ export default function CreationHub({
     };
   };
 
+  // The browser only knows whether its draft still matches a server quote. It
+  // never calculates a price. Any material composer edit requires a new quote.
+  const canonicalRequest = buildCanonicalRequest();
+  const canonicalRequestKey = JSON.stringify(canonicalRequest);
+  const quoteIsCurrent = Boolean(preparedQuote && preparedQuoteRequest === canonicalRequestKey);
+  const quoteUnavailable = quoteUnavailableRequest === canonicalRequestKey;
+  const quotedCredits = quoteIsCurrent ? Number(preparedQuote.quote?.costs?.totalCredits) : null;
+  const hasInsufficientQuotedCredits = quotedCredits !== null && Number(displayedCredits ?? 0) < quotedCredits;
+
   const submitGeneration = async (quote, idempotencyKey) => {
     try {
       const response = await fetch("/api/generations", {
@@ -690,14 +695,49 @@ export default function CreationHub({
       const res = await fetch("/api/preflight", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(buildCanonicalRequest())
+        body: canonicalRequestKey
       });
       const data = await res.json();
-      if (!res.ok || !data.success) throw new Error(data.error || "Generation could not be prepared");
+      if (!res.ok || !data.success) {
+        if (data.code === "GENERATION_CONFIGURATION_UNPRICED") setQuoteUnavailableRequest(canonicalRequestKey);
+        throw new Error(data.error || "Generation could not be prepared");
+      }
+      setPreparedQuote(data);
+      setPreparedQuoteRequest(canonicalRequestKey);
+      setQuoteUnavailableRequest(null);
+    } catch (error) {
+      setSubmitError(error.message || "Generation submission failed");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
-      // The preflight quote is persisted server-side for billing, audit, and
-      // replay safety. It is an implementation detail, not a user decision.
-      await submitGeneration(data.quote, crypto.randomUUID());
+  // Quotes are an implementation detail, not a separate customer action. A
+  // short debounce prevents typing from issuing a request per keystroke while
+  // still keeping the cost in the primary action current.
+  useEffect(() => {
+    const hasRequiredMedia = activeModeId === "video_maker" || (activeModeId === "product" ? productImages.length > 0 : appImages.length > 0);
+    if (!spokenScript.trim() || !hasRequiredMedia || isSubmitting || quoteIsCurrent || quoteUnavailable) return undefined;
+    const timeout = window.setTimeout(() => { void handlePreflight(); }, 600);
+    return () => window.clearTimeout(timeout);
+  // canonicalRequestKey is deliberately the invalidation boundary.
+  }, [canonicalRequestKey, activeModeId, spokenScript, productImages.length, appImages.length]);
+
+  const confirmPreparedQuote = async () => {
+    if (!quoteIsCurrent || !preparedQuote?.quote) {
+      setSubmitError("Your quote is no longer current. Get a new quote before generating.");
+      return;
+    }
+    if (hasInsufficientQuotedCredits) {
+      setSubmitError("You do not have enough available credits for this generation.");
+      return;
+    }
+    setIsSubmitting(true);
+    setSubmitError(null);
+    try {
+      await submitGeneration(preparedQuote.quote, crypto.randomUUID());
+      setPreparedQuote(null);
+      setPreparedQuoteRequest(null);
     } catch (error) {
       setSubmitError(error.message || "Generation submission failed");
     } finally {
@@ -986,18 +1026,34 @@ export default function CreationHub({
           )}
           <button
             type="button"
-            disabled={isSubmitting}
-            onClick={handlePreflight}
+            disabled={isSubmitting || quoteUnavailable}
+            onClick={quoteIsCurrent ? confirmPreparedQuote : handlePreflight}
             className="studio-generate-button w-full py-3.5 px-6 bg-[#E6D9FF] hover:bg-[#DBCBFF] hover:scale-[1.01] text-[#111111] rounded-full font-semibold text-sm border-[1.5px] border-[#111111] shadow-sm transition-all active:scale-[0.98] flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
           >
             <FiZap size={16} />
-            <span>{isSubmitting ? "Starting generation..." : "Generate Video"}</span>
+            <span>{isSubmitting
+              ? "Calculating…"
+              : quoteIsCurrent
+                ? `Generate Video · ${quotedCredits} credits`
+                : quoteUnavailable
+                  ? "Unavailable"
+                : preparedQuote
+                  ? "Calculating…"
+                  : "Generate"}</span>
           </button>
+          {!quoteIsCurrent && preparedQuote && <p className="text-xs text-center text-[#77746D] font-medium">Updating your generation cost…</p>}
+          {quoteIsCurrent && hasInsufficientQuotedCredits && (
+            <p className="text-xs text-center text-red-700 font-medium">Insufficient credits: {displayedCredits ?? 0} available, {quotedCredits} required.</p>
+          )}
+          {quoteUnavailable && (
+            <p className="text-xs text-center text-amber-700 font-medium">This configuration is unavailable until Doolphin has an approved provider cost. No credits were reserved.</p>
+          )}
           <p className="text-xs text-center text-[#77746D] font-medium">
             Typical run takes ~3 min
           </p>
         </div>
       </aside>
+
 
       {/* RIGHT MAIN CONTENT VIEW */}
       <main className="flex-1 h-full overflow-y-auto p-4 md:p-6 bg-[#FAF8ED] scrollbar-subtle space-y-5">

@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { FiUser, FiMusic, FiPlus, FiChevronDown, FiHelpCircle } from "react-icons/fi";
+import { FiUser, FiMusic, FiPlus, FiHelpCircle } from "react-icons/fi";
 import AssetLibraryPicker from "./AssetLibraryPicker";
+import StudioModelPicker from "@/components/studio/StudioModelPicker";
 
 export default function VideoMakerForm({
   sceneMotion,
@@ -83,23 +84,7 @@ export default function VideoMakerForm({
       {/* AI Model */}
       <div className="space-y-1.5">
         <label className="block text-base font-semibold text-[#111111]">AI model</label>
-        <div className="relative flex items-center">
-          <select
-            value={selectedModel?.id || "seedance-2"}
-            onChange={(e) => {
-              const m = modelsList.find((item) => item.id === e.target.value);
-              if (m) setSelectedModel(m);
-            }}
-            className="w-full bg-[#F2EFE5] focus:bg-white px-3.5 py-3 pr-10 text-sm font-medium text-[#111111] border border-[#111111]/15 appearance-none focus:border-[#111111] focus:outline-none focus:ring-2 focus:ring-[#111111] caret-[#111111] cursor-pointer rounded-xl transition-all"
-          >
-            {modelsList.map((m) => (
-              <option key={m.id} value={m.id} className="bg-white text-[#111111] text-sm font-medium">
-                {m.name}
-              </option>
-            ))}
-          </select>
-          <FiChevronDown className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[#77746D] pointer-events-none" size={16} />
-        </div>
+        <StudioModelPicker models={modelsList} value={selectedModel?.id} onChange={setSelectedModel} />
       </div>
 
       {/* Duration */}
@@ -206,7 +191,7 @@ export default function VideoMakerForm({
         <div className="flex items-center gap-1.5">
           <label className="block text-base font-semibold text-[#111111]">References</label>
           <FiHelpCircle size={14} className="text-[#77746D]" title="Optional reference images" />
-          {onChooseLibraryReference && <AssetLibraryPicker label="Library" accept={["image/"]} onSelect={onChooseLibraryReference} selectedAssetIds={(uploadedImages || []).map((asset) => asset.assetId || asset.id)} />}
+          {onChooseLibraryReference && <AssetLibraryPicker label="My Assets" accept={["image/"]} onSelect={onChooseLibraryReference} selectedAssetIds={(uploadedImages || []).map((asset) => asset.assetId || asset.id)} />}
         </div>
         <div className="flex flex-wrap gap-2">
           {uploadedImages?.map((img) => (

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { FiUser, FiPlus, FiChevronDown, FiHelpCircle, FiSmartphone } from "react-icons/fi";
 import AssetLibraryPicker from "./AssetLibraryPicker";
 import LazyVideo from "@/components/LazyVideo";
+import StudioModelPicker from "@/components/studio/StudioModelPicker";
 
 export default function AppStudioForm({
   appImages = [],
@@ -40,7 +41,7 @@ export default function AppStudioForm({
             Upload your app <span className="text-red-500">*</span>
           </label>
           <FiHelpCircle size={14} className="text-[#77746D]" title="Upload a screenshot of your app interface" />
-          {onChooseLibraryApp && <AssetLibraryPicker label="Library" accept={["image/", "video/"]} onSelect={onChooseLibraryApp} selectedAssetIds={appImages.map((asset) => asset.assetId || asset.id)} />}
+          {onChooseLibraryApp && <AssetLibraryPicker label="My Assets" accept={["image/", "video/"]} onSelect={onChooseLibraryApp} selectedAssetIds={appImages.map((asset) => asset.assetId || asset.id)} />}
         </div>
         <div className="flex items-center gap-3">
           {appImages.map((appImage) => (
@@ -136,7 +137,7 @@ export default function AppStudioForm({
         <div className="flex items-center gap-1.5">
           <label className="block text-base font-semibold text-[#111111]">References</label>
           <FiHelpCircle size={14} className="text-[#77746D]" title="Optional reference images" />
-          {onChooseLibraryReference && <AssetLibraryPicker label="Library" accept={["image/"]} onSelect={onChooseLibraryReference} selectedAssetIds={(uploadedImages || []).map((asset) => asset.assetId || asset.id)} />}
+          {onChooseLibraryReference && <AssetLibraryPicker label="My Assets" accept={["image/"]} onSelect={onChooseLibraryReference} selectedAssetIds={(uploadedImages || []).map((asset) => asset.assetId || asset.id)} />}
         </div>
         <div className="flex flex-wrap gap-2">
           {uploadedImages?.filter(i => !appImages.some((app) => (app.id || app.assetId) === (i.id || i.assetId))).map((img) => (
@@ -160,16 +161,7 @@ export default function AppStudioForm({
 
       <div className="space-y-1.5">
         <label className="block text-base font-semibold text-[#111111]">AI Model</label>
-        <div className="relative flex items-center">
-          <select
-            value={selectedModel?.id || ""}
-            onChange={(event) => setSelectedModel(modelsList.find((model) => model.id === event.target.value))}
-            className="w-full bg-[#F2EFE5] px-3.5 py-3 pr-10 text-sm font-medium border border-[#111111]/15 appearance-none rounded-xl focus:outline-none focus:ring-2 focus:ring-[#111111]"
-          >
-            {modelsList.map((model) => <option key={model.id} value={model.id}>{model.name}</option>)}
-          </select>
-          <FiChevronDown className="absolute right-3.5 text-[#77746D] pointer-events-none" size={16} />
-        </div>
+        <StudioModelPicker models={modelsList} value={selectedModel?.id} onChange={setSelectedModel} />
       </div>
 
       {/* Duration */}
