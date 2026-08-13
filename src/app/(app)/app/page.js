@@ -34,6 +34,7 @@ import CreationHub from "@/components/creation/CreationHub";
 import LazyVideo from "@/components/LazyVideo";
 import { useAppAccount } from "@/components/AppAccountProvider";
 import { navigateAppView } from "@/lib/app/app-navigation";
+import { resolvePlatformAvatar } from "@/lib/generation/avatarRegistry";
 import { PLAN_BY_CODE, PURCHASE_PLAN_CODES } from "@/lib/entitlements/plan-catalog";
 
 const MODELS = [
@@ -211,13 +212,25 @@ function HomeContent() {
   
   const currentTab = searchParams.get("tab") || "explore";
   const currentStudio = searchParams.get("studio") || "video_maker";
-  const navigateToTab = (tab, studio) => {
-    navigateAppView({ tab, studio });
+  const avatarIdParam = searchParams.get("avatarId");
+  const navigateToTab = (tab, studio, avatarId) => {
+    navigateAppView({ tab, studio, avatarId, router });
   };
   
   const [selectedModel, setSelectedModel] = useState(MODELS[0]);
   const [selectedPreset, setSelectedPreset] = useState(null);
   const [selectedAvatar, setSelectedAvatar] = useState(null);
+
+  useEffect(() => {
+    if (avatarIdParam) {
+      const valid = resolvePlatformAvatar(avatarIdParam);
+      if (valid) {
+        setSelectedAvatar({ id: valid.id, name: valid.name, image: valid.url });
+      } else {
+        setSelectedAvatar(null);
+      }
+    }
+  }, [avatarIdParam]);
   
   const [modelSettings, setModelSettings] = useState({});
   const [isGenerating, setIsGenerating] = useState(false);
@@ -518,7 +531,7 @@ function HomeContent() {
                   key={avatar.id}
                   onClick={() => {
                     handleSelectAvatar(avatar);
-                    navigateToTab("video", "video_maker");
+                    navigateToTab("video", "video_maker", avatar.id);
                   }}
                   className="bg-white aspect-[3/4] overflow-hidden cursor-pointer relative group flex flex-col justify-between p-3 rounded-2xl md:rounded-3xl border border-[#111111]/15 shadow-sm hover:border-[#111111]/30 hover:shadow-md transition-all duration-200 active:scale-[0.98]"
                 >
