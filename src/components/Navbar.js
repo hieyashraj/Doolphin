@@ -13,7 +13,6 @@ import {
   FiTrash2,
   FiUser,
   FiZap,
-  FiBell,
   FiCreditCard,
   FiCopy,
   FiExternalLink,
@@ -21,12 +20,20 @@ import {
   FiCpu,
   FiImage,
   FiSidebar,
-  FiLogOut
+  FiLogOut,
+  FiBox,
+  FiSmartphone
 } from "react-icons/fi";
 import toast from "react-hot-toast";
 import { createClient } from "@/lib/supabase/browser";
 import { useAppAccount } from "@/components/AppAccountProvider";
-import { navigateAppView } from "@/lib/app/app-navigation";
+import {
+  APP_NAV_DESTINATIONS,
+  getActiveAppDestination,
+  getAppDestinationHref,
+  navigateAppView,
+  navigateToAppDestination
+} from "@/lib/app/app-navigation";
 import { PLAN_BY_CODE } from "@/lib/entitlements/plan-catalog";
 
 function SidebarContent() {
@@ -35,16 +42,31 @@ function SidebarContent() {
   const router = useRouter();
   const pathname = usePathname();
   
-  const currentTab = searchParams.get("tab") || "explore";
+  const activeDestination = getActiveAppDestination({ 
+    pathname, 
+    tab: searchParams.get("tab"),
+    studio: searchParams.get("studio") 
+  });
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [activeSettingsTab, setActiveSettingsTab] = useState("profile");
+  const [isDeleteConfirmationOpen, setIsDeleteConfirmationOpen] = useState(false);
+  const [deleteConfirmation, setDeleteConfirmation] = useState("");
   const [isCollapsedManual, setIsCollapsedManual] = useState(true);
+  const [isMobileViewport, setIsMobileViewport] = useState(false);
 
   useEffect(() => {
     const savedState = localStorage.getItem("doolphin_sidebar_collapsed");
     if (savedState !== null) {
       setIsCollapsedManual(savedState === "true");
     }
+  }, []);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia("(max-width: 639px)");
+    const updateViewport = () => setIsMobileViewport(mediaQuery.matches);
+    updateViewport();
+    mediaQuery.addEventListener("change", updateViewport);
+    return () => mediaQuery.removeEventListener("change", updateViewport);
   }, []);
 
   const toggleSidebar = () => {
@@ -55,41 +77,15 @@ function SidebarContent() {
     });
   };
 
-  const isCollapsed = isCollapsedManual;
+  // The desktop expansion preference is retained, but a wide rail must never
+  // consume most of a phone viewport. The composer can then use the remaining
+  // width without horizontal overflow.
+  const isCollapsed = isCollapsedManual || isMobileViewport;
 
   // User Profile States
   const [profileName, setProfileName] = useState("Doolphin Creator");
   const [profileEmail, setProfileEmail] = useState("");
   useEffect(() => { if (account) { setProfileName(account.name); setProfileEmail(account.email); } }, [account]);
-
-  // Generation alerts are a device preference: browser permission is managed by
-  // the browser itself, while this flag controls Doolphin's in-app/browser alerts.
-  const [completionNotificationsEnabled, setCompletionNotificationsEnabled] = useState(true);
-
-  useEffect(() => {
-    const savedPreference = localStorage.getItem("doolphin_generation_completion_notifications");
-    if (savedPreference !== null) setCompletionNotificationsEnabled(savedPreference === "true");
-  }, []);
-
-  const toggleCompletionNotifications = async () => {
-    const nextEnabled = !completionNotificationsEnabled;
-    setCompletionNotificationsEnabled(nextEnabled);
-    localStorage.setItem("doolphin_generation_completion_notifications", String(nextEnabled));
-
-    if (nextEnabled && "Notification" in window && Notification.permission === "default") {
-      try {
-        const permission = await Notification.requestPermission();
-        if (permission === "denied") {
-          toast("In-app alerts are on. Browser alerts are blocked in your browser settings.", { icon: "ℹ️" });
-          return;
-        }
-      } catch {
-        // In-app alerts remain available even when the browser API is unavailable.
-      }
-    }
-
-    toast.success(nextEnabled ? "Generation alerts enabled" : "Generation alerts disabled");
-  };
 
   const [savingSettings, setSavingSettings] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
@@ -135,18 +131,13 @@ function SidebarContent() {
     }
   };
 
-  const handleDeleteAccount = async () => {
-    if (!window.confirm("Are you sure you want to delete your Doolphin account? All generated media assets and history will be permanently deleted.")) {
-      return;
-    }
-    setSavingSettings(true);
-    try {
-      toast("Account deletion is not available from this settings panel.", { icon: "ℹ️" });
-    } catch (err) {
-      toast.error("Failed to delete account");
-    } finally {
-      setSavingSettings(false);
-    }
+  const handleDeleteAccount = () => {
+    if (deleteConfirmation !== "DELETE") return;
+    // This intentionally has no API call. Permanent deletion needs its own
+    // reviewed backend/data-retention checkpoint before it can be enabled.
+    toast("Account deletion is not available yet. No account data was changed.", { icon: "ℹ️" });
+    setDeleteConfirmation("");
+    setIsDeleteConfirmationOpen(false);
   };
 
   const copyToClipboard = (text, label) => {
@@ -154,55 +145,37 @@ function SidebarContent() {
     toast.success(`${label} copied to clipboard!`);
   };
 
-  // Nav Items
-  const mainNavItems = [
-    {
-      id: "explore",
-      name: "Explore",
-      icon: FiCompass,
-      action: () => navigateAppView({ tab: "explore" })
-    },
-    {
-      id: "video",
-      name: "Video Studio",
-      icon: FiZap,
-      action: () => navigateAppView({ tab: "video", studio: "video_maker" })
-    },
-    {
-      id: "images",
-      name: "Image Studio",
-      icon: FiImage,
-      action: () => router.push("/app/images")
-    },
-    {
-      id: "my-images",
-      name: "My Images",
-      icon: FiImage,
-      action: () => router.push("/app/images/library")
-    },
-    {
-      id: "avatars",
-      name: "Avatars",
-      icon: FiUser,
-      action: () => navigateAppView({ tab: "avatars" })
-    },
-    {
-      id: "library",
-      name: "My Library",
-      icon: FiLayers,
-      action: () => navigateAppView({ tab: "library" })
+  const navIcons = {
+    explore: FiCompass,
+    video: FiZap,
+    product: FiBox,
+    app_studio: FiSmartphone,
+    images: FiImage,
+    avatars: FiUser,
+    library: FiLayers
+  };
+
+  const navigateToDestination = (destination) => {
+    if (destination.type === "route") {
+      router.push(destination.href);
+      return;
     }
-  ];
+    if (pathname !== "/app") {
+      router.push(getAppDestinationHref(destination.id));
+      return;
+    }
+    navigateToAppDestination(destination.id);
+  };
 
   return (
     <>
       {/* Wispr Flow Signature Floating Sidebar Rail */}
       <aside 
-        className={`bg-[#FAF8ED] border border-[#111111] flex flex-col justify-between p-3.5 h-full flex-shrink-0 z-40 select-none rounded-[28px] transition-all duration-300 ease-in-out shadow-sm ${
+        className={`h-full min-h-0 max-h-full overflow-hidden bg-[#FAF8ED] border border-[#111111] flex flex-col justify-between p-3.5 flex-shrink-0 z-40 select-none rounded-[28px] transition-all duration-300 ease-in-out shadow-sm ${
           isCollapsed ? "w-[76px]" : "w-64 shadow-lg"
         }`}
       >
-        <div className="w-full flex flex-col gap-6">
+        <div className="flex min-h-0 w-full flex-1 flex-col gap-6 overflow-y-auto overscroll-contain">
           {/* Logo Mark & Header */}
           {isCollapsed ? (
             <div className="flex flex-col items-center gap-3 pt-1">
@@ -214,7 +187,7 @@ function SidebarContent() {
                 <FiSidebar size={18} className="group-hover:scale-110 transition-transform text-[#111111]" />
               </button>
               <Link 
-                href="/app?tab=explore" onClick={(event) => { event.preventDefault(); navigateAppView({ tab: "explore" }); }}
+                href={getAppDestinationHref("explore")} onClick={(event) => { event.preventDefault(); navigateToAppDestination("explore"); }}
                 className="w-10 h-10 rounded-xl bg-white border border-[#111111]/20 flex items-center justify-center p-1.5 shadow-sm hover:scale-105 transition-transform"
                 title="Doolphin Studio"
               >
@@ -224,7 +197,7 @@ function SidebarContent() {
           ) : (
             <div className="flex items-center justify-between px-2 pt-1">
               <Link 
-                href="/app?tab=explore" onClick={(event) => { event.preventDefault(); navigateAppView({ tab: "explore" }); }}
+                href={getAppDestinationHref("explore")} onClick={(event) => { event.preventDefault(); navigateToAppDestination("explore"); }}
                 className="flex items-center gap-3 group truncate"
               >
                 <div className="w-10 h-10 rounded-xl bg-white border border-[#111111]/20 flex items-center justify-center p-1.5 shadow-sm shrink-0 group-hover:scale-105 transition-transform">
@@ -248,14 +221,14 @@ function SidebarContent() {
 
           {/* Navigation Items (Wispr Flow Capsule Tabs with text-sm & text-base font-semibold typography scale) */}
           <nav className="flex flex-col gap-2 w-full">
-            {mainNavItems.map((item) => {
-              const isActive = currentTab === item.id || (item.id === "images" && pathname === "/app/images") || (item.id === "my-images" && pathname === "/app/images/library");
-              const Icon = item.icon;
+            {APP_NAV_DESTINATIONS.map((item) => {
+              const isActive = activeDestination === item.id;
+              const Icon = navIcons[item.id];
               
               return (
                 <button
                   key={item.id}
-                  onClick={item.action}
+                  onClick={() => navigateToDestination(item)}
                   title={item.name}
                   className={`group flex items-center gap-3 px-4 py-3 rounded-full transition-all duration-150 cursor-pointer ${
                     isCollapsed ? "justify-center px-0" : ""
@@ -274,23 +247,16 @@ function SidebarContent() {
         </div>
 
         {/* Bottom Wispr Flow Control Bar */}
-        <div className="w-full pt-4 border-t border-[#111111] flex flex-col gap-3">
+        <div className="mt-4 w-full shrink-0 border-t border-[#111111] pt-4">
           {!isCollapsed ? (
-            <div className="flex items-center gap-2.5 w-full">
-              <button
-                onClick={() => navigateAppView({ tab: "video", studio: "video_maker" })}
-                className="flex-1 bg-[#E6D9FF] hover:bg-[#DBCBFF] text-[#111111] font-semibold text-sm px-4 py-2.5 rounded-full border border-[#111111] flex items-center justify-center gap-2 shadow-sm transition-all active:scale-95 cursor-pointer"
-              >
-                <FiZap size={16} className="text-[#111111]" />
-                <span>Open Studio</span>
-              </button>
-
+            <div className="flex w-full flex-col gap-2">
               <button
                 onClick={() => setIsSettingsModalOpen(true)}
                 title="Settings"
-                className="w-10 h-10 rounded-full bg-white hover:bg-[#F2EFE5] border border-[#111111] flex items-center justify-center text-[#111111] relative shadow-sm cursor-pointer transition-all shrink-0"
+                className="relative flex min-h-10 w-full items-center justify-center gap-2 rounded-full border border-[#111111] bg-white px-3 text-sm font-semibold text-[#111111] shadow-sm transition-all hover:bg-[#F2EFE5]"
               >
                 <FiSettings size={18} className="text-[#44423D] hover:text-[#111111]" />
+                <span>Settings</span>
                 {isApiKeyActive ? (
                   <span 
                     title="API Keys Configured"
@@ -306,18 +272,10 @@ function SidebarContent() {
                   </span>
                 )}
               </button>
-              <button onClick={handleSignOut} disabled={signingOut} title="Sign out" aria-busy={signingOut} className="h-10 rounded-full bg-white hover:bg-[#F2EFE5] border border-[#111111] flex items-center justify-center gap-2 px-3 text-xs font-semibold text-[#111111] shadow-sm cursor-pointer transition-all shrink-0 disabled:cursor-not-allowed disabled:opacity-60"><FiLogOut size={18} /><span>{signingOut ? "Signing out…" : "Sign out"}</span></button>
+              <button onClick={handleSignOut} disabled={signingOut} title="Sign out" aria-busy={signingOut} className="flex min-h-10 w-full items-center justify-center gap-2 rounded-full border border-[#111111] bg-white px-3 text-sm font-semibold text-[#111111] shadow-sm transition-all hover:bg-[#F2EFE5] disabled:cursor-not-allowed disabled:opacity-60"><FiLogOut size={18} /><span>{signingOut ? "Signing out…" : "Sign out"}</span></button>
             </div>
           ) : (
             <div className="flex flex-col gap-2.5 items-center">
-              <button
-                onClick={() => navigateAppView({ tab: "video", studio: "video_maker" })}
-                title="Open Studio"
-                className="w-11 h-11 rounded-full bg-[#E6D9FF] hover:bg-[#DBCBFF] border border-[#111111] flex items-center justify-center text-[#111111] shadow-sm cursor-pointer transition-all active:scale-95"
-              >
-                <FiZap size={20} />
-              </button>
-
               <button
                 onClick={() => setIsSettingsModalOpen(true)}
                 title="Settings"
@@ -363,8 +321,7 @@ function SidebarContent() {
             <div className="flex border border-[#111111] gap-2 py-2 px-2 overflow-x-auto scrollbar-subtle bg-[#EFECE1] rounded-full my-4 shrink-0">
               {[
                 { id: "profile", label: "Profile", icon: FiUser },
-                { id: "billing", label: "Plan & Billing", icon: FiCreditCard },
-                { id: "notifications", label: "Notifications", icon: FiBell }
+                { id: "billing", label: "Plan & Billing", icon: FiCreditCard }
               ].map((tab) => {
                 const Icon = tab.icon;
                 const isActive = activeSettingsTab === tab.id;
@@ -424,22 +381,32 @@ function SidebarContent() {
                   </div>
 
                   {/* Danger Zone */}
-                  <div className="bg-[#FEE2E2] p-6 rounded-2xl space-y-3 border border-[#111111] shadow-sm">
-                    <div className="flex items-center gap-2 text-[#991B1B]">
+                  <div className="bg-white p-6 rounded-2xl space-y-3 border border-[#111111] shadow-sm">
+                    <div className="flex items-center gap-2 text-[#44423D]">
                       <FiAlertTriangle size={18} />
                       <h4 className="text-xs font-bold uppercase tracking-wider">Danger Zone</h4>
                     </div>
-                    <p className="text-xs text-[#991B1B] font-medium leading-relaxed">
-                      Deleting your account will remove all saved videos, configurations, and history permanently.
+                    <p className="text-xs text-[#44423D] font-medium leading-relaxed">
+                      Account deletion is not available from Settings yet. It will require a dedicated, reviewed data-deletion process.
                     </p>
                     <button
-                      onClick={handleDeleteAccount}
-                      disabled={savingSettings}
-                      className="bg-[#B91C1C] hover:bg-[#991B1B] text-white border border-[#111111] px-5 py-2.5 text-xs md:text-sm font-semibold rounded-full flex items-center gap-2 cursor-pointer transition-all shadow-sm"
+                      onClick={() => setIsDeleteConfirmationOpen(true)}
+                      className="bg-[#EFECE1] hover:bg-[#E5E1D5] text-[#111111] border border-[#111111] px-5 py-2.5 text-xs md:text-sm font-semibold rounded-full flex items-center gap-2 cursor-pointer transition-all shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#111111]"
+                      aria-haspopup="dialog"
                     >
                       <FiTrash2 size={16} />
-                      <span>Delete Account</span>
+                      <span>Review account deletion</span>
                     </button>
+                    {isDeleteConfirmationOpen && (
+                      <div className="rounded-xl border border-[#111111]/20 bg-[#FAF8ED] p-4 space-y-3" role="dialog" aria-modal="true" aria-labelledby="delete-confirmation-title">
+                        <div className="flex items-start justify-between gap-3">
+                          <div><h5 id="delete-confirmation-title" className="text-sm font-bold text-[#111111]">Confirm account deletion</h5><p className="mt-1 text-xs leading-relaxed text-[#55534E]">Type <strong>DELETE</strong> to confirm that you understand this action. Nothing will be deleted from this screen.</p></div>
+                          <button onClick={() => { setIsDeleteConfirmationOpen(false); setDeleteConfirmation(""); }} className="rounded-full border border-[#111111]/20 bg-white p-1.5 text-[#44423D] hover:bg-[#EFECE1]" aria-label="Close deletion confirmation"><FiX size={15} /></button>
+                        </div>
+                        <label className="block text-xs font-semibold text-[#111111]" htmlFor="delete-confirmation">Type DELETE to continue<input id="delete-confirmation" value={deleteConfirmation} onChange={(event) => setDeleteConfirmation(event.target.value)} className="mt-1.5 w-full rounded-lg border border-[#111111]/20 bg-white px-3 py-2 text-sm text-[#111111] outline-none focus:border-[#111111] focus:ring-2 focus:ring-[#111111]/15" autoComplete="off" /></label>
+                        <button onClick={handleDeleteAccount} disabled={deleteConfirmation !== "DELETE"} className="rounded-full border border-[#111111] bg-[#111111] px-4 py-2 text-xs font-semibold text-white hover:bg-[#33312C] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#111111] disabled:cursor-not-allowed disabled:bg-[#77746D] disabled:text-white">Confirm deletion</button>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -469,35 +436,6 @@ function SidebarContent() {
                         Upgrade Plan
                       </button>
                     </div>
-                  </div>
-                </div>
-              )}
-
-              {/* TAB 3: NOTIFICATIONS */}
-              {activeSettingsTab === "notifications" && (
-                <div className="bg-[#FAF8ED] p-6 rounded-2xl space-y-5 border border-[#111111] shadow-sm">
-                  <div>
-                    <h4 className="text-base font-bold text-[#111111]">Generation alerts</h4>
-                    <p className="text-xs text-[#44423D] font-medium mt-1">Choose whether Doolphin alerts you when a generation finishes or fails.</p>
-                  </div>
-
-                  <div className="border-t border-[#111111] pt-5 flex items-start justify-between gap-4">
-                    <div className="space-y-1">
-                      <h5 className="text-xs font-bold text-[#111111]">Completion alerts</h5>
-                      <p className="text-xs text-[#44423D] font-medium leading-relaxed">
-                        Receive an in-app alert and, when allowed, a browser notification each time a generation finishes or fails.
-                      </p>
-                    </div>
-                    <button
-                      onClick={toggleCompletionNotifications}
-                      className={`w-12 h-7 rounded-full transition-colors flex items-center p-1 cursor-pointer border border-[#111111] ${
-                        completionNotificationsEnabled ? "bg-[#064E3B]" : "bg-[#EFECE1]"
-                      }`}
-                      aria-pressed={completionNotificationsEnabled}
-                      aria-label="Toggle generation completion alerts"
-                    >
-                      <div className={`w-5 h-5 rounded-full bg-white border border-[#111111] transition-transform ${completionNotificationsEnabled ? "translate-x-5" : "translate-x-0"}`} />
-                    </button>
                   </div>
                 </div>
               )}
@@ -619,7 +557,7 @@ function SidebarContent() {
 
 export default function Sidebar() {
   return (
-    <Suspense fallback={<aside className="w-16 bg-[#FAF8ED] border border-[#111111] flex flex-col items-center py-5 h-full flex-shrink-0 my-3 ml-3 rounded-[28px]" />}>
+    <Suspense fallback={<aside aria-label="Loading navigation" className="h-full w-[76px] shrink-0 rounded-[28px] border border-[#111111] bg-[#FAF8ED]" />}>
       <SidebarContent />
     </Suspense>
   );

@@ -1,6 +1,76 @@
 "use client";
 
-// Tab and studio selection are local /app view state.  Using the browser
+/**
+ * The authenticated product has two kinds of destinations:
+ *
+ * - views rendered inside /app (kept in the URL query string for instant
+ *   client-side Back/Forward navigation), and
+ * - standalone routes, such as Image Studio.
+ *
+ * Keep the sidebar, launcher cards, and active-state logic pointed at this
+ * list.  This prevents a route and a query tab from independently claiming
+ * to be selected.
+ */
+export const APP_NAV_DESTINATIONS = Object.freeze([
+  { id: "explore", name: "Explore", type: "view", tab: "explore" },
+  { id: "video", name: "Video Studio", type: "view", tab: "video", studio: "video_maker" },
+  { id: "product", name: "Product Studio", type: "view", tab: "video", studio: "product" },
+  { id: "app_studio", name: "App Studio", type: "view", tab: "video", studio: "app" },
+  { id: "images", name: "Image Studio", type: "route", href: "/app/images" },
+  { id: "avatars", name: "Avatars", type: "view", tab: "avatars" },
+  { id: "library", name: "My Library", type: "view", tab: "library" }
+]);
+
+export const LEGACY_IMAGE_LIBRARY_PATH = "/app/images/library";
+
+const destinationById = new Map(APP_NAV_DESTINATIONS.map((destination) => [destination.id, destination]));
+const destinationByTab = new Map(
+  APP_NAV_DESTINATIONS
+    .filter((destination) => destination.type === "view")
+    .map((destination) => [destination.tab, destination])
+);
+
+export function getAppDestination(id) {
+  return destinationById.get(id) || null;
+}
+
+export function getAppDestinationHref(id) {
+  const destination = getAppDestination(id);
+  if (!destination) return "/app?tab=explore";
+  if (destination.type === "route") return destination.href;
+
+  const params = new URLSearchParams({ tab: destination.tab });
+  if (destination.studio) params.set("studio", destination.studio);
+  return `/app?${params.toString()}`;
+}
+
+/**
+ * Resolves precisely one primary item. Route destinations win over query
+ * state, so stale query parameters cannot make Image Studio and another
+ * sidebar item appear active together.
+ */
+export function getActiveAppDestination({ pathname = "/app", tab, studio } = {}) {
+  const normalizedPathname = pathname.length > 1 && pathname.endsWith("/")
+    ? pathname.slice(0, -1)
+    : pathname;
+
+  if (normalizedPathname === "/app/images") return "images";
+  if (normalizedPathname === LEGACY_IMAGE_LIBRARY_PATH) return "library";
+  if (normalizedPathname !== "/app") return null;
+
+  const currentTab = tab || "explore";
+  if (currentTab === "video") {
+    const currentStudio = studio || "video_maker";
+    const matched = APP_NAV_DESTINATIONS.find(
+      (d) => d.type === "view" && d.tab === "video" && d.studio === currentStudio
+    );
+    if (matched) return matched.id;
+  }
+
+  return destinationByTab.get(currentTab)?.id || "explore";
+}
+
+// Tab and studio selection are local /app view state. Using the browser
 // history API keeps shareable URLs and Back/Forward while avoiding an App
 // Router RSC navigation that would re-run protected server layout work.
 export function navigateAppView({ tab = "explore", studio, replace = false } = {}) {
@@ -13,4 +83,19 @@ export function navigateAppView({ tab = "explore", studio, replace = false } = {
   // Next synchronizes useSearchParams with native history updates. The event
   // also makes this work consistently in browsers where the update is async.
   window.dispatchEvent(new PopStateEvent("popstate"));
+}
+
+export function navigateToAppDestination(id, { replace = false } = {}) {
+  const destination = getAppDestination(id);
+  if (!destination) {
+    navigateAppView({ tab: "explore", replace });
+    return false;
+  }
+
+  if (destination.type === "view") {
+    navigateAppView({ tab: destination.tab, studio: destination.studio, replace });
+    return true;
+  }
+
+  return false;
 }

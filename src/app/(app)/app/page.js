@@ -370,15 +370,15 @@ function HomeContent() {
 
       {/* FLOATING TOP HEADER FOR NON-STUDIO TABS */}
       {currentTab !== "video" && (
-        <header className="absolute top-4 right-6 flex items-center justify-end gap-3 z-30 pointer-events-auto">
-          <div className="flex items-center gap-3">
+        <header className="absolute right-3 top-3 z-30 max-w-[calc(100%-1.5rem)] pointer-events-auto sm:right-6 sm:top-4">
+          <div className="flex max-w-full flex-wrap justify-end gap-2">
             <button
               onClick={() => setIsPricingModalOpen(true)}
               className="bg-[#E6D9FF] hover:bg-[#DBCBFF] text-[#111111] border border-[#111111] font-semibold text-sm px-4.5 py-2.5 rounded-full flex items-center gap-2 shadow-sm transition-all active:scale-95 cursor-pointer"
             >
               <FiZap size={15} />
               <span>Upgrade</span>
-              <span className="bg-[#064E3B] text-white text-xs font-bold px-2 py-0.5 rounded-full">
+              <span className="hidden bg-[#064E3B] text-white text-xs font-bold px-2 py-0.5 rounded-full sm:inline-block">
                 30% OFF
               </span>
             </button>
@@ -393,7 +393,7 @@ function HomeContent() {
               className="bg-white hover:bg-[#F2EFE5] border border-[#111111]/15 text-[#55534E] hover:text-[#111111] font-semibold text-sm px-4.5 py-2.5 rounded-full flex items-center gap-2 transition-colors cursor-pointer shadow-sm"
             >
               <span>🌐</span>
-              <span>Community</span>
+              <span className="hidden sm:inline">Community</span>
             </button>
 
             <button
@@ -401,7 +401,7 @@ function HomeContent() {
               className="bg-white hover:bg-[#F2EFE5] border border-[#111111]/15 text-[#55534E] hover:text-[#111111] font-semibold text-sm px-4.5 py-2.5 rounded-full flex items-center gap-2 transition-colors cursor-pointer shadow-sm"
             >
               <span>📜</span>
-              <span>My Library</span>
+              <span className="hidden sm:inline">My Library</span>
             </button>
           </div>
         </header>
@@ -597,7 +597,7 @@ function HomeContent() {
             <header className="border-b border-[#111111]/10 pb-5 flex flex-col sm:flex-row sm:items-end justify-between gap-4">
               <div>
                 <h2 className="text-2xl sm:text-3xl font-serif font-bold text-[#111111]">My Library</h2>
-                <p className="text-sm sm:text-base text-[#55534E] mt-0.5">Search, organize, and download your generated videos</p>
+                <p className="text-sm sm:text-base text-[#55534E] mt-0.5">Search, organize, and download your generated images and videos</p>
               </div>
             </header>
 
@@ -661,13 +661,13 @@ function HomeContent() {
                 </div>
                 <div className="space-y-1">
                   <h3 className="text-lg font-serif font-bold text-[#111111]">No creations yet</h3>
-                  <p className="text-sm text-[#55534E] max-w-sm">Your completed video media will appear here.</p>
+                  <p className="text-sm text-[#55534E] max-w-sm">Your completed images and videos will appear here.</p>
                 </div>
                 <button
                   onClick={() => navigateToTab("video", "video_maker")}
                   className="bg-[#E6D9FF] text-[#111111] border border-[#111111] px-6 py-3 rounded-full text-sm font-semibold hover:bg-[#DBCBFF] cursor-pointer shadow-sm transition-colors"
                 >
-                  Create First Video
+                  Open Video Studio
                 </button>
               </div>
             ) : filteredCreations.length === 0 ? (
@@ -685,10 +685,16 @@ function HomeContent() {
                   <div
                     key={item.id}
                     onClick={() => { setSelectedCreation(item); setEditingCreationTitle(item.title || ""); }}
-                    className="bg-white aspect-[9/16] overflow-hidden relative cursor-pointer group shadow-sm rounded-2xl md:rounded-3xl border border-[#111111]/15 hover:border-[#111111]/35 hover:shadow-lg transition-all"
+                    className={`bg-white overflow-hidden relative cursor-pointer group shadow-sm rounded-2xl md:rounded-3xl border border-[#111111]/15 hover:border-[#111111]/35 hover:shadow-lg transition-all ${item.mediaType === "image" ? "aspect-square" : "aspect-[9/16]"}`}
                   >
                     {item.status?.toLowerCase() === "completed" ? (
-                      <LazyVideo src={item.url} className="w-full h-full object-cover" />
+                      item.mediaType === "image" ? (
+                        <img src={item.url} alt={item.prompt || item.title || "Generated image"} loading="lazy" decoding="async" className="w-full h-full object-cover" />
+                      ) : item.url ? (
+                        <LazyVideo src={item.url} className="w-full h-full object-cover" />
+                      ) : (
+                        <div className="w-full h-full flex flex-col items-center justify-center gap-2 bg-[#FAF8ED] text-center p-4"><FiAlertCircle className="text-[#77746D] text-2xl" /><span className="text-xs font-semibold text-[#55534E]">Media preview unavailable</span></div>
+                      )
                     ) : item.status?.toLowerCase() === "failed" ? (
                       <div className="w-full h-full flex flex-col items-center justify-center p-4 gap-2 text-center bg-red-50">
                         <FiAlertCircle className="text-red-600 text-2xl" />
@@ -715,7 +721,7 @@ function HomeContent() {
                       {item.title && <p className="text-white/75 text-xs leading-snug line-clamp-2 mb-2">{item.prompt}</p>}
                       <div className="flex items-center justify-between">
                         <span className="text-xs font-semibold text-slate-200 uppercase tracking-wider">
-                          {item.aspectRatio || "9:16"}
+                          {item.mediaType === "image" ? `${item.imageCount > 1 ? `${item.imageCount} images · ` : ""}${item.resolution || item.aspectRatio || "Image"}` : item.aspectRatio || "9:16"}
                         </span>
                         <div className="w-9 h-9 rounded-full bg-white/90 flex items-center justify-center text-[#111111] shadow-sm">
                           <FiMaximize2 size={15} />
@@ -895,22 +901,26 @@ function HomeContent() {
                 </button>
               </div>
 
-              <div className="w-full aspect-[9/16] max-h-[55vh] my-4 bg-black rounded-2xl overflow-hidden flex items-center justify-center relative border border-[#111111]/20">
+              <div className={`w-full ${selectedCreation.mediaType === "image" ? "aspect-square" : "aspect-[9/16]"} max-h-[55vh] my-4 bg-black rounded-2xl overflow-hidden flex items-center justify-center relative border border-[#111111]/20`}>
                 {selectedCreation.status?.toLowerCase() === "completed" && selectedCreation.url ? (
-                  <video
-                    key={selectedCreation.url}
-                    className="w-full h-full object-cover"
-                    controls
-                    autoPlay
-                    loop
-                    playsInline
-                  >
-                    <source src={selectedCreation.url} type="video/mp4" />
-                  </video>
+                  selectedCreation.mediaType === "image" ? (
+                    <img src={selectedCreation.url} alt={selectedCreation.prompt || selectedCreation.title || "Generated image"} className="w-full h-full object-contain" />
+                  ) : (
+                    <video
+                      key={selectedCreation.url}
+                      className="w-full h-full object-cover"
+                      controls
+                      autoPlay
+                      loop
+                      playsInline
+                    >
+                      <source src={selectedCreation.url} type="video/mp4" />
+                    </video>
+                  )
                 ) : (
                   <div className="text-center space-y-2 p-6 text-white">
                     <FiClock size={32} className="mx-auto animate-spin" />
-                    <p className="text-sm font-bold">Processing Video</p>
+                    <p className="text-sm font-bold">Processing creation</p>
                   </div>
                 )}
               </div>
@@ -948,8 +958,8 @@ function HomeContent() {
                   <span>Model: {selectedCreation.modelId || "Generic"}</span>
                   {selectedCreation.status?.toLowerCase() === "completed" && selectedCreation.url && (
                     <a
-                      href={`/api/creations/${selectedCreation.id}/download`}
-                      download={`lembda-${selectedCreation.id}.mp4`}
+                      href={selectedCreation.mediaType === "image" ? selectedCreation.url : `/api/creations/${selectedCreation.id}/download`}
+                      download={`doolphin-${selectedCreation.id}.${selectedCreation.mediaType === "image" ? "jpg" : "mp4"}`}
                       className="text-[#111111] font-semibold flex items-center gap-1 hover:underline"
                     >
                       <FiDownload size={15} />

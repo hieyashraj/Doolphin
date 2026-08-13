@@ -53,3 +53,62 @@ test("the app defers the library collection request until the Library view is op
   assert.match(app, /if \(currentTab !== "library"\) return/);
   assert.match(app, /hasLoadedLibraryCreations/);
 });
+
+test("generated media and uploaded inputs keep distinct customer-facing libraries", async () => {
+  const [app, navigation, picker, video, product, studio] = await Promise.all([
+    text("src/app/(app)/app/page.js"),
+    text("src/lib/app/app-navigation.js"),
+    text("src/components/creation/AssetLibraryPicker.js"),
+    text("src/components/creation/VideoMakerForm.js"),
+    text("src/components/creation/ProductAdForm.js"),
+    text("src/components/creation/AppStudioForm.js"),
+  ]);
+  assert.match(app, />My Library</);
+  assert.match(navigation, /name: "My Library"/);
+  assert.match(picker, /Choose from My Assets/);
+  assert.match(picker, /fetch\("\/api\/assets"\)/);
+  for (const form of [video, product, studio]) assert.match(form, /label="My Assets"/);
+});
+
+test("uploads fail explicitly when R2 direct upload is unavailable", async () => {
+  const [route, hub] = await Promise.all([
+    text("src/app/api/uploads/presign/route.js"),
+    text("src/components/creation/CreationHub.js"),
+  ]);
+  assert.match(route, /Asset uploads are temporarily unavailable/);
+  assert.match(route, /status: 503/);
+  assert.doesNotMatch(route, /directUpload: false/);
+  assert.doesNotMatch(hub, /fetch\("\/api\/upload"/);
+});
+
+test("generation requires a server preflight quote and presents its credits before submission", async () => {
+  const [hub, review] = await Promise.all([
+    text("src/components/creation/CreationHub.js"), text("src/components/creation/PreflightReview.js"),
+  ]);
+  assert.match(hub, /setPreparedQuote\(data\)/);
+  assert.match(hub, /Generate Video · \$\{quotedCredits\} credits/);
+  assert.match(hub, /await submitGeneration\(preparedQuote\.quote, crypto\.randomUUID\(\)\)/);
+  assert.match(hub, /GENERATION_CONFIGURATION_UNPRICED/);
+  assert.match(hub, /disabled=\{isSubmitting \|\| quoteUnavailable\}/);
+  assert.match(review, /insufficientCredits/);
+  assert.match(review, /No provider request or credit reservation has happened yet/);
+  assert.match(review, /disabled=\{isSubmitting \|\| insufficientCredits\}/);
+});
+
+test("My Library routes only sign validated artifacts in the active workspace", async () => {
+  const [detail, preview, download, collection] = await Promise.all([
+    text("src/app/api/creations/[id]/route.js"),
+    text("src/app/api/creations/[id]/preview/route.js"),
+    text("src/app/api/creations/[id]/download/route.js"),
+    text("src/app/api/creations/route.js"),
+  ]);
+  for (const route of [detail, preview, download]) {
+    assert.match(route, /workspaceId: appUser\.defaultWorkspaceId/);
+  }
+  for (const route of [detail, preview, download]) {
+    assert.match(route, /FINAL_VIDEO/);
+    assert.match(route, /FINAL_IMAGE/);
+    assert.match(route, /validationStatus: "VALID"/);
+  }
+  assert.match(collection, /id: body\.id, userId: appUser\.id, workspaceId: appUser\.defaultWorkspaceId/);
+});

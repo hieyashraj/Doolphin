@@ -30,7 +30,18 @@ export async function GET() {
           orderBy: { variantIndex: "asc" },
           select: {
             id: true, variantIndex: true, status: true, errorCode: true, safeError: true,
-            artifacts: { where: { type: "FINAL_VIDEO" }, orderBy: { createdAt: "desc" }, take: 1, select: { storageKey: true } }
+            // A creation can deliver a video or one or more images. Image
+            // derivatives are deliberately preferred for the Library card so
+            // browsing history never downloads an original just to paint a
+            // thumbnail. The final artifact remains the delivery authority.
+            artifacts: {
+              where: {
+                type: { in: ["FINAL_VIDEO", "FINAL_IMAGE", "IMAGE_CARD", "IMAGE_THUMBNAIL"] },
+                validationStatus: "VALID"
+              },
+              orderBy: { createdAt: "desc" },
+              select: { type: true, storageKey: true, outputIndex: true }
+            }
           }
         },
         url: true
@@ -46,11 +57,24 @@ export async function GET() {
     const retryRequestByQuoteId = new Map(retryQuotes.map((quote) => [quote.id, quote.requestSnapshot]));
 
     return NextResponse.json(await Promise.all(creations.map(async (creation) => {
-      const passing = creation.variants.find((variant) => variant.status === "COMPLETED" && variant.artifacts[0]);
+      const completedVariants = creation.variants.filter((variant) => variant.status === "COMPLETED");
+      const videoArtifact = completedVariants.flatMap((variant) => variant.artifacts)
+        .find((artifact) => artifact.type === "FINAL_VIDEO");
+      const finalImages = completedVariants.flatMap((variant) => variant.artifacts)
+        .filter((artifact) => artifact.type === "FINAL_IMAGE");
+      const firstImage = finalImages[0];
+      const imagePreview = firstImage
+        ? completedVariants.flatMap((variant) => variant.artifacts)
+          .find((artifact) => artifact.outputIndex === firstImage.outputIndex && artifact.type === "IMAGE_CARD")
+          || completedVariants.flatMap((variant) => variant.artifacts)
+            .find((artifact) => artifact.outputIndex === firstImage.outputIndex && artifact.type === "IMAGE_THUMBNAIL")
+          || firstImage
+        : null;
+      const mediaArtifact = videoArtifact || imagePreview;
       // Creations produced before the artifact pipeline stored the playable URL
       // directly on Creation. Keep them viewable while newer creations use a
       // validated FINAL_VIDEO artifact.
-      const url = await previewUrl(passing?.artifacts[0]) || creation.url || null;
+      const url = await previewUrl(mediaArtifact) || creation.url || null;
       const canRetry = isTerminalGenerationFailure(creation.status);
       const retryRequest = canRetry && creation.quoteId ? retryRequestByQuoteId.get(creation.quoteId) : null;
       return {
@@ -72,6 +96,8 @@ export async function GET() {
         resolution: creation.resolution,
         duration: creation.duration,
         outputCount: creation.numberOfVideos,
+        mediaType: videoArtifact ? "video" : imagePreview ? "image" : null,
+        imageCount: finalImages.length,
         url,
         error: canRetry ? userFacingGenerationMessage(creation.status, creation.errorCode) : null,
         errorCode: creation.errorCode,

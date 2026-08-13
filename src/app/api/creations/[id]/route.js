@@ -19,7 +19,7 @@ export async function GET(_req, { params }) {
       include: {
         variants: {
           orderBy: { variantIndex: "asc" },
-          include: { artifacts: { where: { type: "FINAL_VIDEO", validationStatus: "VALID" }, orderBy: { createdAt: "desc" }, take: 1 } }
+          include: { artifacts: { where: { type: { in: ["FINAL_VIDEO", "FINAL_IMAGE"] }, validationStatus: "VALID" }, orderBy: { createdAt: "desc" } } }
         }
       }
     });
@@ -33,7 +33,7 @@ export async function GET(_req, { params }) {
       progress: variant.progressValue,
       errorCode: variant.errorCode,
       error: variant.safeError,
-      url: await artifactUrl(variant.artifacts[0])
+      url: await artifactUrl(variant.artifacts.find((artifact) => artifact.type === "FINAL_VIDEO") || variant.artifacts.find((artifact) => artifact.type === "FINAL_IMAGE")),
     })));
     const delivered = variants.find((variant) => variant.status === "COMPLETED" && variant.url);
 

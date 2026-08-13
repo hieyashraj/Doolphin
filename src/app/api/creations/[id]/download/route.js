@@ -12,7 +12,7 @@ export async function GET(req, { params }) {
 
     const creation = await prisma.creation.findFirst({
       where: { id, userId: appUser.id, workspaceId: appUser.defaultWorkspaceId },
-      include: { variants: { where: { status: "COMPLETED" }, include: { artifacts: { where: { type: "FINAL_VIDEO", validationStatus: "VALID" } } } } },
+      include: { variants: { where: { status: "COMPLETED" }, include: { artifacts: { where: { type: { in: ["FINAL_VIDEO", "FINAL_IMAGE"] }, validationStatus: "VALID" } } } } },
     });
 
     if (!creation) {
@@ -21,7 +21,7 @@ export async function GET(req, { params }) {
 
 
     const variant = creation.variants[0];
-    const artifact = variant?.artifacts?.[0];
+    const artifact = variant?.artifacts?.find((item) => item.type === "FINAL_VIDEO") || variant?.artifacts?.find((item) => item.type === "FINAL_IMAGE");
 
     if (!artifact) {
       throw new AppError(ERROR_CODES.NOT_FOUND, "Artifact deliverable not found", { statusCode: 404 });
@@ -32,7 +32,7 @@ export async function GET(req, { params }) {
       storageKey: artifact.storageKey,
       expiresInSeconds: 900,
       isDownload: true,
-      filename: `doolphin_${creation.id}.mp4`,
+      filename: `doolphin_${creation.id}.${artifact.type === "FINAL_IMAGE" ? "png" : "mp4"}`,
     });
 
     return NextResponse.json({

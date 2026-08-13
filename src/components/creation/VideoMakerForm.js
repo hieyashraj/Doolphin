@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
 import { FiUser, FiMusic, FiPlus, FiHelpCircle } from "react-icons/fi";
 import AssetLibraryPicker from "./AssetLibraryPicker";
 import StudioModelPicker from "@/components/studio/StudioModelPicker";
+import StudioSelect from "@/components/studio/StudioSelect";
 
 export default function VideoMakerForm({
   sceneMotion,
@@ -90,20 +90,7 @@ export default function VideoMakerForm({
       {/* Duration */}
       <div className="space-y-1.5">
         <label className="block text-base font-semibold text-[#111111]">Duration</label>
-        <div className="relative flex items-center">
-          <select
-            value={duration}
-            onChange={(e) => setDuration(e.target.value)}
-            className="w-full bg-[#F2EFE5] focus:bg-white px-3.5 py-3 pr-10 text-sm font-medium text-[#111111] border border-[#111111]/15 appearance-none focus:border-[#111111] focus:outline-none focus:ring-2 focus:ring-[#111111] caret-[#111111] cursor-pointer rounded-xl transition-all"
-          >
-            <option value="Auto" className="bg-white text-[#111111]">Auto</option>
-            <option value="5" className="bg-white text-[#111111]">5s</option>
-            <option value="8" className="bg-white text-[#111111]">8s</option>
-            <option value="12" className="bg-white text-[#111111]">12s</option>
-            <option value="15" className="bg-white text-[#111111]">15s</option>
-          </select>
-          <FiChevronDown className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[#77746D] pointer-events-none" size={16} />
-        </div>
+        <StudioSelect label="Duration" value={duration} values={["Auto", "5", "8", "12", "15"]} onChange={setDuration} formatLabel={(value) => value === "Auto" ? value : `${value}s`} className="w-full max-w-none justify-between bg-[#F2EFE5]" />
         <p className="text-xs text-[#77746D] leading-relaxed">
           Auto lets preflight resolve the final length from your script, scene notes, and attached assets.
         </p>
@@ -112,32 +99,13 @@ export default function VideoMakerForm({
       {/* Resolution */}
       <div className="space-y-1.5">
         <label className="block text-base font-semibold text-[#111111]">Resolution</label>
-        <div className="relative flex items-center">
-          <select
-            value={resolution}
-            onChange={(e) => setResolution(e.target.value)}
-            className="w-full bg-[#F2EFE5] focus:bg-white px-3.5 py-3 pr-10 text-sm font-medium text-[#111111] border border-[#111111]/15 appearance-none focus:border-[#111111] focus:outline-none focus:ring-2 focus:ring-[#111111] caret-[#111111] cursor-pointer rounded-xl transition-all"
-          >
-            {(selectedModel?.resolutions || ["720p"]).map((value) => <option key={value} value={value} className="bg-white text-[#111111]">{value}</option>)}
-          </select>
-          <FiChevronDown className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[#77746D] pointer-events-none" size={16} />
-        </div>
+        <StudioSelect label="Resolution" value={resolution} values={selectedModel?.resolutions || ["720p"]} onChange={setResolution} className="w-full max-w-none justify-between bg-[#F2EFE5]" />
       </div>
 
       {/* Aspect Ratio */}
       <div className="space-y-1.5">
         <label className="block text-base font-semibold text-[#111111]">Aspect Ratio</label>
-        <div className="relative flex items-center">
-          <select
-            value={aspectRatio}
-            onChange={(e) => setAspectRatio(e.target.value)}
-            className="w-full bg-[#F2EFE5] focus:bg-white px-3.5 py-3 pr-10 text-sm font-medium text-[#111111] border border-[#111111]/15 appearance-none focus:border-[#111111] focus:outline-none focus:ring-2 focus:ring-[#111111] caret-[#111111] cursor-pointer rounded-xl transition-all"
-          >
-            <option value="Auto" className="bg-white text-[#111111]">Auto</option>
-            {(selectedModel?.aspectRatios || ["9:16"]).map((value) => <option key={value} value={value} className="bg-white text-[#111111]">{value}</option>)}
-          </select>
-          <FiChevronDown className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[#77746D] pointer-events-none" size={16} />
-        </div>
+        <StudioSelect label="Aspect ratio" value={aspectRatio} values={["Auto", ...(selectedModel?.aspectRatios || ["9:16"])]} onChange={setAspectRatio} className="w-full max-w-none justify-between bg-[#F2EFE5]" />
       </div>
 
       {/* Number of videos stepper */}

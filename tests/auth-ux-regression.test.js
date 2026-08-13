@@ -48,6 +48,23 @@ test("all auth primary actions have named busy states and disable repeat submiss
   assert.match(pages[0], /Creating account…/); assert.match(pages[1], /Signing in…/); assert.match(pages[2], /Verifying…/); assert.match(pages[2], /Sending…/); assert.match(pages[3], /Sending…/);
 });
 
+test("unsupported Google OAuth and dead notification settings are not exposed", async () => {
+  const signIn = await text("src/app/(auth)/sign-in/page.js");
+  const navbar = await text("src/components/Navbar.js");
+  assert.match(signIn, /NEXT_PUBLIC_SUPABASE_GOOGLE_OAUTH_ENABLED === "true"/);
+  assert.match(signIn, /googleOAuthEnabled &&/);
+  assert.doesNotMatch(navbar, /label: "Notifications"/);
+  assert.doesNotMatch(navbar, /toggleCompletionNotifications/);
+});
+
+test("account deletion requires typed confirmation and remains non-mutating", async () => {
+  const navbar = await text("src/components/Navbar.js");
+  assert.match(navbar, /deleteConfirmation !== "DELETE"/);
+  assert.match(navbar, /Type DELETE to continue/);
+  assert.match(navbar, /Nothing will be deleted from this screen/);
+  assert.doesNotMatch(navbar, /fetch\([^\n]*delete/i);
+});
+
 test("a revisited verified session continues setup instead of consuming an old OTP", async () => {
   const page = await text("src/app/(auth)/verify-email/page.js");
   assert.match(page, /auth\.getUser\(\)/);

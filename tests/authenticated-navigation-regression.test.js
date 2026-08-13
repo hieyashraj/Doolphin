@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { getActiveAppDestination } from "../src/lib/app/app-navigation.js";
 
 const root = new URL("../", import.meta.url);
 const text = (path) => readFile(new URL(path, root), "utf8");
@@ -43,4 +44,34 @@ test("featured studio cards retain the authenticated shell and select the existi
   assert.match(app, /studioMode=\{currentStudio\}/);
   assert.match(hub, /onStudioModeChange\?\.\(nextModeId\)/);
   assert.match(hub, /STUDIO_IDS\[studioMode\]/);
+});
+
+test("authenticated navigation resolves exactly one active destination per route/tab/studio state", () => {
+  assert.equal(getActiveAppDestination({ pathname: "/app", tab: "explore" }), "explore");
+  assert.equal(getActiveAppDestination({ pathname: "/app", tab: "video", studio: "video_maker" }), "video");
+  assert.equal(getActiveAppDestination({ pathname: "/app", tab: "video", studio: "product" }), "product");
+  assert.equal(getActiveAppDestination({ pathname: "/app", tab: "video", studio: "app" }), "app_studio");
+  assert.equal(getActiveAppDestination({ pathname: "/app/images" }), "images");
+  assert.equal(getActiveAppDestination({ pathname: "/app", tab: "avatars" }), "avatars");
+  assert.equal(getActiveAppDestination({ pathname: "/app", tab: "library" }), "library");
+  assert.equal(getActiveAppDestination({ pathname: "/app/images/library" }), "library");
+});
+
+test("authenticated navigation has one active destination and preserves canonical routes", async () => {
+  const [navigation, navbar, legacy, signIn] = await Promise.all([
+    text("src/lib/app/app-navigation.js"),
+    text("src/components/Navbar.js"),
+    text("src/app/(app)/app/images/library/page.js"),
+    text("src/app/(auth)/sign-in/page.js")
+  ]);
+  for (const name of ["Explore", "Video Studio", "Product Studio", "App Studio", "Image Studio", "Avatars", "My Library"]) {
+    assert.match(navigation, new RegExp(`name: "${name}"`));
+  }
+  assert.match(navigation, /getActiveAppDestination/);
+  assert.match(navigation, /normalizedPathname === "\/app\/images"/);
+  assert.match(navbar, /APP_NAV_DESTINATIONS\.map/);
+  assert.doesNotMatch(navbar, /My Images/);
+  assert.doesNotMatch(navbar, /Open Studio/);
+  assert.match(legacy, /redirect\("\/app\?tab=library"\)/);
+  assert.match(signIn, /NEXT_PUBLIC_SUPABASE_GOOGLE_OAUTH_ENABLED/);
 });

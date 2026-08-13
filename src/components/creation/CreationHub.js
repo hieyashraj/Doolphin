@@ -17,7 +17,6 @@ import {
   FiGrid,
   FiClock,
   FiAlertCircle,
-  FiBell,
   FiXCircle
 } from "react-icons/fi";
 import PresetHeaderCard from "./PresetHeaderCard";
@@ -250,28 +249,10 @@ export default function CreationHub({
       if (!completed && !failed) return;
       watchedCreationIds.current.delete(creation.id);
 
-      const alertsEnabled = localStorage.getItem("doolphin_generation_completion_notifications") !== "false";
-      if (!alertsEnabled) return;
-
       const title = creation.title || "Your generation";
       const message = completed ? `${title} is ready to view.` : `${title} could not be completed.`;
       if (completed) toast.success(message, { duration: 6000 });
       else toast.error(message, { duration: 6000 });
-
-      if (alertsEnabled && "Notification" in window && Notification.permission === "granted") {
-        try {
-          const notification = new Notification(completed ? "Generation complete" : "Generation failed", {
-            body: message,
-            tag: `doolphin-generation-${creation.id}`
-          });
-          notification.onclick = () => {
-            window.focus();
-            notification.close();
-          };
-        } catch {
-          // A toast has already been shown; browser notifications are optional.
-        }
-      }
     });
 
     creationStatuses.current = nextStatuses;
@@ -765,29 +746,6 @@ export default function CreationHub({
     }
   };
 
-  const enableCompletionNotifications = async (event) => {
-    event.stopPropagation();
-    window.localStorage.setItem("doolphin_generation_completion_notifications", "true");
-    if (!("Notification" in window)) {
-      toast("In-app completion alerts are enabled. Browser notifications are unavailable here.");
-      return;
-    }
-    if (Notification.permission === "granted") {
-      toast.success("Completion notifications are on.");
-      return;
-    }
-    if (Notification.permission === "denied") {
-      toast("In-app completion alerts are on. Enable browser notifications in your browser settings for desktop alerts.");
-      return;
-    }
-    try {
-      const permission = await Notification.requestPermission();
-      toast(permission === "granted" ? "Completion notifications are on." : "In-app completion alerts are on.");
-    } catch {
-      toast("In-app completion alerts are on.");
-    }
-  };
-
   const handleCancelGeneration = async (event, creation) => {
     event.stopPropagation();
     if (!window.confirm("Cancel this generation? It can only be cancelled before it reaches the provider.")) return;
@@ -851,16 +809,16 @@ export default function CreationHub({
   ];
 
   return (
-    <div className="w-full h-full flex overflow-hidden bg-[#FAF8ED] text-[#111111]">
+    <div className="flex h-full w-full flex-col overflow-y-auto bg-[#FAF8ED] text-[#111111] md:flex-row md:overflow-hidden">
       {/* LEFT CONTROL PANEL / DRAWER WITH INTERACTIVE DRAGGABLE RESIZER */}
       <aside
-        style={{ width: `${sidebarWidth}px` }}
-        className="studio-sidebar relative shrink-0 border-r border-[#111111]/15 flex flex-col h-full bg-white overflow-hidden select-none transition-[width] duration-75 ease-out"
+        style={{ width: undefined }}
+        className="studio-sidebar relative flex min-h-0 w-full shrink-0 flex-col border-b border-[#111111]/15 bg-white select-none md:h-full md:border-b-0 md:border-r md:transition-[width] md:duration-75 md:ease-out"
       >
         {/* Interactive Drag Resizer Bar */}
         <div
           onMouseDown={startResizing}
-          className={`absolute right-0 top-0 bottom-0 w-3 cursor-col-resize hover:bg-[#111111]/15 active:bg-[#111111]/30 z-30 group flex items-center justify-center transition-colors ${
+          className={`absolute right-0 top-0 bottom-0 hidden w-3 cursor-col-resize hover:bg-[#111111]/15 active:bg-[#111111]/30 z-30 group items-center justify-center transition-colors md:flex ${
             isResizing ? "bg-[#111111]/20" : ""
           }`}
           title="Click and drag left or right to resize panel width"
@@ -1056,7 +1014,7 @@ export default function CreationHub({
 
 
       {/* RIGHT MAIN CONTENT VIEW */}
-      <main className="flex-1 h-full overflow-y-auto p-4 md:p-6 bg-[#FAF8ED] scrollbar-subtle space-y-5">
+      <main className="min-h-0 flex-1 overflow-y-auto bg-[#FAF8ED] p-4 scrollbar-subtle md:h-full md:p-6 space-y-5">
         {/* Top Header Bar */}
         <div className="flex items-center justify-end gap-2.5 mb-2">
           <button
@@ -1111,12 +1069,14 @@ export default function CreationHub({
             {creations.map((item) => (
               <div
                 key={item.id}
-                onClick={() => isPlayable(item) && setSelectedVideo(item)}
-                className={`group relative aspect-[9/16] rounded-2xl overflow-hidden bg-white border border-[#111111]/15 shadow-sm transition-all ${
-                  isPlayable(item) ? "cursor-pointer hover:border-[#111111]/30" : ""
+                onClick={() => item.mediaType === "video" && isPlayable(item) && setSelectedVideo(item)}
+                className={`group relative ${item.mediaType === "image" ? "aspect-square" : "aspect-[9/16]"} rounded-2xl overflow-hidden bg-white border border-[#111111]/15 shadow-sm transition-all ${
+                  item.mediaType === "video" && isPlayable(item) ? "cursor-pointer hover:border-[#111111]/30" : ""
                 }`}
               >
-                {isPlayable(item) ? (
+                {item.mediaType === "image" && item.url ? (
+                  <><img src={item.url} alt={item.prompt || "Generated image"} loading="lazy" className="h-full w-full object-cover" /><div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/75 to-transparent p-3"><p className="line-clamp-2 text-xs font-semibold text-white">{item.prompt || "Generated image"}</p></div></>
+                ) : isPlayable(item) ? (
                   <>
                     <LazyVideo
                       src={item.url}
@@ -1174,15 +1134,8 @@ export default function CreationHub({
                       <p className="text-[11px] font-semibold text-[#33312C]">{Math.round(Number(item.progressValue) || 0)}% · {elapsedLabel(item)}</p>
                     </div>
                     <span className="text-[11px] text-[#77746D]">This keeps running if you leave this page.</span>
-                    <div className="flex flex-wrap items-center justify-center gap-2">
-                      <button
-                        type="button"
-                        onClick={enableCompletionNotifications}
-                        className="inline-flex items-center gap-1 rounded-full border border-[#111111]/20 bg-white px-2.5 py-1.5 text-[10px] font-bold hover:bg-[#F2EFE5]"
-                      >
-                        <FiBell size={11} /> Notify me
-                      </button>
-                      {isInProgress(item.status) && (
+                    {isInProgress(item.status) && (
+                      <div className="flex flex-wrap items-center justify-center gap-2">
                         <button
                           type="button"
                           disabled={cancellingCreationIds.has(item.id)}
@@ -1191,8 +1144,8 @@ export default function CreationHub({
                         >
                           {cancellingCreationIds.has(item.id) ? "Cancelling…" : "Cancel"}
                         </button>
-                      )}
-                    </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

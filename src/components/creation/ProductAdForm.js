@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
-import { FiUser, FiPlus, FiChevronDown, FiHelpCircle, FiSmartphone } from "react-icons/fi";
+import { FiUser, FiPlus, FiHelpCircle } from "react-icons/fi";
 import AssetLibraryPicker from "./AssetLibraryPicker";
 import StudioModelPicker from "@/components/studio/StudioModelPicker";
+import StudioSelect from "@/components/studio/StudioSelect";
 
 export default function ProductAdForm({
   productImages = [],
@@ -44,7 +44,7 @@ export default function ProductAdForm({
           <FiHelpCircle size={14} className="text-[#77746D]" title="Upload a photo of your physical product" />
           {onChooseLibraryProduct && <AssetLibraryPicker label="My Assets" accept={["image/"]} onSelect={onChooseLibraryProduct} selectedAssetIds={productImages.map((asset) => asset.assetId || asset.id)} />}
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           {productImages.map((productImage) => (
             <div key={productImage.id || productImage.assetId} className="relative w-20 h-20 rounded-xl border border-[#111111]/15 overflow-hidden group">
               <img src={productImage.preview || productImage.url} alt={productImage.alias || "Product"} className="w-full h-full object-cover" />
@@ -172,20 +172,7 @@ export default function ProductAdForm({
       {/* Duration */}
       <div className="space-y-1.5">
         <label className="block text-base font-semibold text-[#111111]">Duration</label>
-        <div className="relative flex items-center">
-          <select
-            value={duration}
-            onChange={(e) => setDuration(e.target.value)}
-            className="w-full bg-[#F2EFE5] focus:bg-white px-3.5 py-3 pr-10 text-sm font-medium text-[#111111] border border-[#111111]/15 appearance-none focus:border-[#111111] focus:outline-none focus:ring-2 focus:ring-[#111111] caret-[#111111] cursor-pointer rounded-xl transition-all"
-          >
-            <option value="Auto" className="bg-white text-[#111111]">Auto</option>
-            <option value="5" className="bg-white text-[#111111]">5s</option>
-            <option value="8" className="bg-white text-[#111111]">8s</option>
-            <option value="12" className="bg-white text-[#111111]">12s</option>
-            <option value="15" className="bg-white text-[#111111]">15s</option>
-          </select>
-          <FiChevronDown className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[#77746D] pointer-events-none" size={16} />
-        </div>
+        <StudioSelect label="Duration" value={duration} values={["Auto", "5", "8", "12", "15"]} onChange={setDuration} formatLabel={(value) => value === "Auto" ? value : `${value}s`} className="w-full max-w-none justify-between bg-[#F2EFE5]" />
         <p className="text-xs text-[#77746D] leading-relaxed">
           Auto uses the script plus product complexity and instructions to resolve the final duration during preflight.
         </p>
@@ -194,32 +181,13 @@ export default function ProductAdForm({
       {/* Resolution */}
       <div className="space-y-1.5">
         <label className="block text-base font-semibold text-[#111111]">Resolution</label>
-        <div className="relative flex items-center">
-          <select
-            value={resolution}
-            onChange={(e) => setResolution(e.target.value)}
-            className="w-full bg-[#F2EFE5] focus:bg-white px-3.5 py-3 pr-10 text-sm font-medium text-[#111111] border border-[#111111]/15 appearance-none focus:border-[#111111] focus:outline-none focus:ring-2 focus:ring-[#111111] caret-[#111111] cursor-pointer rounded-xl transition-all"
-          >
-            {(selectedModel?.resolutions || ["720p"]).map((value) => <option key={value} value={value} className="bg-white text-[#111111]">{value}</option>)}
-          </select>
-          <FiChevronDown className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[#77746D] pointer-events-none" size={16} />
-        </div>
+        <StudioSelect label="Resolution" value={resolution} values={selectedModel?.resolutions || ["720p"]} onChange={setResolution} className="w-full max-w-none justify-between bg-[#F2EFE5]" />
       </div>
 
       {/* Aspect Ratio */}
       <div className="space-y-1.5">
         <label className="block text-base font-semibold text-[#111111]">Aspect Ratio</label>
-        <div className="relative flex items-center">
-          <select
-            value={aspectRatio}
-            onChange={(e) => setAspectRatio(e.target.value)}
-            className="w-full bg-[#F2EFE5] focus:bg-white pl-10 pr-10 py-3 text-sm font-medium text-[#111111] border border-[#111111]/15 appearance-none focus:border-[#111111] focus:outline-none focus:ring-2 focus:ring-[#111111] caret-[#111111] cursor-pointer rounded-xl transition-all"
-          >
-            {(selectedModel?.aspectRatios || ["9:16"]).map((value) => <option key={value} value={value} className="bg-white text-[#111111]">{value}</option>)}
-          </select>
-          <FiSmartphone className="absolute left-3.5 text-[#77746D] pointer-events-none" size={16} />
-          <FiChevronDown className="absolute right-3.5 text-[#77746D] pointer-events-none" size={16} />
-        </div>
+        <StudioSelect label="Aspect ratio" value={aspectRatio} values={selectedModel?.aspectRatios || ["9:16"]} onChange={setAspectRatio} className="w-full max-w-none justify-between bg-[#F2EFE5]" />
       </div>
 
       {/* Number of videos stepper */}
