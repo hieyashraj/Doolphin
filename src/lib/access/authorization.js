@@ -1,19 +1,10 @@
-import { prisma } from "@/lib/prisma";
-import { createClient } from "@/lib/supabase/server";
-import { isActivatedUser } from "@/lib/access/account-state";
+import { prisma } from "../prisma.js";
+import { createClient } from "../supabase/server.js";
+import { isActivatedUser } from "./account-state.js";
 
 export class AuthorizationError extends Error { constructor(code, status = 403) { super(code); this.code = code; this.status = status; } }
 
 export async function requireAuthenticatedUser() {
-  try {
-    const { headers } = await import("next/headers");
-    const h = await headers();
-    const testUserId = h.get("x-test-user-id");
-    if (testUserId && (process.env.DOOLPHIN_ENV === "staging" || process.env.NODE_ENV !== "production")) {
-      const appUser = await prisma.user.findUnique({ where: { id: testUserId } });
-      if (appUser) return { authUser: { id: appUser.supabaseUserId || appUser.id, email_confirmed_at: new Date().toISOString() }, appUser };
-    }
-  } catch {}
   const supabase = await createClient();
   const { data: { user }, error } = await supabase.auth.getUser();
   if (error || !user) throw new AuthorizationError("UNAUTHENTICATED", 401);

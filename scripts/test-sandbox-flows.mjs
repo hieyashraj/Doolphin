@@ -42,12 +42,14 @@ async function runSandboxE2ETests() {
   // 1. Pre-submit Safety Gate Verification
   const isStaging = process.env.DOOLPHIN_ENV === "staging";
   let sandboxKeyResolved = false;
+  let standardKeyUnreachable = false;
+
   try {
     const key = getMuapiApiKey();
-    sandboxKeyResolved = Boolean(key && !key.includes("placeholder"));
+    sandboxKeyResolved = Boolean(key && key === process.env.MUAPI_API_KEY_SANDBOX);
+    // In staging mode, standard key must never be selected by resolver
+    standardKeyUnreachable = Boolean(key !== process.env.MUAPI_API_KEY || !process.env.MUAPI_API_KEY);
   } catch {}
-
-  const standardKeyUnavailableInStaging = Boolean(process.env.DOOLPHIN_ENV === "staging" && !process.env.MUAPI_API_KEY_SANDBOX?.includes("placeholder"));
 
   let r2KeyProbeValid = false;
   try {
@@ -58,11 +60,11 @@ async function runSandboxE2ETests() {
 
   console.log("=== SANDBOX PRE-SUBMIT SAFETY GATE CHECK ===");
   console.log(`- DOOLPHIN_ENV === "staging": ${isStaging ? "PASS" : "FAIL"}`);
-  console.log(`- Sandbox Credential Resolved: ${sandboxKeyResolved ? "PASS" : "FAIL"}`);
-  console.log(`- Fail-Closed Staging Isolation Active: ${standardKeyUnavailableInStaging ? "PASS" : "FAIL"}`);
+  console.log(`- Staging Resolver Selects Sandbox Key: ${sandboxKeyResolved ? "PASS" : "FAIL"}`);
+  console.log(`- Standard Key Unreachable in Staging Mode: ${standardKeyUnreachable ? "PASS" : "FAIL"}`);
   console.log(`- Writable R2 Key Probe Resolves Under staging/: ${r2KeyProbeValid ? "PASS" : "FAIL"}\n`);
 
-  if (!isStaging || !sandboxKeyResolved || !standardKeyUnavailableInStaging || !r2KeyProbeValid) {
+  if (!isStaging || !sandboxKeyResolved || !standardKeyUnreachable || !r2KeyProbeValid) {
     console.error("SANDBOX_CREDENTIAL_UNAVAILABLE: Pre-submit safety gate failed. Aborting execution.");
     process.exit(1);
   }
@@ -146,7 +148,7 @@ async function runSandboxE2ETests() {
 
     const quoteRes = await fetch("http://localhost:3005/api/images/preflight", {
       method: "POST",
-      headers: { "content-type": "application/json", "x-test-user-id": user.id },
+      headers: { "content-type": "application/json" },
       body: JSON.stringify(reqPayloadA)
     });
     const quoteData = await quoteRes.json();
@@ -172,7 +174,7 @@ async function runSandboxE2ETests() {
 
     const submitRes = await fetch("http://localhost:3005/api/images/generations", {
       method: "POST",
-      headers: { "content-type": "application/json", "x-test-user-id": user.id },
+      headers: { "content-type": "application/json" },
       body: JSON.stringify(submitPayloadA)
     });
     const submitData = await submitRes.json();
@@ -313,7 +315,7 @@ async function runSandboxE2ETests() {
 
     const quoteRes = await fetch("http://localhost:3005/api/images/preflight", {
       method: "POST",
-      headers: { "content-type": "application/json", "x-test-user-id": user.id },
+      headers: { "content-type": "application/json" },
       body: JSON.stringify(reqPayloadB)
     });
     const quoteData = await quoteRes.json();
@@ -337,7 +339,7 @@ async function runSandboxE2ETests() {
 
     const submitRes = await fetch("http://localhost:3005/api/images/generations", {
       method: "POST",
-      headers: { "content-type": "application/json", "x-test-user-id": user.id },
+      headers: { "content-type": "application/json" },
       body: JSON.stringify(submitPayloadB)
     });
     const submitData = await submitRes.json();
@@ -461,7 +463,7 @@ async function runSandboxE2ETests() {
 
     const quoteRes = await fetch("http://localhost:3005/api/images/preflight", {
       method: "POST",
-      headers: { "content-type": "application/json", "x-test-user-id": user.id },
+      headers: { "content-type": "application/json" },
       body: JSON.stringify(reqPayloadC)
     });
     const quoteData = await quoteRes.json();
@@ -486,7 +488,7 @@ async function runSandboxE2ETests() {
 
     const submitRes = await fetch("http://localhost:3005/api/images/generations", {
       method: "POST",
-      headers: { "content-type": "application/json", "x-test-user-id": user.id },
+      headers: { "content-type": "application/json" },
       body: JSON.stringify(submitPayloadC)
     });
     const submitData = await submitRes.json();
