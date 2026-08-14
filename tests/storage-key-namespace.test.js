@@ -6,6 +6,8 @@ const staging = { DOOLPHIN_ENV: "staging", VERCEL_ENV: "preview" };
 const production = { DOOLPHIN_ENV: "production", VERCEL_ENV: "production" };
 const ambiguousEmpty = {};
 const ambiguousLocalBuild = { NODE_ENV: "production" }; // local build without explicit DOOLPHIN_ENV or VERCEL_ENV
+const contradictoryEnv1 = { DOOLPHIN_ENV: "staging", VERCEL_ENV: "production" };
+const contradictoryEnv2 = { DOOLPHIN_ENV: "production", VERCEL_ENV: "preview" };
 
 test("staging write keys always receive the server-owned staging namespace", () => {
   assert.equal(buildStorageKey("uploads", ["user-1", "checksum.png"], staging), "staging/uploads/user-1/checksum.png");
@@ -29,6 +31,13 @@ test("ambiguous environment fails closed and refuses writable storage keys", () 
   assert.throws(() => buildStorageKey("final", ["workspace-1", "file.png"], ambiguousLocalBuild), /AMBIGUOUS_STORAGE_ENVIRONMENT/);
   assert.throws(() => assertWritableStorageKey("final/workspace-1/file.png", ambiguousEmpty), /AMBIGUOUS_STORAGE_ENVIRONMENT/);
   assert.throws(() => assertWritableStorageKey("final/workspace-1/file.png", ambiguousLocalBuild), /AMBIGUOUS_STORAGE_ENVIRONMENT/);
+});
+
+test("contradictory environment signals throw CONTRADICTORY_ENVIRONMENT_SIGNALS", () => {
+  assert.throws(() => buildStorageKey("final", ["workspace-1", "file.png"], contradictoryEnv1), /CONTRADICTORY_ENVIRONMENT_SIGNALS/);
+  assert.throws(() => buildStorageKey("final", ["workspace-1", "file.png"], contradictoryEnv2), /CONTRADICTORY_ENVIRONMENT_SIGNALS/);
+  assert.throws(() => assertWritableStorageKey("final/workspace-1/file.png", contradictoryEnv1), /CONTRADICTORY_ENVIRONMENT_SIGNALS/);
+  assert.throws(() => assertWritableStorageKey("final/workspace-1/file.png", contradictoryEnv2), /CONTRADICTORY_ENVIRONMENT_SIGNALS/);
 });
 
 test("request payload cannot choose storage environment or namespace", async () => {

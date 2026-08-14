@@ -4,8 +4,21 @@
  * never from client request parameters, headers, or user input.
  */
 export function getMuapiApiKey(env = process.env) {
+  // Reject contradictory environment signals immediately
+  if (env.DOOLPHIN_ENV === "staging" && env.VERCEL_ENV === "production") {
+    const error = new Error("Contradictory environment signals: DOOLPHIN_ENV=staging cannot be combined with VERCEL_ENV=production");
+    error.code = "CONTRADICTORY_ENVIRONMENT_SIGNALS";
+    throw error;
+  }
+
+  if (env.DOOLPHIN_ENV === "production" && env.VERCEL_ENV && env.VERCEL_ENV !== "production") {
+    const error = new Error("Contradictory environment signals: DOOLPHIN_ENV=production cannot be combined with non-production VERCEL_ENV");
+    error.code = "CONTRADICTORY_ENVIRONMENT_SIGNALS";
+    throw error;
+  }
+
   const isStaging = env.DOOLPHIN_ENV === "staging";
-  const isProduction = env.VERCEL_ENV === "production" || (env.NODE_ENV === "production" && env.DOOLPHIN_ENV !== "staging");
+  const isProduction = env.VERCEL_ENV === "production" && env.DOOLPHIN_ENV !== "staging";
 
   if (isStaging) {
     const sandboxKey = env.MUAPI_API_KEY_SANDBOX;
