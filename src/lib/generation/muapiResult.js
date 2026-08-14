@@ -1,13 +1,10 @@
+import { getMuapiApiKey } from "./muapiCredentials.js";
+
 // MuAPI webhooks are treated only as delivery notifications.  The documented
 // result API is the authority for terminal status, result URLs, and actual
 // cost because a callback body alone has no documented provider signature.
 export async function fetchAuthenticatedMuapiResult(providerRequestId, fetchImpl = fetch) {
-  const apiKey = process.env.MUAPI_API_KEY;
-  if (!apiKey || apiKey.includes("placeholder")) {
-    const error = new Error("MuAPI result authentication is not configured");
-    error.code = "MUAPI_RESULT_AUTH_UNAVAILABLE";
-    throw error;
-  }
+  const apiKey = getMuapiApiKey();
   const response = await fetchImpl(`https://api.muapi.ai/api/v1/predictions/${encodeURIComponent(providerRequestId)}/result`, {
     headers: { "x-api-key": apiKey },
     signal: AbortSignal.timeout(15_000),
