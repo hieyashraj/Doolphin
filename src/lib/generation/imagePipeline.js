@@ -1,14 +1,14 @@
 import crypto from "crypto";
 import sharp from "sharp";
-import { prisma } from "@/lib/prisma";
-import { R2StorageService } from "@/lib/storage/r2StorageService";
-import { buildStorageKey } from "@/lib/storage/storageKey";
-import { downloadMediaBufferSsrfSafe } from "@/lib/downloader";
-import { CreditEscrowService } from "@/lib/billing/CreditEscrowService";
-import { getImageModel } from "@/lib/generation-models/imageRegistry";
-import { isReconciliationEligibleVariant } from "@/lib/generation/reconciliationEligibility";
-import { muapiCostMicroUsd } from "@/lib/generation/muapiResult";
-import { PRICING_REVISION } from "@/lib/entitlements/pricing";
+import { prisma } from "../prisma.js";
+import { R2StorageService } from "../storage/r2StorageService.js";
+import { buildStorageKey } from "../storage/storageKey.js";
+import { downloadMediaBufferSsrfSafe } from "../downloader.js";
+import { CreditEscrowService } from "../billing/CreditEscrowService.js";
+import { getImageModel } from "../generation-models/imageRegistry.js";
+import { isReconciliationEligibleVariant } from "./reconciliationEligibility.js";
+import { muapiCostMicroUsd } from "./muapiResult.js";
+import { PRICING_REVISION } from "../entitlements/pricing.js";
 
 const MIME_BY_FORMAT = { jpeg: "image/jpeg", png: "image/png", webp: "image/webp" };
 const ACCEPTED_MIME = new Set(Object.values(MIME_BY_FORMAT));

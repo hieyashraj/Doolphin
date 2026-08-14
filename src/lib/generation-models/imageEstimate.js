@@ -1,5 +1,5 @@
-import { calculateImageQuote } from "./imagePricing";
-import { getMuapiApiKey } from "../generation/muapiCredentials";
+import { calculateImageQuote } from "./imagePricing.js";
+import { getMuapiApiKey } from "../generation/muapiCredentials.js";
 
 function toMicroUsd(value) {
   const amount = Number(value);

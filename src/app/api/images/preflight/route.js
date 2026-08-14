@@ -8,7 +8,7 @@ import { canGenerate } from "@/lib/generation-models/types";
 import { estimateImageQuote } from "@/lib/generation-models/imageEstimate";
 import { R2StorageService } from "@/lib/storage/r2StorageService";
 
-import { validateExploreImageIds } from "@/lib/generation/curatedReferenceResolver";
+import { validateExploreImageIds, resolveCuratedSignedUrls } from "@/lib/generation/curatedReferenceResolver";
 
 function payloadFingerprint(payload) { return crypto.createHash("sha256").update(JSON.stringify(payload)).digest("hex"); }
 
@@ -33,13 +33,15 @@ export async function POST(req) {
     const validatedExploreItems = validateExploreImageIds(exploreReqIds);
     if (validatedExploreItems.length !== exploreReqIds.length) return NextResponse.json({ code: "INVALID_CURATED_REFERENCE", error: "Curated reference image is invalid or unavailable." }, { status: 422 });
 
-    const referenceUrls = await Promise.all(assets.map((asset) => R2StorageService.generateSignedUrl({ storageKey: asset.storageKey, expiresInSeconds: 3600 })));
+    const userRefUrls = await Promise.all(assets.map((asset) => R2StorageService.generateSignedUrl({ storageKey: asset.storageKey, expiresInSeconds: 3600 })));
+    const curatedRefUrls = await resolveCuratedSignedUrls(exploreReqIds);
+    const referenceUrls = [...userRefUrls, ...curatedRefUrls];
     const estimatePayload = model.adapter.buildEstimatePayload(model, { request: validation.request, referenceUrls });
     const quoteBreakdown = await estimateImageQuote({ model, request: validation.request, payload: estimatePayload });
     if (!quoteBreakdown.priced) return NextResponse.json({ code: quoteBreakdown.code, error: quoteBreakdown.reason }, { status: 503 });
     const account = await prisma.creditAccount.findUnique({ where: { workspaceId: workspace.id } });
     if (!account || account.availableCredits < quoteBreakdown.totalCredits) return NextResponse.json({ code: "INSUFFICIENT_CREDITS", requiredCredits: quoteBreakdown.totalCredits, availableCredits: account?.availableCredits || 0 }, { status: 402 });
-    const snapshot = { imageRequest: validation.request, referenceAssetIds: validation.request.referenceAssetIds, providerPayloadFingerprint: payloadFingerprint(payload), providerDefaults: model.fixedProviderDefaults, estimate: quoteBreakdown.estimate, quoteBreakdown };
+    const snapshot = { imageRequest: validation.request, referenceAssetIds: validation.request.referenceAssetIds, providerPayloadFingerprint: payloadFingerprint(estimatePayload), providerDefaults: model.fixedProviderDefaults, estimate: quoteBreakdown.estimate, quoteBreakdown };
     const quote = await prisma.preflightQuote.create({ data: { workspaceId: workspace.id, userId: appUser.id, generationType: "IMAGE_STUDIO", requestSnapshot: JSON.stringify(validation.request), normalizedAssetSummary: JSON.stringify(assets.map((asset) => ({ id: asset.id, storageKey: asset.storageKey, mimeType: asset.mimeType }))), routingSnapshot: JSON.stringify(snapshot), selectedModelId: model.id, provider: model.provider, providerEndpoint: model.endpoint, registryRevision: model.capabilityRevision || "image-v1", pricingRevision: quoteBreakdown.pricingRevisionId, adapterVersion: model.adapterVersion || "image-adapter-v1", estimatedProviderCostMinMicroUsd: BigInt(quoteBreakdown.estimatedProviderCostMicroUsd), estimatedProviderCostMaxMicroUsd: BigInt(quoteBreakdown.estimatedProviderCostMicroUsd), infrastructureCostEstimateMicroUsd: BigInt(quoteBreakdown.internalCostReserveMicroUsd), expectedFailureLossMicroUsd: 0n, internalCreditsToReserve: quoteBreakdown.totalCredits, warnings: "[]", capabilitySummary: JSON.stringify(model.productCapabilities), expiresAt: new Date(Date.now() + 15 * 60_000) } });
     return NextResponse.json({ quote: { id: quote.id, expiresAt: quote.expiresAt, modelId: model.id, credits: quoteBreakdown.totalCredits, costs: quoteBreakdown, request: validation.request } }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) { console.error("[IMAGE_PREFLIGHT]", error); return NextResponse.json({ code: "IMAGE_PREFLIGHT_UNAVAILABLE", error: "Image pricing is temporarily unavailable." }, { status: 503 }); }
