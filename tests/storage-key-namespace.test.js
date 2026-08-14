@@ -4,6 +4,8 @@ import { assertWritableStorageKey, buildStorageKey } from "../src/lib/storage/st
 
 const staging = { DOOLPHIN_ENV: "staging", VERCEL_ENV: "preview" };
 const production = { DOOLPHIN_ENV: "production", VERCEL_ENV: "production" };
+const ambiguousEmpty = {};
+const ambiguousLocalBuild = { NODE_ENV: "production" }; // local build without explicit DOOLPHIN_ENV or VERCEL_ENV
 
 test("staging write keys always receive the server-owned staging namespace", () => {
   assert.equal(buildStorageKey("uploads", ["user-1", "checksum.png"], staging), "staging/uploads/user-1/checksum.png");
@@ -20,6 +22,13 @@ test("legacy keys remain readable while new writes cannot cross environments", (
   assert.equal("final/legacy-workspace/video.mp4", "final/legacy-workspace/video.mp4");
   assert.equal(assertWritableStorageKey("final/workspace-1/video.mp4", production), "final/workspace-1/video.mp4");
   assert.throws(() => assertWritableStorageKey("staging/final/workspace-1/video.mp4", production), /CROSS_ENVIRONMENT_STORAGE_NAMESPACE/);
+});
+
+test("ambiguous environment fails closed and refuses writable storage keys", () => {
+  assert.throws(() => buildStorageKey("final", ["workspace-1", "file.png"], ambiguousEmpty), /AMBIGUOUS_STORAGE_ENVIRONMENT/);
+  assert.throws(() => buildStorageKey("final", ["workspace-1", "file.png"], ambiguousLocalBuild), /AMBIGUOUS_STORAGE_ENVIRONMENT/);
+  assert.throws(() => assertWritableStorageKey("final/workspace-1/file.png", ambiguousEmpty), /AMBIGUOUS_STORAGE_ENVIRONMENT/);
+  assert.throws(() => assertWritableStorageKey("final/workspace-1/file.png", ambiguousLocalBuild), /AMBIGUOUS_STORAGE_ENVIRONMENT/);
 });
 
 test("request payload cannot choose storage environment or namespace", async () => {

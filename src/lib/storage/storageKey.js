@@ -4,6 +4,10 @@ function isStaging(env = process.env) {
   return env.DOOLPHIN_ENV === "staging" && env.VERCEL_ENV !== "production";
 }
 
+function isProduction(env = process.env) {
+  return env.VERCEL_ENV === "production" || (env.DOOLPHIN_ENV === "production" && env.VERCEL_ENV === "production");
+}
+
 function safeSegment(value) {
   const segment = String(value || "");
   if (!segment || segment === "." || segment === ".." || segment.includes("/") || segment.includes("\\") || segment.includes("\0")) {
@@ -13,14 +17,22 @@ function safeSegment(value) {
 }
 
 /**
- * The sole constructor for new durable object keys.  Its environment comes
- * from server process configuration, never a request, adapter, or client.
+ * The sole constructor for new durable object keys. Its environment comes
+ * strictly from trusted server process configuration, never a request, adapter, or client.
  */
 export function buildStorageKey(namespace, segments, env = process.env) {
   if (!WRITE_NAMESPACES.has(namespace)) throw new Error("INVALID_STORAGE_NAMESPACE");
   if (!Array.isArray(segments) || !segments.length) throw new Error("INVALID_STORAGE_KEY_SEGMENTS");
+
+  const stagingEnv = isStaging(env);
+  const prodEnv = isProduction(env);
+
+  if (!stagingEnv && !prodEnv) {
+    throw new Error("AMBIGUOUS_STORAGE_ENVIRONMENT");
+  }
+
   const key = [namespace, ...segments.map(safeSegment)].join("/");
-  return isStaging(env) ? `staging/${key}` : key;
+  return stagingEnv ? `staging/${key}` : key;
 }
 
 /** Enforced at every R2 write boundary; reads intentionally use raw legacy keys. */
@@ -29,8 +41,16 @@ export function assertWritableStorageKey(storageKey, env = process.env) {
   if (!key || key.startsWith("/") || key.includes("\\") || key.split("/").some((part) => !part || part === "." || part === "..")) {
     throw new Error("INVALID_STORAGE_WRITE_KEY");
   }
-  if (isStaging(env) && !key.startsWith("staging/")) throw new Error("STAGING_STORAGE_NAMESPACE_REQUIRED");
-  if (!isStaging(env) && key.startsWith("staging/")) throw new Error("CROSS_ENVIRONMENT_STORAGE_NAMESPACE");
+
+  const stagingEnv = isStaging(env);
+  const prodEnv = isProduction(env);
+
+  if (!stagingEnv && !prodEnv) {
+    throw new Error("AMBIGUOUS_STORAGE_ENVIRONMENT");
+  }
+
+  if (stagingEnv && !key.startsWith("staging/")) throw new Error("STAGING_STORAGE_NAMESPACE_REQUIRED");
+  if (prodEnv && key.startsWith("staging/")) throw new Error("CROSS_ENVIRONMENT_STORAGE_NAMESPACE");
   return key;
 }
 
