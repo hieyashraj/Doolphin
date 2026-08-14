@@ -62,11 +62,17 @@ export function createMuapiImageAdapter({ resolutionCase = "upper", nativeMap = 
       else payload.webhook_url = webhookUrl;
       return Object.freeze(payload);
     },
-    buildEstimatePayload(definition, { request, referenceUrls, exploreUrls, webhookUrl } = {}) {
-      const totalRef = (request?.referenceAssetIds?.length || 0) + (request?.exploreImageIds?.length || 0);
-      const estimateRefUrls = referenceUrls || (totalRef > 0 || requiredReferences ? Array(Math.max(totalRef, requiredReferences ? 1 : 0)).fill("https://estimate.doolphin.internal/placeholder.png") : []);
-      const estimateExploreUrls = exploreUrls || [];
-      return this.buildProviderPayload(definition, { request, referenceUrls: estimateRefUrls, exploreUrls: estimateExploreUrls, webhookUrl });
+    buildEstimatePayload(definition, { request, referenceUrls = [], exploreUrls = [], webhookUrl } = {}) {
+      const checked = validateImageRequest(definition, request);
+      if (!checked.valid) { const error = new Error(checked.errors[0].message); error.code = checked.errors[0].code; throw error; }
+      const payload = { prompt: request.prompt, ...definition.fixedProviderDefaults };
+      const combinedUrls = [...referenceUrls, ...exploreUrls];
+      if (combinedUrls.length) payload.images_list = combinedUrls;
+      if (definition.productCapabilities.aspectRatio.visible && request.aspectRatio) payload.aspect_ratio = request.aspectRatio;
+      if (definition.productCapabilities.outputResolution.visible && request.outputResolution) payload.resolution = resolutionCase === "lower" ? request.outputResolution.toLowerCase() : request.outputResolution;
+      if (definition.productCapabilities.requestedOutputCount.visible && request.requestedOutputCount) payload.num_images = request.requestedOutputCount;
+      if (webhookUrl) payload.webhook_url = webhookUrl;
+      return Object.freeze(payload);
     },
     parseSubmission(response) {
       if (!response?.request_id || typeof response.request_id !== "string") throw new Error("MuAPI submit response lacks request_id");
