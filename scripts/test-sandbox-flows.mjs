@@ -237,7 +237,7 @@ async function runSandboxE2ETests() {
       method: "POST",
       headers: {
         "content-type": "application/json",
-        "x-api-key": process.env.MUAPI_API_KEY
+        "x-api-key": apiKey
       },
       body: JSON.stringify(tSubmit.providerPayload)
     });
@@ -510,7 +510,7 @@ async function runSandboxE2ETests() {
     // Step C: Execute Provider Submission
     const muapiRes = await fetch(`https://api.muapi.ai${model.endpoint}`, {
       method: "POST",
-      headers: { "content-type": "application/json", "x-api-key": process.env.MUAPI_API_KEY },
+      headers: { "content-type": "application/json", "x-api-key": apiKey },
       body: JSON.stringify(tSubmit.providerPayload)
     });
 
@@ -744,7 +744,7 @@ async function runSandboxE2ETests() {
     // Step C: Execute Provider Submission
     const muapiRes = await fetch(`https://api.muapi.ai${model.endpoint}`, {
       method: "POST",
-      headers: { "content-type": "application/json", "x-api-key": process.env.MUAPI_API_KEY },
+      headers: { "content-type": "application/json", "x-api-key": apiKey },
       body: JSON.stringify(tSubmit.providerPayload)
     });
 

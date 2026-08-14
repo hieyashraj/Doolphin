@@ -9,7 +9,7 @@ test("reconciliation rejects GET and is server-gated to staging before mutation"
   assert.match(source, /export async function POST\(req\)/);
   assert.match(source, /if \(!isStagingEnvironment\(\)\) return NextResponse\.json\(\{ error: "Unavailable" \}, \{ status: 404 \}\)/);
   assert.match(source, /if \(!authorized\(req\)\) return NextResponse\.json\(\{ error: "Unauthorized" \}, \{ status: 401 \}\)/);
-  assert.match(source, /if \(!process\.env\.MUAPI_API_KEY\) return NextResponse\.json\(\{ error: "Sandbox provider credential required" \}, \{ status: 503 \}\)/);
+  assert.match(source, /getMuapiApiKey\(\)/);
   assert.doesNotMatch(source, /UGC_API_KEY/);
 });
 

@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import { NextResponse } from "next/server";
 import { requireActivatedAccount } from "@/lib/access/authorization";
+import { getMuapiApiKey } from "@/lib/generation/muapiCredentials";
 import { prisma } from "@/lib/prisma";
 import { CreditEscrowService } from "@/lib/billing/CreditEscrowService";
 import { compileCanonicalPrompt } from "@/lib/generation/promptCompiler";
@@ -271,8 +272,10 @@ async function handleGenerationSubmission(req) {
     return { creation, variants };
   }, { isolationLevel: "Serializable" });
 
-  const apiKey = process.env.MUAPI_API_KEY;
-  if (!apiKey || apiKey.includes("placeholder")) {
+  let apiKey;
+  try {
+    apiKey = getMuapiApiKey();
+  } catch {
     for (const item of created.variants) {
       await CreditEscrowService.releaseVariantReservations(item.variant.id, "PROVIDER_NOT_CONFIGURED");
       await prisma.creationVariant.update({ where: { id: item.variant.id }, data: { status: "FAILED", errorCode: "PROVIDER_NOT_CONFIGURED", safeError: userFacingGenerationMessage("FAILED", "PROVIDER_NOT_CONFIGURED") } });

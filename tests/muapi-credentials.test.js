@@ -113,3 +113,9 @@ test("generation submit route, result fetcher, and estimate service use centrali
   assert.match(runnerScript, /MUAPI_API_KEY_SANDBOX/);
   assert.match(runnerScript, /SANDBOX_CREDENTIAL_UNAVAILABLE/);
 });
+
+test("generation submit route persists server-owned providerEnvironment inside routingSnapshot", () => {
+  const genRoute = fs.readFileSync(new URL("../src/app/api/images/generations/route.js", import.meta.url), "utf8");
+  assert.match(genRoute, /providerEnvironment:\s*providerEnv/);
+  assert.match(genRoute, /process\.env\.DOOLPHIN_ENV === "staging" \? "SANDBOX" : "PRODUCTION"/);
+});

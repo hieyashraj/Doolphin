@@ -14,6 +14,7 @@ import { isReconciliationEligibleVariant, reconciliationEligibleVariantWhere } f
 import { getImageModel } from "@/lib/generation-models/imageRegistry";
 import { fetchAuthenticatedMuapiResult } from "@/lib/generation/muapiResult";
 import { processAuthenticatedImageResult } from "@/lib/generation/imagePipeline";
+import { getMuapiApiKey } from "@/lib/generation/muapiCredentials";
 
 export const maxDuration = 300;
 
@@ -125,7 +126,7 @@ async function submitPrepared(outbox, baseUrl) {
   const payload = getProviderAdapter("seedance-2").formatPayload({ prompt: compiled.compiledPrompt, settings: { duration: request.settings.durationSeconds, resolution: request.settings.resolution, aspect_ratio: request.settings.aspectRatio }, images: compiled.imageUrls, webhookUrl });
   let response;
   try {
-    response = await fetch(job.endpoint, { method: "POST", headers: { "Content-Type": "application/json", "x-api-key": process.env.MUAPI_API_KEY }, body: JSON.stringify(payload), signal: AbortSignal.timeout(30000) });
+    response = await fetch(job.endpoint, { method: "POST", headers: { "Content-Type": "application/json", "x-api-key": getMuapiApiKey() }, body: JSON.stringify(payload), signal: AbortSignal.timeout(30000) });
   } catch (cause) {
     const error = new Error("Provider submission could not be confirmed");
     error.submissionOutcomeUnknown = true;
@@ -152,7 +153,7 @@ async function submitPrepared(outbox, baseUrl) {
 }
 
 async function pollJob(job, webhookUrl) {
-  const response = await fetch(`https://api.muapi.ai/api/v1/predictions/${encodeURIComponent(job.providerRequestId)}/result`, { headers: { "x-api-key": process.env.MUAPI_API_KEY }, signal: AbortSignal.timeout(15000) });
+  const response = await fetch(`https://api.muapi.ai/api/v1/predictions/${encodeURIComponent(job.providerRequestId)}/result`, { headers: { "x-api-key": getMuapiApiKey() }, signal: AbortSignal.timeout(15000) });
   if (!response.ok) return "POLL_FAILED";
   const payload = await response.json();
   await prisma.providerJob.update({ where: { id: job.id }, data: { lastCheckedAt: new Date(), pollCount: { increment: 1 } } });
@@ -181,7 +182,7 @@ export async function POST(req) {
   // choose its environment.
   if (!isStagingEnvironment()) return NextResponse.json({ error: "Unavailable" }, { status: 404 });
   if (!authorized(req)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!process.env.MUAPI_API_KEY) return NextResponse.json({ error: "Sandbox provider credential required" }, { status: 503 });
+  try { getMuapiApiKey(); } catch { return NextResponse.json({ error: "Sandbox provider credential required" }, { status: 503 }); }
   // WEBHOOK_URL is the explicit provider/reconciliation callback base. Do not
   // couple new staging infrastructure to legacy NextAuth compatibility URLs.
   const baseUrl = process.env.WEBHOOK_URL;

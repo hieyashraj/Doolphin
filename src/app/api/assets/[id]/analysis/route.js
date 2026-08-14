@@ -2,6 +2,7 @@ import crypto from "crypto";
 import { z } from "zod";
 import { NextResponse } from "next/server";
 import { requireActivatedAccount } from "@/lib/access/authorization";
+import { getMuapiApiKey } from "@/lib/generation/muapiCredentials";
 import { prisma } from "@/lib/prisma";
 import { R2StorageService } from "@/lib/storage/r2StorageService";
 import { CreditEscrowService } from "@/lib/billing/CreditEscrowService";
@@ -65,8 +66,7 @@ async function handleAnalysisSubmission(_req, { params }) {
     return NextResponse.json({ status: "COMPLETED", analysis, revision: `${ANALYSIS_REVISION}.recording-manual` });
   }
 
-  const apiKey = process.env.MUAPI_API_KEY;
-  if (!apiKey || apiKey.includes("placeholder")) return NextResponse.json({ error: "MuAPI analyzer is not configured" }, { status: 503 });
+  let apiKey; try { apiKey = getMuapiApiKey(); } catch { return NextResponse.json({ error: "MuAPI analyzer is not configured" }, { status: 503 }); }
   const workspace = await CreditEscrowService.ensureUserWorkspace(session.user.id);
   if (!workspace?.id || workspace.id === "ws_default_fallback") return NextResponse.json({ error: "Durable workspace billing is unavailable" }, { status: 503 });
   try {
@@ -111,7 +111,7 @@ export async function GET(_req, { params }) {
     return NextResponse.json({ status: asset.analysisConfirmedAt ? "CONFIRMED" : asset.analysisStatus, analysis: asset.analysisJson ? JSON.parse(asset.analysisJson) : null, revision: asset.analysisRevision });
   }
   if (!asset.providerRequestId) return NextResponse.json({ status: "PENDING" });
-  const apiKey = process.env.MUAPI_API_KEY;
+  let apiKey; try { apiKey = getMuapiApiKey(); } catch { return NextResponse.json({ error: "MuAPI analyzer is not configured" }, { status: 503 }); }
   const response = await fetch(`${RESULT_ENDPOINT}/${encodeURIComponent(asset.providerRequestId)}/result`, { headers: { "x-api-key": apiKey }, signal: AbortSignal.timeout(15000) });
   const result = await response.json().catch(() => ({}));
   const providerStatus = String(result.status || "").toLowerCase();

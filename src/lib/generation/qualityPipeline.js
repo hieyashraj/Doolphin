@@ -4,6 +4,7 @@ import os from "os";
 import path from "path";
 import { prisma } from "@/lib/prisma";
 import { R2StorageService } from "@/lib/storage/r2StorageService";
+import { getMuapiApiKey } from "./muapiCredentials";
 import { buildStorageKey } from "@/lib/storage/storageKey";
 import { composeExactBroll, extractVerificationFrames, runFfprobe } from "@/lib/media/FfmpegRunner";
 import { createVerificationMontage } from "@/lib/media/verificationMontage";
@@ -39,7 +40,7 @@ function extractTranscript(payload) {
 }
 
 async function submitVerificationJob(job, payload) {
-  const apiKey = process.env.MUAPI_API_KEY;
+  const apiKey = getMuapiApiKey();
   await prisma.providerJob.update({ where: { id: job.id }, data: { status: "SUBMITTING", submissionCount: { increment: 1 } } });
   const response = await fetch(job.endpoint, {
     method: "POST",
