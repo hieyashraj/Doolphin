@@ -32,7 +32,10 @@ async function updateImageCreation(creationId) {
   } });
 }
 
+const TERMINAL_VARIANT_STATUSES = new Set(["COMPLETED", "FAILED", "TIMED_OUT", "CANCELLED", "QUARANTINED"]);
+
 async function markNoDelivery(job, code, safeError) {
+  if (TERMINAL_VARIANT_STATUSES.has(job.variant?.status)) return;
   await CreditEscrowService.releaseVariantReservations(job.creationVariantId, code);
   await prisma.$transaction([
     prisma.providerJob.update({ where: { id: job.id }, data: { status: "FAILED", completedAt: new Date(), errorCode: code, safeError, sanitizedResultPayload: JSON.stringify({ error: code }) } }),
@@ -68,6 +71,9 @@ async function createDerivatives({ original, workspaceId, creationId, variantId,
 
 export async function processAuthenticatedImageResult(job, payload) {
   if (!isReconciliationEligibleVariant(job.variant)) return { ignored: true, reason: "RECONCILIATION_INELIGIBLE" };
+  if (TERMINAL_VARIANT_STATUSES.has(job.variant?.status)) {
+    return { ignored: true, reason: "VARIANT_ALREADY_TERMINAL", status: job.variant.status };
+  }
   const model = getImageModel(job.internalModelId);
   if (!model) return markNoDelivery(job, "IMAGE_MODEL_UNAVAILABLE", "The image model is unavailable."), { failed: true };
   const parsed = model.adapter.parseAuthenticatedResult(payload);

@@ -202,7 +202,7 @@ export async function POST(req) {
     }
   }
 
-  const activeJobs = await prisma.providerJob.findMany({ where: { variant: { is: reconciliationEligibleVariantWhere() }, status: { in: ["QUEUED", "PROCESSING"] }, providerRequestId: { not: null }, OR: [{ lastCheckedAt: null }, { lastCheckedAt: { lt: new Date(Date.now() - 30_000) } }] }, take: 20 });
+  const activeJobs = await prisma.providerJob.findMany({ where: { variant: { is: { ...reconciliationEligibleVariantWhere(), status: { in: ["QUEUED", "PROCESSING"] } } }, status: { in: ["QUEUED", "PROCESSING"] }, providerRequestId: { not: null }, OR: [{ lastCheckedAt: null }, { lastCheckedAt: { lt: new Date(Date.now() - 30_000) } }] }, take: 20 });
   // A no-op reconciliation must not require callback credentials. Construct
   // the callback filter only when an eligible provider result can need it.
   const webhookUrl = activeJobs.some((job) => !getImageModel(job.internalModelId)) ? buildMuapiWebhookUrl(baseUrl) : null;
@@ -212,7 +212,7 @@ export async function POST(req) {
   }
 
   // A webhook may have completed both verification jobs immediately before a
-  // worker died during final R2/DB/settlement.  Replay from persisted evidence;
+  // worker died during final R2/DB/settlement. Replay from persisted evidence;
   // no provider request is sent and the finalization lease admits one worker.
   const finalizationRetries = await prisma.creationVariant.findMany({
     where: { ...reconciliationEligibleVariantWhere(), status: "PROCESSING", currentStage: { in: ["delivery_retry", "delivery_finalizing"] } },
@@ -230,6 +230,7 @@ export async function POST(req) {
   const timedOut = await prisma.creationVariant.findMany({ where: { ...reconciliationEligibleVariantWhere(), status: { in: ["QUEUED", "PROCESSING"] }, timeoutAt: { lt: now } } });
   for (const variant of timedOut) {
     await CreditEscrowService.releaseVariantReservations(variant.id, "WORKFLOW_TIMEOUT");
+    await prisma.providerJob.updateMany({ where: { creationVariantId: variant.id, status: { in: ["PREPARED", "QUEUED", "PROCESSING"] } }, data: { status: "TIMED_OUT", errorCode: "WORKFLOW_TIMEOUT", safeError: "Workflow timed out before completion." } });
     await prisma.creationVariant.update({ where: { id: variant.id }, data: { status: "TIMED_OUT", errorCode: "WORKFLOW_TIMEOUT", safeError: userFacingGenerationMessage("TIMED_OUT", "WORKFLOW_TIMEOUT") } });
     await updateTimedOutCreation(variant.creationId);
     actions.push({ variantId: variant.id, result: "TIMED_OUT" });

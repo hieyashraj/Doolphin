@@ -236,6 +236,8 @@ async function handleGenerationSubmission(req) {
           tx,
         });
       }
+      const providerEnv = process.env.DOOLPHIN_ENV === "staging" ? "SANDBOX" : "PRODUCTION";
+      const baseRouting = JSON.parse(quote.routingSnapshot || "{}");
       const providerJob = await tx.providerJob.create({
         data: {
           creationVariantId: variant.id,
@@ -249,7 +251,7 @@ async function handleGenerationSubmission(req) {
           registryRevision: model.capabilityRevision,
           pricingRevision: model.pricingRevision,
           adapterVersion: model.adapterVersion,
-          routingSnapshot: quote.routingSnapshot,
+          routingSnapshot: JSON.stringify({ ...baseRouting, providerEnvironment: providerEnv }),
           capabilitySnapshot: quote.capabilitySummary || "{}",
           sanitizedRequestPayload: JSON.stringify(sanitizePayload(providerPayload)),
           estimatedCostMinMicroUsd: BigInt(authoritativeQuote.components.providerGeneration) / BigInt(request.settings.outputCount),

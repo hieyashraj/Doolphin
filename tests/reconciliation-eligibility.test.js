@@ -27,7 +27,7 @@ test("new hardened variants persist the server-owned revision in their creation 
 test("reconciliation excludes legacy variants before submission, polling, finalization, and timeout work", () => {
   assert.match(reconcile, /const eligibleVariants = await prisma\.creationVariant\.findMany\(\{ where: reconciliationEligibleVariantWhere\(\)/);
   assert.match(reconcile, /aggregateId: \{ in: eligibleVariantIds \}/);
-  assert.match(reconcile, /variant: \{ is: reconciliationEligibleVariantWhere\(\) \}/);
+  assert.match(reconcile, /variant: \{ is: \{ \.\.\.reconciliationEligibleVariantWhere\(\), status: \{ in: \["QUEUED", "PROCESSING"\] \} \} \}/);
   assert.match(reconcile, /\.\.\.reconciliationEligibleVariantWhere\(\), status: "PROCESSING", currentStage/);
   assert.match(reconcile, /\.\.\.reconciliationEligibleVariantWhere\(\), status: \{ in: \["QUEUED", "PROCESSING"\] \}, timeoutAt/);
   assert.match(reconcile, /if \(!isReconciliationEligibleVariant\(job\.variant\)\) return "EXCLUDED_LEGACY"/);
