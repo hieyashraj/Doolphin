@@ -62,7 +62,12 @@ export function createMuapiImageAdapter({ resolutionCase = "upper", nativeMap = 
       else payload.webhook_url = webhookUrl;
       return Object.freeze(payload);
     },
-    buildEstimatePayload(definition, input) { return this.buildProviderPayload(definition, input); },
+    buildEstimatePayload(definition, { request, referenceUrls, exploreUrls, webhookUrl } = {}) {
+      const totalRef = (request?.referenceAssetIds?.length || 0) + (request?.exploreImageIds?.length || 0);
+      const estimateRefUrls = referenceUrls || (totalRef > 0 || requiredReferences ? Array(Math.max(totalRef, requiredReferences ? 1 : 0)).fill("https://estimate.doolphin.internal/placeholder.png") : []);
+      const estimateExploreUrls = exploreUrls || [];
+      return this.buildProviderPayload(definition, { request, referenceUrls: estimateRefUrls, exploreUrls: estimateExploreUrls, webhookUrl });
+    },
     parseSubmission(response) {
       if (!response?.request_id || typeof response.request_id !== "string") throw new Error("MuAPI submit response lacks request_id");
       return { providerRequestId: response.request_id, providerStatus: response.status || "queued" };

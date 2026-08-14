@@ -6,9 +6,7 @@ import { CreditEscrowService } from "@/lib/billing/CreditEscrowService";
 import { getImageModel } from "@/lib/generation-models/imageRegistry";
 import { canGenerate } from "@/lib/generation-models/types";
 import { estimateImageQuote } from "@/lib/generation-models/imageEstimate";
-import { R2StorageService } from "@/lib/storage/r2StorageService";
-
-import { validateExploreImageIds, resolveCuratedSignedUrls } from "@/lib/generation/curatedReferenceResolver";
+import { validateExploreImageIds } from "@/lib/generation/curatedReferenceResolver";
 
 function payloadFingerprint(payload) { return crypto.createHash("sha256").update(JSON.stringify(payload)).digest("hex"); }
 
@@ -33,10 +31,7 @@ export async function POST(req) {
     const validatedExploreItems = validateExploreImageIds(exploreReqIds);
     if (validatedExploreItems.length !== exploreReqIds.length) return NextResponse.json({ code: "INVALID_CURATED_REFERENCE", error: "Curated reference image is invalid or unavailable." }, { status: 422 });
 
-    const userRefUrls = await Promise.all(assets.map((asset) => R2StorageService.generateSignedUrl({ storageKey: asset.storageKey, expiresInSeconds: 3600 })));
-    const curatedRefUrls = await resolveCuratedSignedUrls(exploreReqIds);
-    const referenceUrls = [...userRefUrls, ...curatedRefUrls];
-    const estimatePayload = model.adapter.buildEstimatePayload(model, { request: validation.request, referenceUrls });
+    const estimatePayload = model.adapter.buildEstimatePayload(model, { request: validation.request });
     const quoteBreakdown = await estimateImageQuote({ model, request: validation.request, payload: estimatePayload });
     if (!quoteBreakdown.priced) return NextResponse.json({ code: quoteBreakdown.code, error: quoteBreakdown.reason }, { status: 503 });
     const account = await prisma.creditAccount.findUnique({ where: { workspaceId: workspace.id } });
