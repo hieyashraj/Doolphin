@@ -49,13 +49,18 @@ async function claimFinalization(variantId, ownerId) {
   return claimed.count === 1;
 }
 
+export async function generateDerivativeBuffers(imageBuffer) {
+  const image = sharp(imageBuffer, { failOn: "error" });
+  const [thumbnailBuffer, cardBuffer] = await Promise.all([
+    image.clone().resize({ width: 360, height: 360, fit: "inside", withoutEnlargement: true }).jpeg({ quality: 78 }).toBuffer(),
+    image.clone().resize({ width: 960, height: 720, fit: "inside", withoutEnlargement: true }).jpeg({ quality: 82 }).toBuffer(),
+  ]);
+  return { thumbnailBuffer, cardBuffer };
+}
+
 async function createDerivatives({ original, workspaceId, creationId, variantId, outputIndex }) {
   try {
-    const image = sharp(original.buffer, { failOn: "error" });
-    const [thumbnail, card] = await Promise.all([
-      image.clone().resize({ width: 360, height: 360, fit: "inside", withoutEnlargement: true }).jpeg({ quality: 78 }).toBuffer(),
-      image.clone().resize({ width: 960, height: 720, fit: "inside", withoutEnlargement: true }).jpeg({ quality: 82 }).toBuffer(),
-    ]);
+    const { thumbnailBuffer: thumbnail, cardBuffer: card } = await generateDerivativeBuffers(original.buffer);
     const derivativeEntries = [["IMAGE_THUMBNAIL", "thumbnails", thumbnail], ["IMAGE_CARD", "images", card]];
     for (const [type, namespace, buffer] of derivativeEntries) {
       const key = buildStorageKey(namespace, [workspaceId, creationId, `variant_${variantId}`, `output_${outputIndex}.${type === "IMAGE_THUMBNAIL" ? "thumb" : "card"}.jpg`]);
