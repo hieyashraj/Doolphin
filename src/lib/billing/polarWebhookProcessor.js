@@ -144,7 +144,7 @@ export async function processPolarBillingEvent(eventPayload, headers, db = null)
     });
 
     return result;
-  });
+  }, { timeout: 15000 });
 }
 
 async function handleOrderPaid(operation, tx) {
@@ -245,20 +245,31 @@ async function handleOrderPaid(operation, tx) {
         ? new Date(Date.UTC(startsAt.getUTCFullYear() + 1, startsAt.getUTCMonth(), startsAt.getUTCDate()))
         : new Date(Date.UTC(startsAt.getUTCFullYear(), startsAt.getUTCMonth() + 1, startsAt.getUTCDate())));
 
-    const entitlement = await tx.entitlement.create({
-      data: {
-        userId: user.id,
-        workspaceId: user.defaultWorkspaceId,
-        planCode: operation.planCode,
-        billingInterval: plan.interval,
-        polarCustomerId: operation.customerId,
-        polarOrderId: operation.orderId,
-        polarSubscriptionId: operation.subscriptionId,
-        startsAt,
-        endsAt,
-        featuresJson: "[]",
+    let entitlement = await tx.entitlement.findFirst({
+      where: {
+        OR: [
+          ...(operation.subscriptionId ? [{ polarSubscriptionId: operation.subscriptionId }] : []),
+          ...(operation.orderId ? [{ polarOrderId: operation.orderId }] : []),
+        ],
       },
     });
+
+    if (!entitlement) {
+      entitlement = await tx.entitlement.create({
+        data: {
+          userId: user.id,
+          workspaceId: user.defaultWorkspaceId,
+          planCode: operation.planCode,
+          billingInterval: plan.interval,
+          polarCustomerId: operation.customerId,
+          polarOrderId: operation.orderId,
+          polarSubscriptionId: operation.subscriptionId,
+          startsAt,
+          endsAt,
+          featuresJson: "[]",
+        },
+      });
+    }
 
     await tx.user.update({
       where: { id: user.id },
