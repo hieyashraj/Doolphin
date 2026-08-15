@@ -122,3 +122,40 @@ test("Prisma application runtime routes exclusively through DATABASE_URL with ma
   assert.doesNotMatch(prismaJs, /connectionString: process\.env\.DIRECT_URL/);
 });
 
+test("perf module only emits logs outside production (VERCEL_ENV guard)", async () => {
+  const perf = await text("src/lib/perf.js");
+  // Must gate on VERCEL_ENV !== "production" so logs are silent in Production
+  assert.match(perf, /VERCEL_ENV.*!==.*"production"/);
+  // Must export the three public helpers
+  assert.match(perf, /export function newReqId/);
+  assert.match(perf, /export function logPerf/);
+  assert.match(perf, /export async function timed/);
+  // logPerf must not emit when isPerfLoggingEnabled() is false
+  assert.match(perf, /if \(!isPerfLoggingEnabled\(\)\) return/);
+});
+
+test("perf timing is instrumented on the full sign-in → /app bootstrap path", async () => {
+  const [sync, auth, layout] = await Promise.all([
+    text("src/app/api/auth/sync/route.js"),
+    text("src/lib/access/authorization.js"),
+    text("src/app/(app)/layout.js"),
+  ]);
+
+  // /api/auth/sync instruments getUser, linkSupabaseIdentity, and total
+  assert.match(sync, /newReqId/);
+  assert.match(sync, /sync:supabase\.auth\.getUser/);
+  assert.match(sync, /sync:linkSupabaseIdentity/);
+  assert.match(sync, /sync:total/);
+
+  // authorization.js instruments getUser, user DB lookup, workspace+entitlement lookup
+  assert.match(auth, /auth:supabase\.auth\.getUser/);
+  assert.match(auth, /auth:user\.findUnique/);
+  assert.match(auth, /auth:workspace\+entitlement\.findUnique/);
+
+  // AppLayout instruments requireActivatedAccount, creditAccount, and total
+  assert.match(layout, /newReqId/);
+  assert.match(layout, /layout:requireActivatedAccount/);
+  assert.match(layout, /layout:creditAccount\.findUnique/);
+  assert.match(layout, /layout:total/);
+});
+
