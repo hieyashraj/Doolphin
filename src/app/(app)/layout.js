@@ -16,7 +16,9 @@ export default async function AppLayout({ children }) {
     );
   } catch (error) {
     if (error?.code === "UNAUTHENTICATED") redirect("/sign-in?next=/app");
+    if (error?.code === "EMAIL_VERIFICATION_REQUIRED") redirect("/verify-email");
     if (error?.code === "ACTIVATION_REQUIRED") redirect("/pricing");
+    if (error?.code === "ACCOUNT_DENIED") redirect("/sign-in?denied=1");
     redirect("/sign-in?denied=1");
   }
 

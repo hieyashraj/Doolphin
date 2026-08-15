@@ -4,7 +4,7 @@ import { PrismaClient } from "@prisma/client";
 const globalForPrisma = globalThis;
 
 function createPrismaClient() {
-  const databaseUrl = process.env.DATABASE_URL;
+  const databaseUrl = process.env.DATABASE_URL || (process.env.NODE_ENV === "test" || process.env.NODE_TEST_CONTEXT ? "postgresql://localhost:5432/dummy" : "");
   if (!databaseUrl) throw new Error("DATABASE_URL is required");
   if (databaseUrl.startsWith("postgres://") || databaseUrl.startsWith("postgresql://")) {
     const req = createRequire(import.meta.url);

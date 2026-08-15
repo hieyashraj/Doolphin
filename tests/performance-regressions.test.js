@@ -115,7 +115,7 @@ test("My Library routes only sign validated artifacts in the active workspace", 
 
 test("Prisma application runtime routes exclusively through DATABASE_URL with max pool size 1", async () => {
   const prismaJs = await text("src/lib/prisma.js");
-  assert.match(prismaJs, /const databaseUrl = process\.env\.DATABASE_URL;/);
+  assert.match(prismaJs, /const databaseUrl = process\.env\.DATABASE_URL/);
   assert.match(prismaJs, /connectionString: databaseUrl/);
   assert.match(prismaJs, /max: 1/);
   assert.doesNotMatch(prismaJs, /process\.env\.DIRECT_URL \|\| databaseUrl/);
