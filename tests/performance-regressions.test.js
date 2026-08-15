@@ -147,54 +147,57 @@ test("perf timing is instrumented on the full sign-in → /app bootstrap path", 
   assert.match(sync, /sync:linkSupabaseIdentity/);
   assert.match(sync, /sync:total/);
 
-  // authorization.js instruments getUser, user DB lookup, workspace+entitlement lookup
+  // authorization.js instruments getUser, user DB lookup, single-pass workspace+entitlement+creditAccount lookup
   assert.match(auth, /auth:supabase\.auth\.getUser/);
   assert.match(auth, /auth:user\.findUnique/);
-  assert.match(auth, /auth:workspace\+entitlement\.findUnique/);
+  assert.match(auth, /auth:workspace\+entitlement\+creditAccount/);
 
-  // AppLayout instruments requireActivatedAccount, creditAccount, and total
+  // AppLayout instruments requireActivatedAccount and total
   assert.match(layout, /newReqId/);
   assert.match(layout, /layout:requireActivatedAccount/);
-  assert.match(layout, /layout:creditAccount\.findUnique/);
   assert.match(layout, /layout:total/);
 });
 
-test("client-side sign-in measures duration and passes non-secret timing headers to sync route", async () => {
-  const [signInPage, syncRoute] = await Promise.all([
-    text("src/app/(auth)/sign-in/page.js"),
-    text("src/app/api/auth/sync/route.js"),
-  ]);
 
-  // Client measures signInWithPassword duration and passes x-doolphin timing headers
-  assert.match(signInPage, /performance\.now\(\)/);
+test("client-side sign-in executes direct Supabase authentication and sets ephemeral welcome notice", async () => {
+  const signInPage = await text("src/app/(auth)/sign-in/page.js");
+
+  // Client executes signInWithPassword directly
   assert.match(signInPage, /signInWithPassword/);
-  assert.match(signInPage, /"x-doolphin-perf-id"/);
-  assert.match(signInPage, /"x-doolphin-auth-duration-ms"/);
 
-  // Sync route reads and validates duration with Number.isFinite
-  assert.match(syncRoute, /x-doolphin-perf-id/);
-  assert.match(syncRoute, /x-doolphin-auth-duration-ms/);
-  assert.match(syncRoute, /Number\.isFinite/);
-  assert.match(syncRoute, /clientAuthDurationMs/);
+  // Sets ephemeral welcome-back notice in sessionStorage
+  assert.match(signInPage, /sessionStorage\.setItem\("doolphin-auth-notice", "welcome-back"\)/);
+
+  // Hard document navigation to /app
+  assert.match(signInPage, /window\.location\.replace\("\/app"\)/);
 });
 
-test("post-auth boundary uses deterministic window.location.replace and resets loading state on error", async () => {
-  const [signInPage, perf] = await Promise.all([
+
+test("post-auth boundary uses deterministic window.location.replace('/app') without calling /api/auth/sync", async () => {
+  const [signInPage, healthRoute, nextAuthRoute, perf] = await Promise.all([
     text("src/app/(auth)/sign-in/page.js"),
+    text("src/app/api/health/route.js"),
+    text("src/app/api/auth/[...nextauth]/route.js"),
     text("src/lib/perf.js"),
   ]);
 
-  // Successful auth boundary navigation uses full document transition
-  assert.match(signInPage, /window\.location\.replace\(destination\)/);
-  assert.doesNotMatch(signInPage, /router\.replace\(syncData/);
+  // Successful returning sign-in navigates directly to /app without calling /api/auth/sync
+  assert.match(signInPage, /window\.location\.replace\("\/app"\)/);
+  assert.doesNotMatch(signInPage, /fetch\("\/api\/auth\/sync"/);
 
-  // Sync failure explicitly throws and does not silently proceed
-  assert.match(signInPage, /if \(!syncRes\.ok\) throw new Error/);
-  assert.match(signInPage, /syncData\?\.ok/);
+  // Wrong password shows explicit credential rejection error
+  assert.match(signInPage, /setError\("Email or password is incorrect\."\)/);
 
-  // Error catch block resets submitting state and displays error
-  assert.match(signInPage, /setError\("Unable to sign in/);
+  // Error catch block handles timeout and resets submitting state
+  assert.match(signInPage, /CLIENT_AUTH_TIMEOUT/);
   assert.match(signInPage, /setSubmitting\(false\)/);
+
+  // App-level recovery state handled for ?denied=1
+  assert.match(signInPage, /You're signed in, but we're having trouble loading your workspace/);
+
+  // Deployable runtime no longer depends on obsolete NextAuth
+  assert.doesNotMatch(healthRoute, /getServerSession/);
+  assert.match(nextAuthRoute, /410/);
 
   // Production logging guard remains active
   assert.match(perf, /process\.env\.VERCEL_ENV !== "production"/);

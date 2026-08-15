@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth";
 
+// NextAuth session endpoint has been decommissioned in favor of Supabase Auth.
 export async function GET() {
-  const session = await getServerSession(authOptions);
-  return NextResponse.json(session || null);
+  return NextResponse.json(null);
 }

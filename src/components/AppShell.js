@@ -1,13 +1,28 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Navbar from "./Navbar";
 import { useAppAccount } from "./AppAccountProvider";
 import { useRouter } from "next/navigation";
-import { FiZap } from "react-icons/fi";
+import { FiZap, FiCheckCircle } from "react-icons/fi";
 
 export default function AppShell({ children }) {
   const { account } = useAppAccount();
   const router = useRouter();
+  const [noticeMsg, setNoticeMsg] = useState("");
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const notice = sessionStorage.getItem("doolphin-auth-notice");
+    if (notice) {
+      sessionStorage.removeItem("doolphin-auth-notice");
+      if (notice === "welcome-back") setNoticeMsg("Welcome back");
+      else if (notice === "welcome-new") setNoticeMsg("Welcome to Doolphin");
+
+      const timer = setTimeout(() => setNoticeMsg(""), 4000);
+      return () => clearTimeout(timer);
+    }
+  }, []);
 
   const handleUpgrade = () => {
     router.push("/pricing");
@@ -19,7 +34,14 @@ export default function AppShell({ children }) {
 
   return (
     <div className="flow-canvas flex h-dvh min-h-dvh w-full gap-2 overflow-hidden bg-[#FAF8ED] p-2 text-[#111111] md:gap-3 md:p-3">
+      {noticeMsg && (
+        <div role="status" className="fixed top-4 right-4 z-50 flex items-center gap-2 rounded-2xl border border-[#111111]/20 bg-white px-4 py-3 font-semibold text-sm text-[#111111] shadow-lg animate-in fade-in slide-in-from-top-2">
+          <FiCheckCircle className="text-emerald-600" size={18} />
+          <span>{noticeMsg}</span>
+        </div>
+      )}
       <Navbar />
+
       <main className="relative z-10 flex min-w-0 flex-1 flex-col overflow-hidden rounded-[28px] border border-[#111111]/15 bg-[#FAF8ED]">
         {/* PERSISTENT STICKY TOP UTILITY BAR */}
         <header className="sticky top-0 z-30 flex h-14 w-full shrink-0 items-center justify-between border-b border-[#111111]/10 bg-[#FAF8ED]/95 px-4 backdrop-blur-md md:px-6">
