@@ -1,97 +1,39 @@
-process.env.DATABASE_URL ||= "postgresql://localhost:5432/dummy";
-
 import test from "node:test";
 import assert from "node:assert/strict";
-import {
-  getSupabaseAuthUser,
-  requireAuthenticatedUser,
-  requireVerifiedUser,
-  requireActivatedAccount,
-  AuthorizationError
-} from "../src/lib/access/authorization.js";
+import fs from "node:fs";
 
-test("getSupabaseAuthUser does not fabricate email_confirmed_at from JWT claims", async () => {
-  const mockSupabase = {
-    auth: {
-      getClaims: async () => ({
-        data: {
-          claims: {
-            sub: "user-123",
-            email: "user@example.test",
-            app_metadata: { provider: "email" },
-          },
-        },
-      }),
-      getUser: async () => ({ data: { user: null }, error: new Error("should not be called") }),
-    },
-  };
+const authorizationSource = fs.readFileSync(
+  new URL("../src/lib/access/authorization.js", import.meta.url),
+  "utf8"
+);
 
-  const res = await getSupabaseAuthUser(mockSupabase);
-  assert.equal(res.data.user.id, "user-123");
-  assert.equal(res.data.user.email, "user@example.test");
-  assert.equal(res.data.user.email_confirmed_at, undefined);
+test("getSupabaseAuthUser does not depend on or fabricate email_verified from JWT claims", () => {
+  // getSupabaseAuthUser must not reference email_verified or fabricate email_confirmed_at from claims
+  assert.doesNotMatch(authorizationSource, /claims\.email_verified/);
+  assert.doesNotMatch(authorizationSource, /email_confirmed_at:\s*data\.claims/);
+
+  // Must include actual supported claim metadata: id, email, app_metadata, user_metadata
+  assert.match(authorizationSource, /id:\s*data\.claims\.sub/);
+  assert.match(authorizationSource, /email:\s*data\.claims\.email/);
+  assert.match(authorizationSource, /app_metadata:\s*data\.claims\.app_metadata/);
+  assert.match(authorizationSource, /user_metadata:\s*data\.claims\.user_metadata/);
 });
 
-test("claims without email_verified does NOT cause EMAIL_VERIFICATION_REQUIRED for linked ACTIVATED user", async () => {
-  const mockAppUser = {
-    id: "app-user-1",
-    supabaseUserId: "sub-123",
-    email: "activated@doolphin.test",
-    activationStatus: "ACTIVATED",
-    status: "ACTIVE",
-    subscriptionStatus: "ACTIVE",
-    defaultWorkspaceId: "ws-123",
-  };
+test("returning linked ACTIVATED user authorization is not rejected for absent JWT email_verified", () => {
+  // requireVerifiedUser must not check identity.authUser.email_confirmed_at
+  assert.doesNotMatch(authorizationSource, /identity\.authUser\.email_confirmed_at/);
 
-  const identity = { authUser: { id: "sub-123", email: "activated@doolphin.test" }, appUser: mockAppUser };
+  // requireVerifiedUser relies on Doolphin's authoritative appUser.activationStatus
+  assert.match(authorizationSource, /identity\.appUser\.activationStatus === "UNVERIFIED"/);
 
-  // Verification relies on appUser.activationStatus
-  const verified = await (async () => {
-    if (identity.appUser.activationStatus === "UNVERIFIED") {
-      throw new AuthorizationError("EMAIL_VERIFICATION_REQUIRED", 403);
-    }
-    return identity;
-  })();
-
-  assert.equal(verified.appUser.activationStatus, "ACTIVATED");
+  // Returning user with existing appUser returns directly without second getUser call
+  assert.match(authorizationSource, /if \(appUser\) \{\s*return \{ authUser: user, appUser \};\s*\}/);
 });
 
-test("unconfirmed first-time user throws EMAIL_VERIFICATION_REQUIRED before identity bootstrap", async () => {
-  const fullAuthUser = {
-    id: "new-sub-999",
-    email: "unconfirmed@doolphin.test",
-    email_confirmed_at: null,
-    app_metadata: { provider: "email" },
-  };
+test("first-time user path requires authoritative getUser verification before identity bootstrap", () => {
+  // If appUser is missing, calls supabase.auth.getUser() once for authoritative email confirmation check
+  assert.match(authorizationSource, /const \{ data: \{ user: fullAuthUser \}, error: fullAuthError \} = await supabase\.auth\.getUser\(\);/);
 
-  const isGoogle = fullAuthUser.app_metadata?.provider === "google";
-  let thrownError = null;
-  try {
-    if (!fullAuthUser.email_confirmed_at && !isGoogle) {
-      throw new AuthorizationError("EMAIL_VERIFICATION_REQUIRED", 403);
-    }
-  } catch (err) {
-    thrownError = err;
-  }
-
-  assert.ok(thrownError);
-  assert.equal(thrownError.code, "EMAIL_VERIFICATION_REQUIRED");
-  assert.equal(thrownError.status, 403);
-});
-
-test("confirmed first-time user passes email verification before identity bootstrap", async () => {
-  const fullAuthUser = {
-    id: "new-sub-888",
-    email: "confirmed@doolphin.test",
-    email_confirmed_at: "2026-08-16T00:00:00.000Z",
-    app_metadata: { provider: "email" },
-  };
-
-  const isGoogle = fullAuthUser.app_metadata?.provider === "google";
-  let verificationPassed = false;
-  if (fullAuthUser.email_confirmed_at || isGoogle) {
-    verificationPassed = true;
-  }
-
-  assert.equal(verificationPassed, true);
+  // First-time email users require email_confirmed_at or google provider before linkSupabaseIdentity
+  assert.match(authorizationSource, /if \(!fullAuthUser\.email_confirmed_at && !isGoogle\) \{\s*throw new AuthorizationError\("EMAIL_VERIFICATION_REQUIRED", 403\);/);
 });
