@@ -31,10 +31,12 @@ export default function SignInPage() {
           "x-doolphin-auth-duration-ms": String(clientAuthDurationMs),
         },
       });
-      if (!syncRes.ok) throw new Error("sync");
+      if (!syncRes.ok) throw new Error("sync_failed");
       const syncData = await syncRes.json();
+      if (!syncData?.ok) throw new Error("sync_unsuccessful");
       const account = syncData.ok ? { ok: syncData.activationStatus === "ACTIVATED" } : await fetch("/api/account");
-      router.replace(syncData.destination || postSignInDestination(account));
+      const destination = syncData.destination || postSignInDestination(account);
+      window.location.replace(destination);
     } catch {
       setError("Unable to sign in. Check your details or reset your password.");
       setSubmitting(false);

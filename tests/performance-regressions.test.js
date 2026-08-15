@@ -178,3 +178,25 @@ test("client-side sign-in measures duration and passes non-secret timing headers
   assert.match(syncRoute, /clientAuthDurationMs/);
 });
 
+test("post-auth boundary uses deterministic window.location.replace and resets loading state on error", async () => {
+  const [signInPage, perf] = await Promise.all([
+    text("src/app/(auth)/sign-in/page.js"),
+    text("src/lib/perf.js"),
+  ]);
+
+  // Successful auth boundary navigation uses full document transition
+  assert.match(signInPage, /window\.location\.replace\(destination\)/);
+  assert.doesNotMatch(signInPage, /router\.replace\(syncData/);
+
+  // Sync failure explicitly throws and does not silently proceed
+  assert.match(signInPage, /if \(!syncRes\.ok\) throw new Error/);
+  assert.match(signInPage, /syncData\?\.ok/);
+
+  // Error catch block resets submitting state and displays error
+  assert.match(signInPage, /setError\("Unable to sign in/);
+  assert.match(signInPage, /setSubmitting\(false\)/);
+
+  // Production logging guard remains active
+  assert.match(perf, /process\.env\.VERCEL_ENV !== "production"/);
+});
+
