@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { FiArrowRight, FiLock, FiMail } from "react-icons/fi";
 import { createClient } from "@/lib/supabase/browser";
 import { postSignInDestination } from "@/lib/access/account-state";
+
 export default function SignInPage() {
   const [email, setEmail] = useState(""); const [password, setPassword] = useState(""); const [error, setError] = useState(""); const [submitting, setSubmitting] = useState(false); const router = useRouter();
   // Supabase must have Google enabled and this explicit public deployment flag
@@ -18,9 +19,18 @@ export default function SignInPage() {
     setSubmitting(true);
     setError("");
     try {
+      const clientPerfId = Math.floor(Math.random() * 0xffffffff).toString(16).padStart(8, "0");
+      const authStart = performance.now();
       const auth = await createClient().auth.signInWithPassword({ email: email.trim(), password });
+      const clientAuthDurationMs = Math.round(performance.now() - authStart);
       if (auth.error) throw auth.error;
-      const syncRes = await fetch("/api/auth/sync", { method: "POST" });
+      const syncRes = await fetch("/api/auth/sync", {
+        method: "POST",
+        headers: {
+          "x-doolphin-perf-id": clientPerfId,
+          "x-doolphin-auth-duration-ms": String(clientAuthDurationMs),
+        },
+      });
       if (!syncRes.ok) throw new Error("sync");
       const syncData = await syncRes.json();
       const account = syncData.ok ? { ok: syncData.activationStatus === "ACTIVATED" } : await fetch("/api/account");

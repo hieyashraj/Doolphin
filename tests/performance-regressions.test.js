@@ -159,3 +159,22 @@ test("perf timing is instrumented on the full sign-in → /app bootstrap path", 
   assert.match(layout, /layout:total/);
 });
 
+test("client-side sign-in measures duration and passes non-secret timing headers to sync route", async () => {
+  const [signInPage, syncRoute] = await Promise.all([
+    text("src/app/(auth)/sign-in/page.js"),
+    text("src/app/api/auth/sync/route.js"),
+  ]);
+
+  // Client measures signInWithPassword duration and passes x-doolphin timing headers
+  assert.match(signInPage, /performance\.now\(\)/);
+  assert.match(signInPage, /signInWithPassword/);
+  assert.match(signInPage, /"x-doolphin-perf-id"/);
+  assert.match(signInPage, /"x-doolphin-auth-duration-ms"/);
+
+  // Sync route reads and validates duration with Number.isFinite
+  assert.match(syncRoute, /x-doolphin-perf-id/);
+  assert.match(syncRoute, /x-doolphin-auth-duration-ms/);
+  assert.match(syncRoute, /Number\.isFinite/);
+  assert.match(syncRoute, /clientAuthDurationMs/);
+});
+
