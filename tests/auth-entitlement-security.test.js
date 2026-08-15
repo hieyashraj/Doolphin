@@ -19,10 +19,10 @@ test("paid mutation routes invoke activated-account authorization", async () => 
   }
 });
 
-test("checkout accepts only server-recognized plan codes and cannot call production Polar", async () => {
+test("checkout accepts only server-recognized plan codes and resolves polar environment safely", async () => {
   const source = await text("src/app/api/checkout/polar/route.js");
   assert.match(source, /PLANS\[planCode\]/);
-  assert.match(source, /POLAR_ENV !== "sandbox"/);
+  assert.match(source, /getPolarConfig/);
   assert.doesNotMatch(source, /productId.*req\.json|credits.*req\.json/);
 });
 

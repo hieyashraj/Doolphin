@@ -375,6 +375,7 @@ model Entitlement {
   status EntitlementStatus @default(ACTIVE)
   polarCustomerId String?
   polarOrderId String? @unique
+  polarSubscriptionId String? @unique
   startsAt DateTime
   endsAt DateTime
   grantsStoppedAt DateTime?

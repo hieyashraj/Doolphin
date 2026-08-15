@@ -25,7 +25,8 @@ export async function grantCreditsIdempotently(operation, db = prisma) {
     return { status: "ALREADY_PROCESSED", entry: existing };
   }
   try {
-    const entry = await db.$transaction(async (tx) => {
+    const executeTx = typeof db.$transaction === "function" ? (fn) => db.$transaction(fn) : (fn) => fn(db);
+    const entry = await executeTx(async (tx) => {
       const created = await tx.creditLedgerEntry.create({ data: operation });
       await tx.creditAccount.update({ where: { workspaceId: operation.workspaceId }, data: {
         availableCredits: { increment: operation.amount },
