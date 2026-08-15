@@ -102,33 +102,44 @@ async function getPrismaClient() {
 function isPolarEventIdUniqueConstraint(error) {
   if (!error || error.code !== "P2002") return false;
   const target = error.meta?.target;
-  const model = error.meta?.modelName;
   const msg = error.message || "";
 
-  if (model === "BillingWebhookEvent") return true;
-  if (Array.isArray(target) && target.includes("polarEventId")) return true;
-  if (typeof target === "string" && target.includes("polarEventId")) return true;
-  if (msg.includes("polarEventId") || msg.includes("BillingWebhookEvent")) return true;
+  if (Array.isArray(target)) {
+    return target.length === 1 && target[0] === "polarEventId";
+  }
+  if (typeof target === "string") {
+    return target === "polarEventId";
+  }
+
+  if (msg.includes("polarEventId")) {
+    return true;
+  }
+
   return false;
 }
 
 function isPayloadConsistent(persisted, operation) {
-  if (persisted.eventType && persisted.eventType !== operation.eventType) return false;
-  if (!persisted.payloadJson) return true;
+  if (!persisted || !persisted.payloadJson) return false;
+
+  let storedPayload;
   try {
-    const storedPayload = JSON.parse(persisted.payloadJson);
-    const storedOp = canonicalPayload(storedPayload, operation.webhookId);
-    return (
-      storedOp.eventType === operation.eventType &&
-      storedOp.orderId === operation.orderId &&
-      storedOp.subscriptionId === operation.subscriptionId &&
-      storedOp.customerId === operation.customerId &&
-      storedOp.planCode === operation.planCode &&
-      storedOp.supabaseUserId === operation.supabaseUserId
-    );
+    storedPayload = JSON.parse(persisted.payloadJson);
   } catch {
-    return true;
+    return false;
   }
+
+  const storedOp = canonicalPayload(storedPayload, operation.webhookId);
+  if (!storedOp) return false;
+
+  return (
+    storedOp.eventType === operation.eventType &&
+    storedOp.orderId === operation.orderId &&
+    storedOp.subscriptionId === operation.subscriptionId &&
+    storedOp.customerId === operation.customerId &&
+    storedOp.productId === operation.productId &&
+    storedOp.billingReason === operation.billingReason &&
+    storedOp.supabaseUserId === operation.supabaseUserId
+  );
 }
 
 export async function processPolarBillingEvent(eventPayload, headers, db = null) {

@@ -523,21 +523,184 @@ test("REFUND: full order.refunded revokes entitlement without ledger balance cor
   delete process.env.POLAR_PRODUCT_STARTER_MONTHLY;
 });
 
-test("CONCURRENCY DEDUPLICATION: P2002 on polarEventId returns ALREADY_PROCESSED when processed event exists", async () => {
+test("A. MATCHING PROCESSED DUPLICATE: same webhook ID + same financial identity returns ALREADY_PROCESSED", async () => {
+  process.env.POLAR_PRODUCT_STARTER_MONTHLY = "prod_starter_111";
   const db = createMockDb();
-  db._store.billingWebhookEvent.set("msg_race_1", {
-    id: "bwe_race_1",
-    polarEventId: "msg_race_1",
+  const payload = {
+    id: "msg_dup_match",
+    type: "order.paid",
+    data: { id: "ord_dup_match", product_id: "prod_starter_111", subscription_id: "sub_dup_match", billing_reason: "subscription_create", customer_id: "cust_dup_match", metadata: { supabaseUserId: "sup_123" } },
+  };
+
+  const res1 = await processPolarBillingEvent(payload, { "webhook-id": "msg_dup_match" }, db);
+  assert.equal(res1.status, "PROCESSED");
+
+  const res2 = await processPolarBillingEvent(payload, { "webhook-id": "msg_dup_match" }, db);
+  assert.equal(res2.status, "ALREADY_PROCESSED");
+
+  delete process.env.POLAR_PRODUCT_STARTER_MONTHLY;
+});
+
+test("B. MISSING PERSISTED PAYLOAD: null payloadJson fails closed with IdempotencyIntegrityConflict", async () => {
+  const db = createMockDb();
+  db._store.billingWebhookEvent.set("msg_null_payload", {
+    id: "bwe_null",
+    polarEventId: "msg_null_payload",
+    eventType: "order.paid",
+    payloadJson: null,
+    processedAt: new Date(),
+  });
+
+  const payload = {
+    id: "msg_null_payload",
+    type: "order.paid",
+    data: { id: "ord_null", product_id: "prod_starter_111", subscription_id: "sub_null", billing_reason: "subscription_create", customer_id: "cust_null", metadata: { supabaseUserId: "sup_123" } },
+  };
+
+  await assert.rejects(
+    async () => processPolarBillingEvent(payload, { "webhook-id": "msg_null_payload" }, db),
+    (err) => err.code === "IDEMPOTENCY_INTEGRITY_CONFLICT"
+  );
+});
+
+test("C. MALFORMED PERSISTED PAYLOAD: JSON parse failure fails closed with IdempotencyIntegrityConflict", async () => {
+  const db = createMockDb();
+  db._store.billingWebhookEvent.set("msg_bad_json", {
+    id: "bwe_bad",
+    polarEventId: "msg_bad_json",
+    eventType: "order.paid",
+    payloadJson: "{ malformed json...",
+    processedAt: new Date(),
+  });
+
+  const payload = {
+    id: "msg_bad_json",
+    type: "order.paid",
+    data: { id: "ord_bad", product_id: "prod_starter_111", subscription_id: "sub_bad", billing_reason: "subscription_create", customer_id: "cust_bad", metadata: { supabaseUserId: "sup_123" } },
+  };
+
+  await assert.rejects(
+    async () => processPolarBillingEvent(payload, { "webhook-id": "msg_bad_json" }, db),
+    (err) => err.code === "IDEMPOTENCY_INTEGRITY_CONFLICT"
+  );
+});
+
+test("D. DIFFERENT PRODUCT ID: Same webhook ID but different productId fails closed", async () => {
+  process.env.POLAR_PRODUCT_STARTER_MONTHLY = "prod_starter_111";
+  process.env.POLAR_PRODUCT_GROWTH_MONTHLY = "prod_growth_222";
+
+  const db = createMockDb();
+  const payloadOriginal = {
+    id: "msg_prod_diff",
+    type: "order.paid",
+    data: { id: "ord_prod_diff", product_id: "prod_starter_111", subscription_id: "sub_prod_diff", billing_reason: "subscription_create", customer_id: "cust_prod_diff", metadata: { supabaseUserId: "sup_123" } },
+  };
+  await processPolarBillingEvent(payloadOriginal, { "webhook-id": "msg_prod_diff" }, db);
+
+  const payloadTampered = {
+    id: "msg_prod_diff",
+    type: "order.paid",
+    data: { id: "ord_prod_diff", product_id: "prod_growth_222", subscription_id: "sub_prod_diff", billing_reason: "subscription_create", customer_id: "cust_prod_diff", metadata: { supabaseUserId: "sup_123" } },
+  };
+
+  await assert.rejects(
+    async () => processPolarBillingEvent(payloadTampered, { "webhook-id": "msg_prod_diff" }, db),
+    (err) => err.code === "IDEMPOTENCY_INTEGRITY_CONFLICT"
+  );
+
+  delete process.env.POLAR_PRODUCT_STARTER_MONTHLY;
+  delete process.env.POLAR_PRODUCT_GROWTH_MONTHLY;
+});
+
+test("E. DIFFERENT BILLING REASON: Same webhook ID but different billingReason fails closed", async () => {
+  process.env.POLAR_PRODUCT_STARTER_MONTHLY = "prod_starter_111";
+
+  const db = createMockDb();
+  const payloadOriginal = {
+    id: "msg_reason_diff",
+    type: "order.paid",
+    data: { id: "ord_reason_diff", product_id: "prod_starter_111", subscription_id: "sub_reason_diff", billing_reason: "subscription_create", customer_id: "cust_reason_diff", metadata: { supabaseUserId: "sup_123" } },
+  };
+  await processPolarBillingEvent(payloadOriginal, { "webhook-id": "msg_reason_diff" }, db);
+
+  const payloadTampered = {
+    id: "msg_reason_diff",
+    type: "order.paid",
+    data: { id: "ord_reason_diff", product_id: "prod_starter_111", subscription_id: "sub_reason_diff", billing_reason: "subscription_cycle", customer_id: "cust_reason_diff", metadata: { supabaseUserId: "sup_123" } },
+  };
+
+  await assert.rejects(
+    async () => processPolarBillingEvent(payloadTampered, { "webhook-id": "msg_reason_diff" }, db),
+    (err) => err.code === "IDEMPOTENCY_INTEGRITY_CONFLICT"
+  );
+
+  delete process.env.POLAR_PRODUCT_STARTER_MONTHLY;
+});
+
+test("F. DIFFERENT ORDER ID: Same webhook ID but different orderId fails closed", async () => {
+  process.env.POLAR_PRODUCT_STARTER_MONTHLY = "prod_starter_111";
+
+  const db = createMockDb();
+  const payloadOriginal = {
+    id: "msg_ord_diff",
+    type: "order.paid",
+    data: { id: "ord_orig_123", product_id: "prod_starter_111", subscription_id: "sub_ord_diff", billing_reason: "subscription_create", customer_id: "cust_ord_diff", metadata: { supabaseUserId: "sup_123" } },
+  };
+  await processPolarBillingEvent(payloadOriginal, { "webhook-id": "msg_ord_diff" }, db);
+
+  const payloadTampered = {
+    id: "msg_ord_diff",
+    type: "order.paid",
+    data: { id: "ord_tampered_999", product_id: "prod_starter_111", subscription_id: "sub_ord_diff", billing_reason: "subscription_create", customer_id: "cust_ord_diff", metadata: { supabaseUserId: "sup_123" } },
+  };
+
+  await assert.rejects(
+    async () => processPolarBillingEvent(payloadTampered, { "webhook-id": "msg_ord_diff" }, db),
+    (err) => err.code === "IDEMPOTENCY_INTEGRITY_CONFLICT"
+  );
+
+  delete process.env.POLAR_PRODUCT_STARTER_MONTHLY;
+});
+
+test("G. AMBIGUOUS P2002 CONSTRAINT: P2002 on another constraint is NOT swallowed and rethrows", async () => {
+  const db = createMockDb();
+
+  const customDb = {
+    ...db,
+    $transaction: async () => {
+      const err = new Error("Unique constraint failed on the fields: (`otherConstraint`)");
+      err.code = "P2002";
+      err.meta = { modelName: "BillingWebhookEvent", target: ["otherConstraint"] };
+      throw err;
+    },
+  };
+
+  const payload = {
+    id: "msg_ambiguous_p2002",
+    type: "order.paid",
+    data: { id: "ord_ambiguous", product_id: "prod_starter_111", subscription_id: "sub_amb", billing_reason: "subscription_create", customer_id: "cust_amb", metadata: { supabaseUserId: "sup_123" } },
+  };
+
+  await assert.rejects(
+    async () => processPolarBillingEvent(payload, { "webhook-id": "msg_ambiguous_p2002" }, customDb),
+    (err) => err.code === "P2002" && err.meta?.target?.[0] === "otherConstraint"
+  );
+});
+
+test("H. TARGETED P2002 CONCURRENCY RACE: P2002 specifically on polarEventId resolves to ALREADY_PROCESSED", async () => {
+  const db = createMockDb();
+  db._store.billingWebhookEvent.set("msg_target_race", {
+    id: "bwe_target_race",
+    polarEventId: "msg_target_race",
     eventType: "order.paid",
     payloadJson: JSON.stringify({
-      id: "msg_race_1",
+      id: "msg_target_race",
       type: "order.paid",
-      data: { id: "ord_race_1", product_id: "prod_starter_111", subscription_id: "sub_race_1", billing_reason: "subscription_create", customer_id: "cust_race_1", metadata: { supabaseUserId: "sup_123" } },
+      data: { id: "ord_target_race", product_id: "prod_starter_111", subscription_id: "sub_target_race", billing_reason: "subscription_create", customer_id: "cust_target_race", metadata: { supabaseUserId: "sup_123" } },
     }),
     processedAt: new Date(),
   });
 
-  // Force transaction to throw P2002 specifically for polarEventId
   const customDb = {
     ...db,
     $transaction: async () => {
@@ -549,67 +712,14 @@ test("CONCURRENCY DEDUPLICATION: P2002 on polarEventId returns ALREADY_PROCESSED
   };
 
   const payload = {
-    id: "msg_race_1",
+    id: "msg_target_race",
     type: "order.paid",
-    data: { id: "ord_race_1", product_id: "prod_starter_111", subscription_id: "sub_race_1", billing_reason: "subscription_create", customer_id: "cust_race_1", metadata: { supabaseUserId: "sup_123" } },
+    data: { id: "ord_target_race", product_id: "prod_starter_111", subscription_id: "sub_target_race", billing_reason: "subscription_create", customer_id: "cust_target_race", metadata: { supabaseUserId: "sup_123" } },
   };
 
-  const res = await processPolarBillingEvent(payload, { "webhook-id": "msg_race_1" }, customDb);
+  const res = await processPolarBillingEvent(payload, { "webhook-id": "msg_target_race" }, customDb);
   assert.equal(res.status, "ALREADY_PROCESSED");
-  assert.equal(res.webhookId, "msg_race_1");
-});
-
-test("CONCURRENCY INTEGRITY: P2002 from non-webhook constraint is NOT swallowed and rethrows", async () => {
-  const db = createMockDb();
-
-  const customDb = {
-    ...db,
-    $transaction: async () => {
-      const err = new Error("Unique constraint failed on the fields: (`polarOrderId`)");
-      err.code = "P2002";
-      err.meta = { modelName: "Entitlement", target: ["polarOrderId"] };
-      throw err;
-    },
-  };
-
-  const payload = {
-    id: "msg_other_p2002",
-    type: "order.paid",
-    data: { id: "ord_other_p2002", product_id: "prod_starter_111", subscription_id: "sub_other", billing_reason: "subscription_create", customer_id: "cust_other", metadata: { supabaseUserId: "sup_123" } },
-  };
-
-  await assert.rejects(
-    async () => processPolarBillingEvent(payload, { "webhook-id": "msg_other_p2002" }, customDb),
-    (err) => err.code === "P2002" && err.meta?.modelName === "Entitlement"
-  );
-});
-
-test("PAYLOAD INTEGRITY: Duplicate webhook ID with conflicting payload fails closed", async () => {
-  process.env.POLAR_PRODUCT_STARTER_MONTHLY = "prod_starter_111";
-  process.env.POLAR_PRODUCT_GROWTH_MONTHLY = "prod_growth_222";
-
-  const db = createMockDb();
-  const payloadOriginal = {
-    id: "msg_reuse_1",
-    type: "order.paid",
-    data: { id: "ord_orig", product_id: "prod_starter_111", subscription_id: "sub_orig", billing_reason: "subscription_create", customer_id: "cust_orig", metadata: { supabaseUserId: "sup_123" } },
-  };
-
-  await processPolarBillingEvent(payloadOriginal, { "webhook-id": "msg_reuse_1" }, db);
-
-  const payloadConflicting = {
-    id: "msg_reuse_1",
-    type: "order.paid",
-    data: { id: "ord_TAMPERED", product_id: "prod_growth_222", subscription_id: "sub_TAMPERED", billing_reason: "subscription_create", customer_id: "cust_TAMPERED", metadata: { supabaseUserId: "sup_123" } },
-  };
-
-  await assert.rejects(
-    async () => processPolarBillingEvent(payloadConflicting, { "webhook-id": "msg_reuse_1" }, db),
-    (err) => err.code === "IDEMPOTENCY_INTEGRITY_CONFLICT"
-  );
-
-  delete process.env.POLAR_PRODUCT_STARTER_MONTHLY;
-  delete process.env.POLAR_PRODUCT_GROWTH_MONTHLY;
+  assert.equal(res.webhookId, "msg_target_race");
 });
 
 test("RENEWAL REGRESSION: Existing subscription + new subscription_cycle order grants new credits exactly once", async () => {
@@ -638,4 +748,5 @@ test("RENEWAL REGRESSION: Existing subscription + new subscription_cycle order g
 
   delete process.env.POLAR_PRODUCT_STARTER_MONTHLY;
 });
+
 
