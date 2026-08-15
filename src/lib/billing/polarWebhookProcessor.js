@@ -99,6 +99,38 @@ async function getPrismaClient() {
   return client;
 }
 
+function isPolarEventIdUniqueConstraint(error) {
+  if (!error || error.code !== "P2002") return false;
+  const target = error.meta?.target;
+  const model = error.meta?.modelName;
+  const msg = error.message || "";
+
+  if (model === "BillingWebhookEvent") return true;
+  if (Array.isArray(target) && target.includes("polarEventId")) return true;
+  if (typeof target === "string" && target.includes("polarEventId")) return true;
+  if (msg.includes("polarEventId") || msg.includes("BillingWebhookEvent")) return true;
+  return false;
+}
+
+function isPayloadConsistent(persisted, operation) {
+  if (persisted.eventType && persisted.eventType !== operation.eventType) return false;
+  if (!persisted.payloadJson) return true;
+  try {
+    const storedPayload = JSON.parse(persisted.payloadJson);
+    const storedOp = canonicalPayload(storedPayload, operation.webhookId);
+    return (
+      storedOp.eventType === operation.eventType &&
+      storedOp.orderId === operation.orderId &&
+      storedOp.subscriptionId === operation.subscriptionId &&
+      storedOp.customerId === operation.customerId &&
+      storedOp.planCode === operation.planCode &&
+      storedOp.supabaseUserId === operation.supabaseUserId
+    );
+  } catch {
+    return true;
+  }
+}
+
 export async function processPolarBillingEvent(eventPayload, headers, db = null) {
   const activeDb = db || (await getPrismaClient());
   const webhookId = extractWebhookIdentity(headers, eventPayload);
@@ -106,45 +138,68 @@ export async function processPolarBillingEvent(eventPayload, headers, db = null)
 
   const operation = canonicalPayload(eventPayload, webhookId);
 
-  // ATOMIC WEBHOOK DELIVERY TRANSACTION
-  return activeDb.$transaction(async (tx) => {
-    // 1. DEDUPLICATE WEBHOOK MESSAGE IDENTITY (BillingWebhookEvent.polarEventId)
-    const priorEvent = await tx.billingWebhookEvent.findUnique({ where: { polarEventId: operation.webhookId } });
-    if (priorEvent && priorEvent.processedAt !== null) {
-      return { status: "ALREADY_PROCESSED", webhookId: operation.webhookId };
-    }
+  try {
+    // ATOMIC WEBHOOK DELIVERY TRANSACTION
+    // Timeout of 15 seconds ensures multi-query transactions (e.g. annual schedule materialization)
+    // do not abort on remote DB connection latency. Expiration rolls back the transaction atomically.
+    return await activeDb.$transaction(async (tx) => {
+      // 1. DEDUPLICATE WEBHOOK MESSAGE IDENTITY (BillingWebhookEvent.polarEventId)
+      const priorEvent = await tx.billingWebhookEvent.findUnique({ where: { polarEventId: operation.webhookId } });
+      if (priorEvent && priorEvent.processedAt !== null) {
+        if (!isPayloadConsistent(priorEvent, operation)) {
+          throw new IdempotencyIntegrityConflict("Webhook ID reuse with conflicting payload");
+        }
+        return { status: "ALREADY_PROCESSED", webhookId: operation.webhookId };
+      }
 
-    let eventRecord = priorEvent;
-    if (!eventRecord) {
-      eventRecord = await tx.billingWebhookEvent.create({
-        data: {
-          polarEventId: operation.webhookId,
-          eventType: operation.eventType,
-          payloadJson: JSON.stringify(eventPayload),
-          processedAt: null,
-        },
+      let eventRecord = priorEvent;
+      if (!eventRecord) {
+        eventRecord = await tx.billingWebhookEvent.create({
+          data: {
+            polarEventId: operation.webhookId,
+            eventType: operation.eventType,
+            payloadJson: JSON.stringify(eventPayload),
+            processedAt: null,
+          },
+        });
+      } else if (!isPayloadConsistent(eventRecord, operation)) {
+        throw new IdempotencyIntegrityConflict("Webhook ID reuse with conflicting payload");
+      }
+
+      // 2. ROUTE BY EVENT TYPE (ONLY order.paid initiates credit grants)
+      let result = { status: "PROCESSED_NO_GRANT", eventType: operation.eventType };
+
+      if (operation.eventType === "order.paid" || (operation.eventType === "order.created" && operation.raw.status === "paid")) {
+        result = await handleOrderPaid(operation, tx);
+      } else if (operation.eventType.startsWith("subscription.")) {
+        result = await handleSubscriptionLifecycle(operation, tx);
+      } else if (operation.eventType === "order.refunded" || operation.eventType === "refund.created") {
+        result = await handleOrderRefunded(operation, tx);
+      }
+
+      // Mark webhook delivery processed ONLY after all business mutations succeeded inside transaction
+      await tx.billingWebhookEvent.update({
+        where: { polarEventId: operation.webhookId },
+        data: { processedAt: new Date() },
       });
+
+      return result;
+    }, { timeout: 15000 });
+  } catch (error) {
+    if (isPolarEventIdUniqueConstraint(error)) {
+      const persisted = await activeDb.billingWebhookEvent.findUnique({
+        where: { polarEventId: operation.webhookId },
+      });
+      if (persisted && persisted.processedAt !== null) {
+        if (isPayloadConsistent(persisted, operation)) {
+          return { status: "ALREADY_PROCESSED", webhookId: operation.webhookId };
+        } else {
+          throw new IdempotencyIntegrityConflict("Webhook ID reuse with conflicting payload");
+        }
+      }
     }
-
-    // 2. ROUTE BY EVENT TYPE (ONLY order.paid initiates credit grants)
-    let result = { status: "PROCESSED_NO_GRANT", eventType: operation.eventType };
-
-    if (operation.eventType === "order.paid" || (operation.eventType === "order.created" && operation.raw.status === "paid")) {
-      result = await handleOrderPaid(operation, tx);
-    } else if (operation.eventType.startsWith("subscription.")) {
-      result = await handleSubscriptionLifecycle(operation, tx);
-    } else if (operation.eventType === "order.refunded" || operation.eventType === "refund.created") {
-      result = await handleOrderRefunded(operation, tx);
-    }
-
-    // Mark webhook delivery processed ONLY after all business mutations succeeded inside transaction
-    await tx.billingWebhookEvent.update({
-      where: { polarEventId: operation.webhookId },
-      data: { processedAt: new Date() },
-    });
-
-    return result;
-  }, { timeout: 15000 });
+    throw error;
+  }
 }
 
 async function handleOrderPaid(operation, tx) {
