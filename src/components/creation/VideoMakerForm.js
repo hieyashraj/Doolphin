@@ -180,24 +180,6 @@ export default function VideoMakerForm({
           </label>
         </div>
       </div>
-
-      {/* Audio Reference (optional) */}
-      <div className="space-y-1.5">
-        <label className="block text-base font-semibold text-[#111111]">Audio Reference (optional)</label>
-        <button
-          type="button"
-          onClick={() => {
-            const val = prompt("Enter audio URL or description:");
-            if (val) setAudioSource(val);
-          }}
-          className="w-full bg-[#F2EFE5] hover:bg-[#EAE6D8] focus:bg-white border border-[#111111]/15 rounded-xl p-3.5 text-left flex items-center justify-between text-sm text-[#55534E] transition-colors cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#111111]"
-        >
-          <div className="flex items-center gap-2.5">
-            <FiMusic size={16} className="text-[#77746D]" />
-            <span className="truncate font-medium text-sm">{audioSource || "Choose audio source"}</span>
-          </div>
-        </button>
-      </div>
     </div>
   );
 }

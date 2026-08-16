@@ -18,6 +18,7 @@ export const APP_NAV_DESTINATIONS = Object.freeze([
   { id: "app_studio", name: "App Studio", type: "view", tab: "video", studio: "app" },
   { id: "images", name: "Image Studio", type: "route", href: "/app/images" },
   { id: "avatars", name: "Avatars", type: "view", tab: "avatars" },
+  { id: "assets", name: "My Assets", type: "view", tab: "assets" },
   { id: "library", name: "My Library", type: "view", tab: "library" }
 ]);
 
@@ -45,6 +46,41 @@ export function getAppDestinationHref(id) {
 }
 
 /**
+ * Normalizes raw query parameters so invalid, legacy, or alias query states
+ * map safely to canonical view/route parameters and NEVER render a blank page.
+ */
+export function normalizeAppQueryParams({ tab, studio } = {}) {
+  if (tab === "images") {
+    return { redirect: "/app/images" };
+  }
+  if (tab === "product" || studio === "product") {
+    return { tab: "video", studio: "product" };
+  }
+  if (tab === "app" || tab === "app_studio" || studio === "app") {
+    return { tab: "video", studio: "app" };
+  }
+  if (tab === "video" || tab === "video_maker") {
+    const validStudio = ["video_maker", "product", "app"].includes(studio) ? studio : "video_maker";
+    return { tab: "video", studio: validStudio };
+  }
+  if (tab === "avatars") {
+    return { tab: "avatars" };
+  }
+  if (tab === "assets") {
+    return { tab: "assets" };
+  }
+  if (tab === "library") {
+    return { tab: "library" };
+  }
+  if (tab === "explore") {
+    return { tab: "explore" };
+  }
+
+  // Failsafe default: any unknown tab or malformed query state falls back to Explore.
+  return { tab: "explore" };
+}
+
+/**
  * Resolves precisely one primary item. Route destinations win over query
  * state, so stale query parameters cannot make Image Studio and another
  * sidebar item appear active together.
@@ -58,9 +94,10 @@ export function getActiveAppDestination({ pathname = "/app", tab, studio } = {})
   if (normalizedPathname === LEGACY_IMAGE_LIBRARY_PATH) return "library";
   if (normalizedPathname !== "/app") return null;
 
-  const currentTab = tab || "explore";
+  const normalized = normalizeAppQueryParams({ tab, studio });
+  const currentTab = normalized.tab || "explore";
   if (currentTab === "video") {
-    const currentStudio = studio || "video_maker";
+    const currentStudio = normalized.studio || "video_maker";
     const matched = APP_NAV_DESTINATIONS.find(
       (d) => d.type === "view" && d.tab === "video" && d.studio === currentStudio
     );
@@ -71,9 +108,18 @@ export function getActiveAppDestination({ pathname = "/app", tab, studio } = {})
 }
 
 export function navigateAppView({ tab = "explore", studio, avatarId, router, replace = false } = {}) {
+  const normalized = normalizeAppQueryParams({ tab, studio });
+  if (normalized.redirect && router && typeof router.push === "function") {
+    router.push(normalized.redirect);
+    return;
+  }
+
+  const targetTab = normalized.tab || "explore";
+  const targetStudio = normalized.studio;
+
   if (router && typeof router.push === "function") {
-    const params = new URLSearchParams({ tab });
-    if (studio) params.set("studio", studio);
+    const params = new URLSearchParams({ tab: targetTab });
+    if (targetStudio) params.set("studio", targetStudio);
     if (avatarId) params.set("avatarId", avatarId);
     const href = `/app?${params.toString()}`;
     if (replace) {
@@ -88,8 +134,9 @@ export function navigateAppView({ tab = "explore", studio, avatarId, router, rep
     const url = new URL(window.location.href);
     url.pathname = "/app";
     url.search = "";
+    const tab = targetTab;
     url.searchParams.set("tab", tab);
-    if (studio) url.searchParams.set("studio", studio);
+    if (targetStudio) url.searchParams.set("studio", targetStudio);
     if (avatarId) url.searchParams.set("avatarId", avatarId);
     window.history[replace ? "replaceState" : "pushState"](null, "", url);
     window.dispatchEvent(new PopStateEvent("popstate"));
@@ -119,5 +166,6 @@ export function navigateToAppDestination(id, { router, avatarId, replace = false
 
   return false;
 }
+
 
 

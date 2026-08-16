@@ -25,7 +25,7 @@ export default function AppShell({ children }) {
   }, []);
 
   const handleUpgrade = () => {
-    router.push("/pricing");
+    router.push("/app?upgrade=1");
   };
 
   const handleOpenLibrary = () => {

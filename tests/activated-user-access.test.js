@@ -40,6 +40,6 @@ test("activated authorization requires the linked default-workspace membership a
 test("sign-in follows server account authorization and Navbar has a guarded Supabase sign-out action", async () => {
   const [signIn, navbar, layout] = await Promise.all([text("src/app/(auth)/sign-in/page.js"), text("src/components/Navbar.js"), text("src/app/(app)/layout.js")]);
   assert.match(signIn, /window\.location\.replace\("\/app"\)/);
-  assert.match(navbar, /const isApiKeyActive = false/); assert.match(navbar, /auth\.signOut\(\)/); assert.match(navbar, /Signing out…/); assert.match(navbar, /disabled=\{signingOut\}/);
+  assert.match(navbar, /auth\.signOut\(\)/); assert.match(navbar, /Signing out…/); assert.match(navbar, /disabled=\{signingOut\}/);
   assert.match(layout, /ACTIVATION_REQUIRED/); assert.match(layout, /denied=1/);
 });

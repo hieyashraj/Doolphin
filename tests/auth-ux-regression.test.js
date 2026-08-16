@@ -57,11 +57,9 @@ test("unsupported Google OAuth and dead notification settings are not exposed", 
   assert.doesNotMatch(navbar, /toggleCompletionNotifications/);
 });
 
-test("account deletion requires typed confirmation and remains non-mutating", async () => {
+test("account deletion is safely disabled until a reviewed data-deletion process exists", async () => {
   const navbar = await text("src/components/Navbar.js");
-  assert.match(navbar, /deleteConfirmation !== "DELETE"/);
-  assert.match(navbar, /Type DELETE to continue/);
-  assert.match(navbar, /Nothing will be deleted from this screen/);
+  assert.doesNotMatch(navbar, /Review account deletion/);
   assert.doesNotMatch(navbar, /fetch\([^\n]*delete/i);
 });
 

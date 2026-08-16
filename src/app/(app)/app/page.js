@@ -32,8 +32,9 @@ import toast, { Toaster } from "react-hot-toast";
 import { PRESETS_LIBRARY } from "@/lib/presetsData";
 import CreationHub from "@/components/creation/CreationHub";
 import LazyVideo from "@/components/LazyVideo";
+import MyAssetsView from "@/components/MyAssetsView";
 import { useAppAccount } from "@/components/AppAccountProvider";
-import { navigateAppView } from "@/lib/app/app-navigation";
+import { navigateAppView, normalizeAppQueryParams } from "@/lib/app/app-navigation";
 import { resolvePlatformAvatar } from "@/lib/generation/avatarRegistry";
 import { PLAN_BY_CODE, PURCHASE_PLAN_CODES } from "@/lib/entitlements/plan-catalog";
 
@@ -210,9 +211,20 @@ function HomeContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   
-  const currentTab = searchParams.get("tab") || "explore";
-  const currentStudio = searchParams.get("studio") || "video_maker";
+  const rawTab = searchParams.get("tab");
+  const rawStudio = searchParams.get("studio");
+  const normalizedQuery = normalizeAppQueryParams({ tab: rawTab, studio: rawStudio });
+  const currentTab = normalizedQuery.tab || "explore";
+  const currentStudio = normalizedQuery.studio || "video_maker";
   const avatarIdParam = searchParams.get("avatarId");
+  const upgradeParam = searchParams.get("upgrade");
+
+  useEffect(() => {
+    if (normalizedQuery.redirect) {
+      router.replace(normalizedQuery.redirect);
+    }
+  }, [normalizedQuery.redirect, router]);
+
   const navigateToTab = (tab, studio, avatarId) => {
     navigateAppView({ tab, studio, avatarId, router });
   };
@@ -262,6 +274,12 @@ function HomeContent() {
   const [loadingCheckoutPlan, setLoadingCheckoutPlan] = useState(null);
   const [selectedExploreVideo, setSelectedExploreVideo] = useState(null);
   
+  useEffect(() => {
+    if (upgradeParam === "1") {
+      setIsPricingModalOpen(true);
+    }
+  }, [upgradeParam]);
+
   const isSubmittingRef = useRef(false);
   const hasLoadedLibraryCreations = useRef(false);
 
@@ -386,8 +404,8 @@ function HomeContent() {
       {/* MAIN CONTENT VIEWS */}
       <div className="flex-1 flex overflow-hidden min-h-0 relative z-10">
         
-        {/* EXPLORE TAB (WISPR FLOW DESIGN LANGUAGE) */}
-        {currentTab === "explore" && (
+        {/* EXPLORE TAB (WISPR FLOW DESIGN LANGUAGE) - DEFAULT FALLBACK */}
+        {(currentTab === "explore" || !["avatars", "video", "assets", "library"].includes(currentTab)) && (
           <div className="flex-1 overflow-y-auto px-3 py-6 md:px-5 space-y-12 scrollbar-subtle relative w-full">
             
             {/* 1. TOP SECTION: FEATURED MODE CARDS GRID */}
@@ -566,6 +584,9 @@ function HomeContent() {
             />
           </div>
         )}
+
+        {/* MY ASSETS TAB */}
+        {currentTab === "assets" && <MyAssetsView />}
 
         {/* MY LIBRARY TAB */}
         {currentTab === "library" && (

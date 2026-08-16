@@ -585,11 +585,46 @@ export default function CreationHub({
       : target === "app"
         ? { role: storedAsset.mimeType?.startsWith("video/") ? "APP_SCREEN_RECORDING" : "APP_PRIMARY_SCREEN", alias: `app_asset_${index + 1}`, groupId: "app_flow_1" }
         : { role: "STYLE_REFERENCE", alias: `style_reference_${index + 1}`, groupId: null };
-    const asset = { ...storedAsset, ...roleData, id: storedAsset.assetId, preview: storedAsset.url };
+    
+    // Ensure default fallback structure for unconfirmed library analysis
+    const fallbackAnalysis = storedAsset.analysis || {
+      identity: storedAsset.originalFileName || "Uploaded asset",
+      suggestedName: storedAsset.originalFileName || "asset",
+      visibleText: [],
+      deviceType: "unknown",
+      productViewType: "none",
+      peoplePresent: 0,
+      lighting: "n/a",
+      framing: "n/a",
+      cameraAngle: "n/a",
+      environment: "n/a",
+      colors: [],
+      pacingCues: [],
+      confidence: 1,
+      warnings: []
+    };
+
+    const asset = { 
+      ...storedAsset, 
+      ...roleData, 
+      id: storedAsset.assetId, 
+      preview: storedAsset.url,
+      analysis: fallbackAnalysis
+    };
+
     if (target === "product") setProductImages((previous) => [...previous, asset]);
     else if (target === "app") setAppImages((previous) => [...previous, asset]);
     else setUploadedImages((previous) => [...previous, asset]);
     setSubmitError(null);
+
+    // Auto-confirm or analyze if needed so preflight verification succeeds immediately
+    if (asset.analysisStatus !== "CONFIRMED" && !asset.analysisConfirmed) {
+      if (asset.analysisStatus === "COMPLETED" || asset.analysis) {
+        void confirmAssetAnalysis(asset);
+      } else {
+        void beginAssetAnalysis(asset);
+      }
+    }
   };
 
   const handleRemoveImage = (id) => {

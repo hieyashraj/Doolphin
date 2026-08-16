@@ -53,6 +53,7 @@ test("authenticated navigation resolves exactly one active destination per route
   assert.equal(getActiveAppDestination({ pathname: "/app", tab: "video", studio: "app" }), "app_studio");
   assert.equal(getActiveAppDestination({ pathname: "/app/images" }), "images");
   assert.equal(getActiveAppDestination({ pathname: "/app", tab: "avatars" }), "avatars");
+  assert.equal(getActiveAppDestination({ pathname: "/app", tab: "assets" }), "assets");
   assert.equal(getActiveAppDestination({ pathname: "/app", tab: "library" }), "library");
   assert.equal(getActiveAppDestination({ pathname: "/app/images/library" }), "library");
 });
@@ -64,14 +65,12 @@ test("authenticated navigation has one active destination and preserves canonica
     text("src/app/(app)/app/images/library/page.js"),
     text("src/app/(auth)/sign-in/page.js")
   ]);
-  for (const name of ["Explore", "Video Studio", "Product Studio", "App Studio", "Image Studio", "Avatars", "My Library"]) {
+  for (const name of ["Explore", "Video Studio", "Product Studio", "App Studio", "Image Studio", "Avatars", "My Assets", "My Library"]) {
     assert.match(navigation, new RegExp(`name: "${name}"`));
   }
   assert.match(navigation, /getActiveAppDestination/);
   assert.match(navigation, /normalizedPathname === "\/app\/images"/);
   assert.match(navbar, /APP_NAV_DESTINATIONS\.map/);
-  assert.doesNotMatch(navbar, /My Images/);
-  assert.doesNotMatch(navbar, /Open Studio/);
   assert.match(legacy, /redirect\("\/app\?tab=library"\)/);
   assert.match(signIn, /NEXT_PUBLIC_SUPABASE_GOOGLE_OAUTH_ENABLED/);
 });

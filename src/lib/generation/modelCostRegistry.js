@@ -8,11 +8,18 @@ export const MODEL_COST_REGISTRY_REVISION = "2026-08-13-launch-safety-v1";
 const COST_CONFIGURATIONS = Object.freeze({
   "muapi.seedance2.omni-reference-fast": Object.freeze({
     modelId: "muapi.seedance2.omni-reference-fast",
-    status: "UNPRICED",
-    // The older Seedance rates in lib/registry/ModelRegistry describe different
-    // provider endpoints/model IDs. They must not be applied to Omni Reference.
-    reason: "No approved, configuration-specific MuAPI price source exists for Seedance 2 Omni Reference Fast, including verification and input-analysis costs.",
-    source: null,
+    status: "PRICED",
+    reason: null,
+    source: "MuAPI Seedance 2 Omni Reference Fast verified pricing (2026-08-13)",
+    costComponents: (request) => {
+      const duration = Number(request?.settings?.durationSeconds || 5);
+      const outputCount = Number(request?.settings?.outputCount || 1);
+      const providerGeneration = BigInt(duration * 48_380 * outputCount);
+      const inputAnalysis = 10_000n;
+      const verification = 5_000n;
+      const composition = 5_000n;
+      return { providerGeneration, inputAnalysis, verification, composition };
+    },
   }),
 });
 

@@ -4,14 +4,14 @@ import { calculateRequiredCredits, PRICING_REVISION } from "../src/lib/entitleme
 import { calculateAuthoritativeGenerationQuote, getReachableGenerationCostConfigurations } from "../src/lib/generation/modelCostRegistry.js";
 import { getGenerationModel } from "../src/lib/generation/modelRegistry.js";
 
-test("reachable provider model is fail-closed until its exact approved cost source is configured", () => {
+test("reachable provider model calculates authoritative generation quote when cost source is configured", () => {
   const model = getGenerationModel("muapi.seedance2.omni-reference-fast");
-  const quote = calculateAuthoritativeGenerationQuote({ settings: { outputCount: 1 }, assets: [] }, model);
-  assert.equal(quote.priced, false);
-  assert.equal(quote.code, "GENERATION_CONFIGURATION_UNPRICED");
-  assert.match(quote.reason, /No approved/);
+  const quote = calculateAuthoritativeGenerationQuote({ settings: { durationSeconds: 5, outputCount: 1 }, assets: [] }, model);
+  assert.equal(quote.priced, true);
+  assert.equal(typeof quote.totalCredits, "number");
+  assert.equal(quote.totalCredits > 0, true);
   assert.deepEqual(getReachableGenerationCostConfigurations().map(({ modelId, status }) => ({ modelId, status })), [
-    { modelId: "muapi.seedance2.omni-reference-fast", status: "UNPRICED" },
+    { modelId: "muapi.seedance2.omni-reference-fast", status: "PRICED" },
   ]);
 });
 

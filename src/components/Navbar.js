@@ -22,7 +22,8 @@ import {
   FiSidebar,
   FiLogOut,
   FiBox,
-  FiSmartphone
+  FiSmartphone,
+  FiFolder
 } from "react-icons/fi";
 import toast from "react-hot-toast";
 import { createClient } from "@/lib/supabase/browser";
@@ -49,8 +50,6 @@ function SidebarContent() {
   });
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [activeSettingsTab, setActiveSettingsTab] = useState("profile");
-  const [isDeleteConfirmationOpen, setIsDeleteConfirmationOpen] = useState(false);
-  const [deleteConfirmation, setDeleteConfirmation] = useState("");
   const [isCollapsedManual, setIsCollapsedManual] = useState(true);
   const [isMobileViewport, setIsMobileViewport] = useState(false);
 
@@ -77,9 +76,6 @@ function SidebarContent() {
     });
   };
 
-  // The desktop expansion preference is retained, but a wide rail must never
-  // consume most of a phone viewport. The composer can then use the remaining
-  // width without horizontal overflow.
   const isCollapsed = isCollapsedManual || isMobileViewport;
 
   // User Profile States
@@ -89,18 +85,7 @@ function SidebarContent() {
 
   const [savingSettings, setSavingSettings] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
-  // Legacy inert UI state retained temporarily while the legacy settings markup
-  // is removed; it is not navigable and never reaches a provider-key endpoint.
-  const [muApiKey, setMuApiKey] = useState("");
-  const [falKey, setFalKey] = useState("");
-  const [elevenLabsKey] = useState("");
-  const [openAiKey] = useState("");
-  const [showMuKey, setShowMuKey] = useState(false);
-  const [showFalKey, setShowFalKey] = useState(false);
   const activePlan = PLAN_BY_CODE[account?.planCode] || null;
-  // The legacy key panel is inert; this only prevents the Navbar render from
-  // evaluating an undeclared identifier while that panel is retired.
-  const isApiKeyActive = false;
 
   const handleSignOut = async () => {
     if (signingOut) return;
@@ -131,15 +116,6 @@ function SidebarContent() {
     }
   };
 
-  const handleDeleteAccount = () => {
-    if (deleteConfirmation !== "DELETE") return;
-    // This intentionally has no API call. Permanent deletion needs its own
-    // reviewed backend/data-retention checkpoint before it can be enabled.
-    toast("Account deletion is not available yet. No account data was changed.", { icon: "ℹ️" });
-    setDeleteConfirmation("");
-    setIsDeleteConfirmationOpen(false);
-  };
-
   const copyToClipboard = (text, label) => {
     navigator.clipboard.writeText(text);
     toast.success(`${label} copied to clipboard!`);
@@ -152,6 +128,7 @@ function SidebarContent() {
     app_studio: FiSmartphone,
     images: FiImage,
     avatars: FiUser,
+    assets: FiFolder,
     library: FiLayers
   };
 
@@ -363,33 +340,15 @@ function SidebarContent() {
                     </button>
                   </div>
 
-                  {/* Danger Zone */}
+                  {/* Account Security Info */}
                   <div className="bg-white p-6 rounded-2xl space-y-3 border border-[#111111] shadow-sm">
                     <div className="flex items-center gap-2 text-[#44423D]">
                       <FiAlertTriangle size={18} />
-                      <h4 className="text-xs font-bold uppercase tracking-wider">Danger Zone</h4>
+                      <h4 className="text-xs font-bold uppercase tracking-wider">Account Data & Security</h4>
                     </div>
                     <p className="text-xs text-[#44423D] font-medium leading-relaxed">
-                      Account deletion is not available from Settings yet. It will require a dedicated, reviewed data-deletion process.
+                      Your workspace account and billing data are protected by Supabase authentication and strict encrypted database policies.
                     </p>
-                    <button
-                      onClick={() => setIsDeleteConfirmationOpen(true)}
-                      className="bg-[#EFECE1] hover:bg-[#E5E1D5] text-[#111111] border border-[#111111] px-5 py-2.5 text-xs md:text-sm font-semibold rounded-full flex items-center gap-2 cursor-pointer transition-all shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#111111]"
-                      aria-haspopup="dialog"
-                    >
-                      <FiTrash2 size={16} />
-                      <span>Review account deletion</span>
-                    </button>
-                    {isDeleteConfirmationOpen && (
-                      <div className="rounded-xl border border-[#111111]/20 bg-[#FAF8ED] p-4 space-y-3" role="dialog" aria-modal="true" aria-labelledby="delete-confirmation-title">
-                        <div className="flex items-start justify-between gap-3">
-                          <div><h5 id="delete-confirmation-title" className="text-sm font-bold text-[#111111]">Confirm account deletion</h5><p className="mt-1 text-xs leading-relaxed text-[#55534E]">Type <strong>DELETE</strong> to confirm that you understand this action. Nothing will be deleted from this screen.</p></div>
-                          <button onClick={() => { setIsDeleteConfirmationOpen(false); setDeleteConfirmation(""); }} className="rounded-full border border-[#111111]/20 bg-white p-1.5 text-[#44423D] hover:bg-[#EFECE1]" aria-label="Close deletion confirmation"><FiX size={15} /></button>
-                        </div>
-                        <label className="block text-xs font-semibold text-[#111111]" htmlFor="delete-confirmation">Type DELETE to continue<input id="delete-confirmation" value={deleteConfirmation} onChange={(event) => setDeleteConfirmation(event.target.value)} className="mt-1.5 w-full rounded-lg border border-[#111111]/20 bg-white px-3 py-2 text-sm text-[#111111] outline-none focus:border-[#111111] focus:ring-2 focus:ring-[#111111]/15" autoComplete="off" /></label>
-                        <button onClick={handleDeleteAccount} disabled={deleteConfirmation !== "DELETE"} className="rounded-full border border-[#111111] bg-[#111111] px-4 py-2 text-xs font-semibold text-white hover:bg-[#33312C] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#111111] disabled:cursor-not-allowed disabled:bg-[#77746D] disabled:text-white">Confirm deletion</button>
-                      </div>
-                    )}
                   </div>
                 </div>
               )}
@@ -412,7 +371,7 @@ function SidebarContent() {
                       <button
                         onClick={() => {
                           setIsSettingsModalOpen(false);
-                          navigateAppView({ tab: "video", studio: "video_maker" });
+                          router.push("/app?upgrade=1");
                         }}
                         className="bg-[#E6D9FF] hover:bg-[#DBCBFF] text-[#111111] border border-[#111111] rounded-full px-6 py-2.5 text-xs md:text-sm font-semibold shadow-sm cursor-pointer transition-all"
                       >
@@ -422,113 +381,6 @@ function SidebarContent() {
                   </div>
                 </div>
               )}
-
-              {/* TAB 4: API KEYS */}
-              {activeSettingsTab === "apikeys" && (
-                <div className="space-y-4">
-                  <div className="bg-[#FAF8ED] p-5 rounded-2xl border border-[#111111] shadow-sm">
-                    <h4 className="text-sm font-bold text-[#111111]">Custom Provider Keys</h4>
-                    <p className="text-xs text-[#44423D] font-medium mt-1">Connect your individual provider keys to generate videos directly from your accounts.</p>
-                  </div>
-
-                  {/* MuAPI Key */}
-                  <div className="bg-white p-5 rounded-2xl space-y-3 border border-[#111111] shadow-sm">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-[#111111]">MuAPI Key</span>
-                      <span className={muApiKey ? "bg-[#064E3B] text-white border border-[#111111] px-3 py-0.5 rounded-full text-xs font-semibold" : "bg-[#EFECE1] text-[#44423D] border border-[#111111] px-3 py-0.5 rounded-full text-xs font-semibold"}>
-                        {muApiKey ? "Active" : "Not Configured"}
-                      </span>
-                    </div>
-                    <div className="flex gap-2.5">
-                      <input
-                        type={showMuKey ? "text" : "password"}
-                        value={muApiKey}
-                        onChange={(e) => setMuApiKey(e.target.value)}
-                        placeholder="mu_..."
-                        className="flex-1 bg-[#F2EFE5] border border-[#111111] rounded-xl px-4 py-2.5 text-xs md:text-sm text-[#111111] font-medium"
-                      />
-                      <button
-                        onClick={() => setShowMuKey(!showMuKey)}
-                        className="bg-white border border-[#111111] px-4 py-2.5 text-xs font-semibold rounded-xl cursor-pointer hover:bg-[#F2EFE5] text-[#111111]"
-                      >
-                        {showMuKey ? "Hide" : "Show"}
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Fal.ai Key */}
-                  <div className="bg-white p-5 rounded-2xl space-y-3 border border-[#111111] shadow-sm">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-[#111111]">Fal.ai API Key</span>
-                      <span className={falKey ? "bg-[#064E3B] text-white border border-[#111111] px-3 py-0.5 rounded-full text-xs font-semibold" : "bg-[#EFECE1] text-[#44423D] border border-[#111111] px-3 py-0.5 rounded-full text-xs font-semibold"}>
-                        {falKey ? "Active" : "Not Configured"}
-                      </span>
-                    </div>
-                    <div className="flex gap-2.5">
-                      <input
-                        type={showFalKey ? "text" : "password"}
-                        value={falKey}
-                        onChange={(e) => setFalKey(e.target.value)}
-                        placeholder="Key..."
-                        className="flex-1 bg-[#F2EFE5] border border-[#111111] rounded-xl px-4 py-2.5 text-xs md:text-sm text-[#111111] font-medium"
-                      />
-                      <button
-                        onClick={() => setShowFalKey(!showFalKey)}
-                        className="bg-white border border-[#111111] px-4 py-2.5 text-xs font-semibold rounded-xl cursor-pointer hover:bg-[#F2EFE5] text-[#111111]"
-                      >
-                        {showFalKey ? "Hide" : "Show"}
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="pt-2">
-                    <button
-                      onClick={handleSaveAllSettings}
-                      disabled={savingSettings}
-                      className="bg-[#E6D9FF] hover:bg-[#DBCBFF] text-[#111111] border border-[#111111] px-6 py-3 text-xs md:text-sm font-semibold rounded-full cursor-pointer w-full shadow-sm transition-all"
-                    >
-                      Save API Keys
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* TAB 5: MCP PROTOCOL */}
-              {activeSettingsTab === "mcp" && (
-                <div className="space-y-4">
-                  <div className="bg-[#FAF8ED] p-6 rounded-2xl space-y-2 border border-[#111111] shadow-sm">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-full bg-[#111111] flex items-center justify-center text-white">
-                        <FiCpu size={16} />
-                      </div>
-                      <h4 className="text-base font-serif font-bold text-[#111111]">Model Context Protocol (MCP)</h4>
-                    </div>
-                    <p className="text-xs text-[#44423D] font-medium leading-relaxed">
-                      Connect Doolphin to Claude, Cursor & other AI tools to generate images & videos programmatically.
-                    </p>
-                  </div>
-
-                  <div className="bg-white p-5 rounded-2xl space-y-3 border border-[#111111] shadow-sm">
-                    <label className="block text-xs font-bold text-[#111111]">MCP Endpoint URL</label>
-                    <div className="flex gap-2.5">
-                      <input
-                        type="text"
-                        readOnly
-                        value="https://doolphin.ai/api/mcp"
-                        className="flex-1 bg-[#F2EFE5] border border-[#111111] rounded-xl px-4 py-2.5 text-xs md:text-sm font-mono text-[#111111]"
-                      />
-                      <button
-                        onClick={() => copyToClipboard("https://doolphin.ai/api/mcp", "MCP Endpoint URL")}
-                        className="bg-white border border-[#111111] hover:bg-[#F2EFE5] rounded-xl px-4 py-2.5 text-xs font-semibold flex items-center gap-1.5 cursor-pointer text-[#111111]"
-                      >
-                        <FiCopy size={15} />
-                        <span>Copy</span>
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
-
             </div>
 
           </div>
