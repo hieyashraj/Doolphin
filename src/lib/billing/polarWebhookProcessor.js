@@ -180,7 +180,7 @@ export async function processPolarBillingEvent(eventPayload, headers, db = null)
       // 2. ROUTE BY EVENT TYPE (ONLY order.paid initiates credit grants)
       let result = { status: "PROCESSED_NO_GRANT", eventType: operation.eventType };
 
-      if (operation.eventType === "order.paid" || (operation.eventType === "order.created" && operation.raw.status === "paid")) {
+      if (operation.eventType === "order.paid") {
         result = await handleOrderPaid(operation, tx);
       } else if (operation.eventType.startsWith("subscription.")) {
         result = await handleSubscriptionLifecycle(operation, tx);

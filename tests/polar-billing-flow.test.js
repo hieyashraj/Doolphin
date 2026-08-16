@@ -327,17 +327,25 @@ test("PRODUCT MAPPING: unknown Polar product fails financially closed", async ()
   assert.equal(db._store.creditAccount.get("ws_123").availableCredits, 100);
 });
 
-test("CREDIT INVARIANT: order.created issues ZERO billing credits", async () => {
+test("CREDIT INVARIANT: order.created (even with status=paid) issues ZERO billing credits and ZERO entitlements", async () => {
+  process.env.POLAR_PRODUCT_EXPLORER = "prod_explorer_111";
   const db = createMockDb();
   const payload = {
     id: "msg_evt_created_1",
     type: "order.created",
-    data: { id: "ord_100", status: "created", billing_reason: "subscription_create", metadata: { supabaseUserId: "sup_123" } },
+    data: { id: "ord_100", status: "paid", product_id: "prod_explorer_111", billing_reason: "purchase", metadata: { supabaseUserId: "sup_123" } },
   };
+
+  const initialEntitlementsCount = db._store.entitlement.size;
+  const initialUser = { ...db._store.user.get("usr_123") };
 
   const res = await processPolarBillingEvent(payload, mockHeader("msg_evt_created_1"), db);
   assert.equal(res.status, "PROCESSED_NO_GRANT");
   assert.equal(db._store.creditAccount.get("ws_123").availableCredits, 100);
+  assert.equal(db._store.entitlement.size, initialEntitlementsCount);
+  assert.equal(db._store.user.get("usr_123").activationStatus, initialUser.activationStatus);
+
+  delete process.env.POLAR_PRODUCT_EXPLORER;
 });
 
 test("IDEMPOTENCY: order.created and order.paid for same order ID do NOT conflict in BillingWebhookEvent", async () => {
