@@ -1,0 +1,103 @@
+{
+  "revision": "2026-08-17-bootstrap-v1",
+  "generatedAt": "2026-08-17T15:45:00.000Z",
+  "models": [
+    {
+      "providerModelId": "grok-imagine-image-2-edit",
+      "endpoint": "https://api.muapi.ai/api/v1/grok-imagine-image-2-edit",
+      "category": "image-edit",
+      "description": "Grok Imagine 2.0 image editing operation requiring a prior request_id.",
+      "cost": {
+        "amount": 0.05,
+        "currency": "USD",
+        "strategy": "FLAT"
+      },
+      "dynamicPricing": false,
+      "estimateEndpoint": null,
+      "inputSchema": {
+        "type": "object",
+        "required": ["prompt", "request_id"],
+        "properties": {
+          "prompt": {
+            "type": "string",
+            "description": "Edit instructions for the image",
+            "maxLength": 5000
+          },
+          "request_id": {
+            "type": "string",
+            "description": "Request ID of the prior Grok Imagine 2.0 generation"
+          },
+          "mask_indexs": {
+            "type": "array",
+            "items": { "type": "integer" },
+            "description": "Optional mask segment index list"
+          }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "url": { "type": "string" },
+          "request_id": { "type": "string" }
+        }
+      }
+    },
+    {
+      "providerModelId": "seedance-2.5-spicy-video-extend-480p",
+      "endpoint": "https://api.muapi.ai/api/v1/seedance-2.5-spicy-video-extend-480p",
+      "category": "video-extend",
+      "description": "ByteDance Seedance 2.5 Spicy 480p video continuation & extension model.",
+      "cost": {
+        "amount": 0.08,
+        "currency": "USD",
+        "strategy": "PER_SECOND"
+      },
+      "dynamicPricing": true,
+      "estimateEndpoint": "https://api.muapi.ai/api/v1/models/seedance-2.5-spicy-video-extend-480p/estimate-cost",
+      "inputSchema": {
+        "type": "object",
+        "required": ["prompt", "video"],
+        "properties": {
+          "prompt": {
+            "type": "string",
+            "description": "Continuation prompt text",
+            "maxLength": 2000
+          },
+          "video": {
+            "type": "string",
+            "description": "Source video URL or asset path"
+          },
+          "last_image": {
+            "type": "string",
+            "description": "Target last frame image URL (optional)"
+          },
+          "duration": {
+            "type": "integer",
+            "minimum": 4,
+            "maximum": 30,
+            "default": 5
+          },
+          "aspect_ratio": {
+            "type": "string",
+            "enum": ["9:16", "16:9", "1:1", "4:3", "3:4", "21:9", "9:21"],
+            "default": "9:16"
+          },
+          "generate_audio": {
+            "type": "boolean",
+            "default": true
+          },
+          "seed": {
+            "type": "integer"
+          }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "video_url": { "type": "string" },
+          "request_id": { "type": "string" }
+        }
+      }
+    }
+  ]
+}

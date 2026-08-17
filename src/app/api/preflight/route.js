@@ -11,6 +11,10 @@ import { buildMuapiWebhookUrl } from "@/lib/generation/webhookSecurity";
 import { resolvePlatformAvatar } from "@/lib/generation/avatarRegistry";
 import { R2StorageService } from "@/lib/storage/r2StorageService";
 
+import { mapStudioWorkflowToNormalizedInvocation } from "@/lib/models/bridges/studioWorkflowBridge.js";
+import { prepareExecutionPlan } from "@/lib/models/execution/prepareExecutionPlan.js";
+import { recordShadowPreflightTelemetry } from "@/lib/models/telemetry/shadowTelemetry.js";
+
 function safeModelSnapshot(model) {
   return {
     id: model.id,
@@ -28,7 +32,90 @@ function safeModelSnapshot(model) {
   };
 }
 
+const SHADOW_PREFLIGHT_TIMEOUT_MS = 250;
+
+async function executeShadowPreflight({ legacyBody, legacyModel, legacyQuoteBreakdown, legacyPayloadFingerprint, legacyStartTimestamp }) {
+  if (process.env.MODEL_PLATFORM_PREFLIGHT_SHADOW_ENABLED !== "true") {
+    return;
+  }
+
+  const sampleRate = Number(process.env.MODEL_PLATFORM_PREFLIGHT_SHADOW_SAMPLE_RATE || 1.0);
+  if (sampleRate < 1.0 && Math.random() > sampleRate) {
+    return;
+  }
+
+  const shadowStart = Date.now();
+  const legacyPreflightDurationMs = shadowStart - legacyStartTimestamp;
+
+  let shadowTimedOut = false;
+
+  const shadowPromise = (async () => {
+    try {
+      const normalizedInput = mapStudioWorkflowToNormalizedInvocation(legacyBody);
+      const modelId = legacyBody.modelId || legacyModel.id || "seedance-2";
+
+      const plan = await prepareExecutionPlan({
+        modelId,
+        normalizedInput,
+        env: process.env,
+      });
+
+      const shadowDurationMs = Date.now() - shadowStart;
+
+      recordShadowPreflightTelemetry({
+        canonicalModelId: plan.canonicalModelId,
+        providerModelId: plan.providerModelId,
+        legacyEndpoint: legacyModel.endpoint,
+        newEndpoint: plan.providerEndpoint,
+        legacyPayloadHash: legacyPayloadFingerprint,
+        newPayloadHash: plan.providerPayloadHash,
+        providerSpecHash: plan.providerSpecHash,
+        legacyCostUsd: Number(legacyQuoteBreakdown.components?.providerGeneration || 0) / 1_000_000,
+        authoritativeMuapiCostUsd: Number(plan.pricing.providerCostMicroUsd || 0) / 1_000_000,
+        legacyQuotedCredits: legacyQuoteBreakdown.totalCredits,
+        newQuotedCredits: plan.pricing.quotedCredits,
+        legacyPreflightDurationMs,
+        shadowDurationMs,
+        shadowTimedOut: false,
+        shadowStatus: "SUCCESS",
+      });
+    } catch (error) {
+      const shadowDurationMs = Date.now() - shadowStart;
+      console.warn("[ShadowPreflight] Isolated shadow exception:", error.message);
+      recordShadowPreflightTelemetry({
+        canonicalModelId: legacyModel?.id || "unknown",
+        legacyEndpoint: legacyModel?.endpoint || null,
+        legacyPreflightDurationMs,
+        shadowDurationMs,
+        shadowTimedOut: false,
+        shadowStatus: "SHADOW_FAILED",
+        shadowErrorCode: error.code || "SHADOW_EXCEPTION",
+      });
+    }
+  })();
+
+  const timeoutPromise = new Promise((resolve) => {
+    setTimeout(() => {
+      shadowTimedOut = true;
+      const shadowDurationMs = Date.now() - shadowStart;
+      recordShadowPreflightTelemetry({
+        canonicalModelId: legacyModel?.id || "unknown",
+        legacyEndpoint: legacyModel?.endpoint || null,
+        legacyPreflightDurationMs,
+        shadowDurationMs,
+        shadowTimedOut: true,
+        shadowStatus: "SHADOW_TIMEOUT",
+        shadowErrorCode: "SHADOW_TIMEOUT",
+      });
+      resolve();
+    }, SHADOW_PREFLIGHT_TIMEOUT_MS);
+  });
+
+  await Promise.race([shadowPromise, timeoutPromise]);
+}
+
 async function handlePreflight(req) {
+  const legacyStartTimestamp = Date.now();
   let session; try { const { appUser } = await requireActivatedAccount(); session = { user: { id: appUser.id } }; } catch (error) { return NextResponse.json({ success: false, code: error.code || "UNAUTHORIZED", error: "Activation required" }, { status: error.status || 401 }); }
 
   let body;
@@ -129,8 +216,6 @@ async function handlePreflight(req) {
   }
 
   const quoteBreakdown = calculateAuthoritativeGenerationQuote(request, model);
-  // Pricing must be known before a quote is persisted. In particular, never
-  // translate legacy credit placeholders into a provider-spend authorization.
   if (!quoteBreakdown.priced) {
     return NextResponse.json({
       success: false,
@@ -140,6 +225,7 @@ async function handlePreflight(req) {
     }, { status: 503 });
   }
   const requestFingerprint = fingerprintGenerationRequest(request);
+  const providerPayloadFingerprint = crypto.createHash("sha256").update(JSON.stringify(providerPayload)).digest("hex");
   const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
   const roleMap = compiled.roleMap.map(({ url, ...entry }) => entry);
   const routingSnapshot = {
@@ -147,7 +233,7 @@ async function handlePreflight(req) {
     webhookUrl,
     requestFingerprint,
     quoteCostSnapshot: quoteBreakdown,
-    providerPayloadFingerprint: crypto.createHash("sha256").update(JSON.stringify(providerPayload)).digest("hex"),
+    providerPayloadFingerprint,
   };
 
   const quote = await prisma.preflightQuote.create({
@@ -174,6 +260,15 @@ async function handlePreflight(req) {
       expiresAt,
     },
   });
+
+  // Phase 4A Shadow Preflight Path with Bounded Timeout & Duration Isolation
+  executeShadowPreflight({
+    legacyBody: body,
+    legacyModel: model,
+    legacyQuoteBreakdown: quoteBreakdown,
+    legacyPayloadFingerprint: providerPayloadFingerprint,
+    legacyStartTimestamp,
+  }).catch((err) => console.warn("[ShadowPreflight] Unhandled shadow error:", err));
 
   return NextResponse.json({
     success: true,

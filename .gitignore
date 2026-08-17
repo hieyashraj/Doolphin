@@ -41,4 +41,5 @@ dev.db*
 
 # playwright test state
 .playwright/
+artifacts/
 

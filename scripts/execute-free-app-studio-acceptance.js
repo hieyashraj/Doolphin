@@ -1,12 +1,12 @@
 import fs from "fs";
 import crypto from "crypto";
 import { prisma } from "../src/lib/prisma.js";
-import { CreditEscrowService } from "../src/lib/billing/creditEscrowService.js";
-import { ModelRouter } from "../src/lib/router/modelRouter.js";
+import { CreditEscrowService } from "../src/lib/billing/CreditEscrowService.js";
+import { ModelRouter } from "../src/lib/router/ModelRouter.js";
 import { OutboxDispatcher } from "../src/lib/queue/outboxDispatcher.js";
 import { GenerationWorker } from "../src/lib/queue/generationWorker.js";
 import { R2StorageService } from "../src/lib/storage/r2StorageService.js";
-import { ArtifactDeliveryValidator } from "../src/lib/storage/artifactValidator.js";
+import { ArtifactValidator } from "../src/lib/storage/ArtifactValidator.js";
 
 /**
  * Free App Studio Acceptance Pipeline.

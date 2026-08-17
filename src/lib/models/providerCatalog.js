@@ -1,0 +1,146 @@
+import crypto from "node:crypto";
+import { getMuapiApiKey } from "../generation/muapiCredentials.js";
+import { getProviderCatalog, clearCatalogMemoryCache } from "./catalogStore.js";
+
+/**
+ * Server-only MU API Catalog Client & Provider Authority Engine.
+ *
+ * Provenance Semantics:
+ * - LIVE_PROVIDER: Freshly fetched from MU API within process/store TTL (stale: false).
+ * - DURABLE_LKG: Resolved from durable storage layer (stale: depends on TTL).
+ * - BOOTSTRAP: Immutable bundled snapshot fallback (stale: true, providerFetchedAt: null).
+ */
+
+export function computeCatalogHash(catalogData) {
+  const serialized = JSON.stringify(catalogData || {});
+  return crypto.createHash("sha256").update(serialized).digest("hex");
+}
+
+export function validateProviderModelEntry(entry) {
+  if (!entry || typeof entry !== "object") return false;
+  if (typeof entry.providerModelId !== "string" || !entry.providerModelId) return false;
+  if (typeof entry.endpoint !== "string" || !entry.endpoint) return false;
+
+  const isDynamic = Boolean(entry.dynamic_pricing ?? entry.dynamicPricing);
+
+  if (entry.cost !== undefined && entry.cost !== null) {
+    if (typeof entry.cost === "object") {
+      const amount = Number(entry.cost.amount ?? entry.cost.cost ?? entry.cost.price);
+      if (!isDynamic && (isNaN(amount) || amount < 0)) {
+        return false;
+      }
+    } else if (typeof entry.cost === "number" && entry.cost < 0) {
+      return false;
+    }
+  } else if (!isDynamic) {
+    return false;
+  }
+
+  if (!entry.inputSchema && !entry.input_schema) return false;
+  return true;
+}
+
+export function validateProviderCatalogPayload(payload) {
+  if (!payload || typeof payload !== "object") {
+    return { valid: false, reason: "Payload is not an object" };
+  }
+  const models = Array.isArray(payload.models) ? payload.models : Array.isArray(payload.data) ? payload.data : null;
+  if (!models || models.length === 0) {
+    return { valid: false, reason: "Payload contains no models array or empty array" };
+  }
+
+  for (const model of models) {
+    if (!validateProviderModelEntry(model)) {
+      return { valid: false, reason: `Model entry '${model?.providerModelId || model?.id || "unknown"}' failed validation` };
+    }
+  }
+
+  return { valid: true, models };
+}
+
+export async function fetchLiveMuapiCatalog({
+  fetchImpl = fetch,
+  env = process.env,
+  endpoint = "https://api.muapi.ai/api/v1/models",
+} = {}) {
+  let headers = { Accept: "application/json" };
+  try {
+    const apiKey = getMuapiApiKey(env);
+    if (apiKey && !apiKey.includes("placeholder")) {
+      headers.Authorization = `Bearer ${apiKey}`;
+    }
+  } catch {
+    // Credentials optional for public catalog endpoints
+  }
+
+  try {
+    const response = await fetchImpl(endpoint, {
+      method: "GET",
+      headers,
+    });
+
+    if (!response.ok) {
+      return {
+        success: false,
+        code: "MUAPI_CATALOG_HTTP_ERROR",
+        status: response.status,
+        error: `HTTP ${response.status} when fetching MU API model catalog`,
+      };
+    }
+
+    const payload = await response.json();
+    const validation = validateProviderCatalogPayload(payload);
+
+    if (!validation.valid) {
+      return {
+        success: false,
+        code: "MALFORMED_PROVIDER_CATALOG",
+        error: validation.reason,
+      };
+    }
+
+    const nowIso = new Date().toISOString();
+    const catalogData = {
+      revision: payload.revision || `muapi-live-${Date.now()}`,
+      fetchedAt: nowIso,
+      models: validation.models,
+      provenance: {
+        source: "LIVE_PROVIDER",
+        loadedAt: nowIso,
+        providerFetchedAt: nowIso,
+        validationStatus: "VALID",
+        stale: false,
+        configHash: computeCatalogHash(validation.models),
+      },
+    };
+
+    return { success: true, catalog: catalogData };
+  } catch (error) {
+    return {
+      success: false,
+      code: "MUAPI_CATALOG_NETWORK_ERROR",
+      error: error.message,
+    };
+  }
+}
+
+export async function syncAndGetProviderCatalog({
+  fetchImpl = fetch,
+  env = process.env,
+  forceRefresh = false,
+  ttlMs = 60 * 60 * 1000,
+} = {}) {
+  if (forceRefresh) {
+    clearCatalogMemoryCache();
+  }
+
+  if (forceRefresh) {
+    const liveResult = await fetchLiveMuapiCatalog({ fetchImpl, env });
+    if (liveResult.success) {
+      return { catalog: liveResult.catalog, source: "LIVE_PROVIDER" };
+    }
+    console.warn("[ProviderCatalog] Live refresh failed; falling back to last-known-good:", liveResult.error);
+  }
+
+  return getProviderCatalog({ forceRefresh: false, ttlMs });
+}

@@ -1,6 +1,6 @@
 import fs from "fs";
 import crypto from "crypto";
-import { renderAppStudioVideo, runFfprobe } from "../src/lib/media/ffmpegRunner.js";
+import { renderAppStudioVideo, runFfprobe } from "../src/lib/media/FfmpegRunner.js";
 
 async function runRealPipeline() {
   console.log("=== STARTING REAL FFmpeg PIPELINE ===");
