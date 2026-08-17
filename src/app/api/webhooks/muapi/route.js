@@ -33,7 +33,7 @@ function extractVideoUrl(payload) {
       }
     }
     if (typeof val === "object") {
-      for (const key of ["video_url", "video", "output_url", "url", "result", "file"]) {
+      for (const key of ["video_url", "video", "output_url", "url", "result", "file", "outputs", "output"]) {
         if (key in val) {
           const found = visit(val[key], depth + 1);
           if (found) return found;

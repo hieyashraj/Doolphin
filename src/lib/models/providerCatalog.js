@@ -238,7 +238,7 @@ export async function resolveAuthoritativeProviderSpec(providerModelId, {
   env = process.env,
   forceRefresh = false,
   ttlMs = DEFAULT_SPEC_TTL_MS,
-  timeoutMs = DEFAULT_NETWORK_TIMEOUT_MS,
+  timeoutMs = Number(env?.MODEL_PLATFORM_SPEC_TIMEOUT_MS) || DEFAULT_NETWORK_TIMEOUT_MS,
 } = {}) {
   const now = Date.now();
   const nowIso = new Date(now).toISOString();

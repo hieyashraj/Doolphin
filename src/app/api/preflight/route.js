@@ -12,6 +12,7 @@ import { resolvePlatformAvatar } from "@/lib/generation/avatarRegistry";
 import { R2StorageService } from "@/lib/storage/r2StorageService";
 
 import { mapValidatedStudioWorkflowToNormalizedInvocation } from "@/lib/models/bridges/studioWorkflowBridge.js";
+import { resolveTrustedApplicationOrigin } from "@/lib/models/bridges/applicationOrigin.js";
 import { prepareExecutionPlan } from "@/lib/models/execution/prepareExecutionPlan.js";
 import { recordShadowPreflightTelemetry, runShadowWithSingleTelemetry } from "@/lib/models/telemetry/shadowTelemetry.js";
 import { isSeedanceModelPlatformCutoverEligible } from "@/lib/models/cutoverEligibility.js";
@@ -174,7 +175,23 @@ async function handlePreflight(req) {
   if (isCutoverEligible) {
     // Model Platform V1 Authoritative Cutover Path (No Legacy Adapter / No Legacy Pricing)
     try {
-      const applicationOrigin = webhookBase || (req?.nextUrl?.origin) || null;
+      const outputCount = Math.max(
+        1,
+        Math.floor(
+          Number(
+            request.settings?.outputCount ||
+            body.outputCount
+          ) || 1
+        )
+      );
+
+      const applicationOrigin = resolveTrustedApplicationOrigin({
+        appBaseUrl: process.process?.env?.APP_BASE_URL || process.env.APP_BASE_URL,
+        nextAuthUrl: process.process?.env?.NEXTAUTH_URL || process.env.NEXTAUTH_URL,
+        requestOrigin: req?.nextUrl?.origin,
+        nodeEnv: process.process?.env?.NODE_ENV || process.env.NODE_ENV,
+      });
+
       const normalizedInput = mapValidatedStudioWorkflowToNormalizedInvocation({
         request,
         compiledPrompt: compiled.compiledPrompt,
