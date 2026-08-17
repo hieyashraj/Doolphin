@@ -1,24 +1,18 @@
 import { getMuapiApiKey } from "../../generation/muapiCredentials.js";
 import { calculateCommercialCreditQuote } from "../pricingIntegration.js";
+import { canonicalJsonSerialize } from "./prepareExecutionPlan.js";
 import { ERROR_CODES } from "../errors.js";
 
 /**
  * Dynamic Provider Cost Estimator Core.
- * Calls MU API POST /api/v1/models/{model}/estimate-cost.
- *
- * NOTE: MU API's /estimate-cost endpoint is public and does not strictly require credentials.
- * Credentials are optional for estimation calls, but required for actual generation calls.
- *
- * Fixed-Pricing Rules:
- * - Uses dynamic_pricing boolean as the primary provider pricing-mode signal.
- * - If dynamic_pricing === false and a valid provider cost exists, it is treated as fixed provider cost.
- * - If dynamic_pricing metadata is contradictory or incomplete, fails closed with PRICING_UNAVAILABLE.
+ * Calls MU API POST /api/v1/models/{model}/estimate-cost using exact canonical bytes.
  */
 
 export async function estimateAuthoritativeModelCost({
   modelDefinition,
   normalizedInput,
   alreadyPreparedPayload,
+  alreadyPreparedPayloadJson,
   fetchImpl = fetch,
   env = process.env,
 } = {}) {
@@ -80,72 +74,78 @@ export async function estimateAuthoritativeModelCost({
     };
   }
 
-  // Consume already-prepared payload OR build pure model payload ONCE
-  let providerPayload = alreadyPreparedPayload;
-  if (!providerPayload) {
-    try {
-      providerPayload = modelDefinition.toProviderPayload(normalizedInput);
-    } catch (error) {
-      return {
-        priced: false,
-        code: ERROR_CODES.PRICING_UNAVAILABLE,
-        reason: `Failed to construct provider payload for cost estimation: ${error.message}`,
-      };
+  // Resolve EXACT canonical provider payload JSON body
+  let requestBodyString = alreadyPreparedPayloadJson;
+  if (!requestBodyString) {
+    let payload = alreadyPreparedPayload;
+    if (!payload) {
+      try {
+        payload = modelDefinition.toProviderPayload(normalizedInput);
+      } catch (error) {
+        return {
+          priced: false,
+          code: ERROR_CODES.PRICING_UNAVAILABLE,
+          reason: `Failed to construct provider payload for cost estimation: ${error.message}`,
+        };
+      }
     }
+    requestBodyString = canonicalJsonSerialize(payload);
   }
 
-  // Optional credential resolution
   let headers = {
     "Content-Type": "application/json",
     Accept: "application/json",
   };
+
   try {
     const apiKey = getMuapiApiKey(env);
     if (apiKey && !apiKey.includes("placeholder")) {
+      headers["x-api-key"] = apiKey;
       headers.Authorization = `Bearer ${apiKey}`;
     }
   } catch {
-    // Credentials optional for public estimation endpoints
+    // Credentials optional for public cost estimation endpoints
   }
 
   try {
     const response = await fetchImpl(estimateEndpoint, {
       method: "POST",
       headers,
-      body: JSON.stringify(providerPayload),
+      body: requestBodyString,
+      redirect: "error",
     });
 
     if (!response.ok) {
+      const errorBody = await response.json().catch(() => ({}));
       return {
         priced: false,
         code: ERROR_CODES.PRICING_UNAVAILABLE,
-        reason: `MU API estimate endpoint returned HTTP ${response.status}`,
+        reason: `MU API estimate-cost HTTP ${response.status}: ${errorBody.error || errorBody.message || "Unknown pricing error"}`,
       };
     }
 
-    const result = await response.json();
-    const costUsd = Number(result?.amount_usd ?? result?.cost_usd ?? result?.amount ?? result?.cost);
+    const payload = await response.json();
+    const providerCostUsd = Number(payload.cost ?? payload.estimated_cost ?? payload.amount ?? payload.amount_usd);
 
-    if (isNaN(costUsd) || costUsd < 0) {
+    if (isNaN(providerCostUsd) || providerCostUsd < 0) {
       return {
         priced: false,
         code: ERROR_CODES.PRICING_UNAVAILABLE,
-        reason: "MU API estimate endpoint returned an invalid or non-numeric cost amount",
+        reason: `MU API estimate-cost returned invalid cost '${payload.cost}'`,
       };
     }
 
     const quote = calculateCommercialCreditQuote({
-      providerCostUsd: costUsd,
+      providerCostUsd,
       variableInfraCostMicroUsd: businessPolicy?.variableInfraCostMicroUsd || 0n,
     });
 
     return {
       ...quote,
-      strategy: providerSpec.cost?.strategy || "dynamic_cost",
+      strategy: payload.strategy || "estimate_cost_dynamic",
       isDynamic: true,
       modelId: modelDefinition.productPolicy.id,
-      providerEstimateResult: result,
-      estimatedPayload: providerPayload,
+      providerCostUsd,
       estimatedAt: new Date().toISOString(),
     };
   } catch (error) {

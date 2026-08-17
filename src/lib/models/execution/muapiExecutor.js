@@ -65,7 +65,7 @@ export async function executeMuapiGenerationPlan({
     );
   }
 
-  // 3. Dynamically Rebuild Webhook Callback URL via Server Boundary (Secret-Free Transport)
+  // 3. Dynamically Rebuild Webhook Callback URL via Server Boundary
   const webhookBase = env.DOOLPHIN_WEBHOOK_URL || env.NEXT_PUBLIC_APP_URL || "https://api.doolphin.com";
   let webhookUrl;
   try {
@@ -74,17 +74,16 @@ export async function executeMuapiGenerationPlan({
     webhookUrl = `${webhookBase}/api/webhooks/muapi`;
   }
 
-  // 4. Attach Webhook URL strictly at Transport Level (Query Param) without altering Body Bytes
+  // 4. Attach Webhook URL strictly at Transport Layer via `webhook` Query Parameter
   const requestUrl = new URL(baseUrl);
-  requestUrl.searchParams.set("webhook_url", webhookUrl);
+  requestUrl.searchParams.set("webhook", webhookUrl);
 
-  // 5. Dispatch Submission with EXACT Prepared providerPayloadJson as Body
+  // 5. Dispatch Submission with EXACT Prepared providerPayloadJson as Body and x-api-key Auth Header
   try {
     const response = await fetchImpl(requestUrl.toString(), {
       method: "POST",
       headers: {
         "x-api-key": apiKey,
-        Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
         Accept: "application/json",
       },

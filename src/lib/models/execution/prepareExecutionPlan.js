@@ -181,10 +181,11 @@ export async function prepareExecutionPlan({
 
   const providerSpecHash = computeCatalogHash(modelDefinition.providerSpec);
 
-  // 7. Obtain Authoritative Cost using ALREADY PREPARED SERIALIZED PAYLOAD
+  // 7. Obtain Authoritative Cost using ALREADY PREPARED CANONICAL PAYLOAD JSON BYTES
   const pricingQuote = await estimateAuthoritativeModelCost({
     modelDefinition,
     alreadyPreparedPayload: providerPayload,
+    alreadyPreparedPayloadJson: providerPayloadJson,
     fetchImpl,
     env,
   });

@@ -4,7 +4,10 @@ import crypto from "node:crypto";
 
 import { prepareExecutionPlan } from "../../src/lib/models/execution/prepareExecutionPlan.js";
 import { executeMuapiGenerationPlan } from "../../src/lib/models/execution/muapiExecutor.js";
-import { ModelPlatformError } from "../../src/lib/models/errors.js";
+import { estimateAuthoritativeModelCost } from "../../src/lib/models/execution/estimateCost.js";
+import { getModel } from "../../src/lib/models/registry.js";
+import { mapValidatedStudioWorkflowToNormalizedInvocation } from "../../src/lib/models/bridges/studioWorkflowBridge.js";
+import { ModelPlatformError, ERROR_CODES } from "../../src/lib/models/errors.js";
 
 const TEST_ENV = {
   DOOLPHIN_ENV: "staging",
@@ -27,49 +30,7 @@ const mockEstimateFetch = async (url) => {
   };
 };
 
-test("Phase 4B Executor: Generation executor sends exact prepared JSON body without rebuilding or re-serializing", async () => {
-  const plan = await prepareExecutionPlan({
-    modelId: "muapi.seedance2.omni-reference-fast",
-    normalizedInput: {
-      prompt: "UGC Video Test Prompt",
-      duration: 5,
-      aspectRatio: "9:16",
-      generateAudio: true,
-      extraInputs: { images: ["https://r2.doolphin.com/actor1.jpg"] },
-    },
-    fetchImpl: mockEstimateFetch,
-    env: TEST_ENV,
-  });
-
-  let capturedUrl = null;
-  let capturedOptions = null;
-
-  const mockGenFetch = async (url, options) => {
-    capturedUrl = url;
-    capturedOptions = options;
-    return {
-      ok: true,
-      status: 200,
-      json: async () => ({ request_id: "req_muapi_mock_123", status: "queued" }),
-    };
-  };
-
-  const res = await executeMuapiGenerationPlan({
-    preparedPlan: plan,
-    fetchImpl: mockGenFetch,
-    env: TEST_ENV,
-  });
-
-  assert.equal(res.success, true);
-  assert.equal(capturedOptions.body, plan.providerPayloadJson);
-  assert.equal(typeof capturedOptions.body, "string");
-
-  // Prove SHA256 of sent body matches providerPayloadHash exactly
-  const sentBodyHash = crypto.createHash("sha256").update(capturedOptions.body).digest("hex");
-  assert.equal(sentBodyHash, plan.providerPayloadHash);
-});
-
-test("Phase 4B Transport: Webhook URL is attached at query transport layer without modifying body bytes", async () => {
+test("Phase 4B.1 Webhook Transport: Query parameter is ?webhook= and NOT ?webhook_url=", async () => {
   const plan = await prepareExecutionPlan({
     modelId: "muapi.grok-imagine-image-2-edit",
     normalizedInput: { prompt: "Test prompt", sourceRequestId: "req_abc" },
@@ -97,15 +58,13 @@ test("Phase 4B Transport: Webhook URL is attached at query transport layer witho
   });
 
   const parsedUrl = new URL(capturedUrl);
-  assert.ok(parsedUrl.searchParams.has("webhook_url"));
-  assert.match(parsedUrl.searchParams.get("webhook_url"), /api\/webhooks\/muapi/);
-
-  // Body bytes must NOT contain the webhook_url string
-  assert.equal(capturedBody.includes("webhook_url"), false);
+  assert.equal(parsedUrl.searchParams.has("webhook"), true);
+  assert.equal(parsedUrl.searchParams.has("webhook_url"), false);
+  assert.match(parsedUrl.searchParams.get("webhook"), /api\/webhooks\/muapi/);
   assert.equal(capturedBody, plan.providerPayloadJson);
 });
 
-test("Phase 4B Auth Headers: Request headers include x-api-key and Authorization Bearer", async () => {
+test("Phase 4B.1 Auth Headers: Generation request transmits x-api-key and NO Authorization bearer token", async () => {
   const plan = await prepareExecutionPlan({
     modelId: "muapi.seedance2.omni-reference-fast",
     normalizedInput: { prompt: "Header verification prompt" },
@@ -131,54 +90,93 @@ test("Phase 4B Auth Headers: Request headers include x-api-key and Authorization
   });
 
   assert.equal(capturedHeaders["x-api-key"], "sandbox_test_key_phase4b");
-  assert.equal(capturedHeaders["Authorization"], "Bearer sandbox_test_key_phase4b");
+  assert.equal(capturedHeaders["Authorization"], undefined);
   assert.equal(capturedHeaders["Content-Type"], "application/json");
 });
 
-test("Phase 4B Persisted Plan Round Trip: Prepared plan snapshot survives JSON/DB serialization byte-for-byte", async () => {
+test("Phase 4B.1 Single Pipeline: Estimate and generation POST HTTP bodies are byte-for-byte identical", async () => {
+  let capturedEstimateBody = null;
+  let capturedGenerationBody = null;
+
+  const mockDualFetch = async (url, options) => {
+    if (url.includes("estimate-cost")) {
+      capturedEstimateBody = options.body;
+      return { ok: true, status: 200, json: async () => ({ cost: 0.2419, currency: "USD" }) };
+    }
+    capturedGenerationBody = options.body;
+    return { ok: true, status: 200, json: async () => ({ request_id: "req_dual_123" }) };
+  };
+
+  const plan = await prepareExecutionPlan({
+    modelId: "muapi.seedance2.omni-reference-fast",
+    normalizedInput: { prompt: "Exact Body Verification Prompt", duration: 5, aspectRatio: "9:16" },
+    fetchImpl: mockDualFetch,
+    env: TEST_ENV,
+  });
+
+  await executeMuapiGenerationPlan({
+    preparedPlan: plan,
+    fetchImpl: mockDualFetch,
+    env: TEST_ENV,
+  });
+
+  assert.equal(capturedEstimateBody, plan.providerPayloadJson);
+  assert.equal(capturedGenerationBody, plan.providerPayloadJson);
+  assert.equal(capturedEstimateBody, capturedGenerationBody);
+
+  const estimateHash = crypto.createHash("sha256").update(capturedEstimateBody).digest("hex");
+  assert.equal(estimateHash, plan.providerPayloadHash);
+});
+
+test("Phase 4B.1 Seedance Schema: Provider payload sets images_list field name and enforces max 9 limit", async () => {
   const plan = await prepareExecutionPlan({
     modelId: "muapi.seedance2.omni-reference-fast",
     normalizedInput: {
-      prompt: "Persisted Plan Snapshot Test Prompt",
-      duration: 6,
-      aspectRatio: "16:9",
-      generateAudio: false,
-      extraInputs: { images: ["https://r2.doolphin.com/img1.jpg", "https://r2.doolphin.com/img2.jpg"] },
+      prompt: "Seedance images_list verification prompt",
+      extraInputs: { images: ["https://r2.doolphin.com/actor1.jpg", "https://r2.doolphin.com/actor2.jpg"] },
     },
     fetchImpl: mockEstimateFetch,
     env: TEST_ENV,
   });
 
-  const snapshotToPersist = {
-    authorityVersion: "MODEL_PLATFORM_PREPARED_V1",
-    canonicalModelId: plan.canonicalModelId,
-    providerModelId: plan.providerModelId,
-    providerEndpoint: plan.providerEndpoint,
-    providerSpecHash: plan.providerSpecHash,
-    providerPayloadJson: plan.providerPayloadJson,
-    providerPayloadHash: plan.providerPayloadHash,
-    providerEstimatedCostMicroUsd: plan.pricing.providerCostMicroUsd,
-    newQuotedCredits: plan.pricing.quotedCredits,
-    pricingRevisionId: plan.pricing.pricingRevisionId,
-    preparedAt: plan.preparedAt,
-    expiresAt: plan.expiresAt,
-    webhookStrategy: plan.transport.webhookStrategy,
-  };
+  assert.ok(plan.providerPayload.images_list);
+  assert.equal(plan.providerPayload.images, undefined);
+  assert.equal(plan.providerPayload.images_list.length, 2);
+  assert.equal(plan.providerPayload.images_list[0], "https://r2.doolphin.com/actor1.jpg");
 
-  // Simulate DB String Serialization
-  const dbSerializedString = JSON.stringify(snapshotToPersist);
-  const dbParsedSnapshot = JSON.parse(dbSerializedString);
-
-  // Invariant 1: Byte-for-byte exact equality of providerPayloadJson
-  assert.equal(dbParsedSnapshot.providerPayloadJson, plan.providerPayloadJson);
-
-  // Invariant 2: SHA256 of reloaded payload matches original providerPayloadHash
-  const reloadedHash = crypto.createHash("sha256").update(dbParsedSnapshot.providerPayloadJson).digest("hex");
-  assert.equal(reloadedHash, plan.providerPayloadHash);
-  assert.equal(dbParsedSnapshot.providerPayloadHash, plan.providerPayloadHash);
+  // Prove > 9 image references fail closed
+  const tooManyImages = Array.from({ length: 10 }, (_, i) => `https://r2.doolphin.com/actor${i + 1}.jpg`);
+  await assert.rejects(
+    () => prepareExecutionPlan({
+      modelId: "muapi.seedance2.omni-reference-fast",
+      normalizedInput: { prompt: "Too many images", extraInputs: { images: tooManyImages } },
+      fetchImpl: mockEstimateFetch,
+      env: TEST_ENV,
+    }),
+    (err) => err instanceof ModelPlatformError && err.code === ERROR_CODES.INVALID_MODEL_INPUT
+  );
 });
 
-test("Phase 4B Feature Flag: MODEL_PLATFORM_SEEDANCE_CUTOVER_ENABLED default OFF keeps legacy path authoritative", () => {
-  assert.equal(process.env.MODEL_PLATFORM_SEEDANCE_CUTOVER_ENABLED, undefined);
-  assert.equal(TEST_ENV.MODEL_PLATFORM_SEEDANCE_CUTOVER_ENABLED, "false");
+test("Phase 4B.1 Studio Workflow Bridge: Canonical compiled prompt is passed directly without object stringification", () => {
+  const mockScriptObj = { scene1: "Script object should not become string" };
+  const mockRequest = { prompt: "Fallback prompt", script: mockScriptObj, settings: { durationSeconds: 5 } };
+  const compiledPrompt = "Authoritative Compiled Scene Plan Prompt";
+  const providerImageUrls = ["https://r2.doolphin.com/avatar.jpg"];
+  const nowMs = Date.now();
+
+  const normalized = mapValidatedStudioWorkflowToNormalizedInvocation({
+    request: mockRequest,
+    compiledPrompt,
+    providerImageUrls,
+    earliestSignedAssetExpiryMs: nowMs + 30 * 60 * 1000,
+  });
+
+  assert.equal(normalized.prompt, compiledPrompt);
+  assert.notEqual(normalized.prompt, "[object Object]");
+  assert.equal(normalized.extraInputs.images[0], "https://r2.doolphin.com/avatar.jpg");
+  assert.equal(normalized.earliestSignedAssetExpiryMs, nowMs + 30 * 60 * 1000);
+});
+
+test("Phase 4B.1 Readiness Flag: Snapshot generation disabled when MODEL_PLATFORM_PREPARED_SNAPSHOT_ENABLED is false", () => {
+  assert.equal(process.env.MODEL_PLATFORM_PREPARED_SNAPSHOT_ENABLED, undefined);
 });

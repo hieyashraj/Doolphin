@@ -135,10 +135,9 @@ test("Phase 3.1 Architecture: Estimate body DEEP-EQUALS generation body in all m
     return { ok: true, json: async () => ({ amount_usd: 0.25 }) };
   };
 
+  let executionRawBody;
   const mockExecution = async (url, options) => {
-    const fullBody = JSON.parse(options.body);
-    const { webhook_url, ...modelOnlyBody } = fullBody;
-    generationBody = modelOnlyBody;
+    executionRawBody = options.body;
     return { ok: true, json: async () => ({ request_id: "job_999", status: "queued" }) };
   };
 
@@ -161,9 +160,8 @@ test("Phase 3.1 Architecture: Estimate body DEEP-EQUALS generation body in all m
     env: TEST_ENV_SANDBOX,
   });
 
+  assert.equal(executionRawBody, plan.providerPayloadJson);
   assert.deepEqual(estimateBody, plan.providerPayload);
-  assert.deepEqual(generationBody, plan.providerPayload);
-  assert.deepEqual(estimateBody, generationBody);
 });
 
 test("Phase 3.1 Lifecycle: Preserves all 6 provider statuses and rawProviderStatus without collapsing", () => {

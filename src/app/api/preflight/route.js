@@ -11,7 +11,7 @@ import { buildMuapiWebhookUrl } from "@/lib/generation/webhookSecurity";
 import { resolvePlatformAvatar } from "@/lib/generation/avatarRegistry";
 import { R2StorageService } from "@/lib/storage/r2StorageService";
 
-import { mapStudioWorkflowToNormalizedInvocation } from "@/lib/models/bridges/studioWorkflowBridge.js";
+import { mapValidatedStudioWorkflowToNormalizedInvocation } from "@/lib/models/bridges/studioWorkflowBridge.js";
 import { prepareExecutionPlan } from "@/lib/models/execution/prepareExecutionPlan.js";
 import { recordShadowPreflightTelemetry, runShadowWithSingleTelemetry } from "@/lib/models/telemetry/shadowTelemetry.js";
 
@@ -34,7 +34,7 @@ function safeModelSnapshot(model) {
 
 const SHADOW_PREFLIGHT_TIMEOUT_MS = 250;
 
-async function executeShadowPreflight({ legacyBody, legacyModel, legacyQuoteBreakdown, legacyPayloadFingerprint, legacyStartTimestamp }) {
+async function executeShadowPreflight({ legacyBody, legacyModel, legacyQuoteBreakdown, legacyPayloadFingerprint, legacyStartTimestamp, compiledPrompt, providerImageUrls }) {
   if (process.env.MODEL_PLATFORM_PREFLIGHT_SHADOW_ENABLED !== "true") {
     return;
   }
@@ -46,7 +46,11 @@ async function executeShadowPreflight({ legacyBody, legacyModel, legacyQuoteBrea
 
   await runShadowWithSingleTelemetry({
     shadowFn: async () => {
-      const normalizedInput = mapStudioWorkflowToNormalizedInvocation(legacyBody);
+      const normalizedInput = mapValidatedStudioWorkflowToNormalizedInvocation({
+        request: legacyBody,
+        compiledPrompt,
+        providerImageUrls,
+      });
       const modelId = legacyBody.modelId || legacyModel.id || "seedance-2";
       return prepareExecutionPlan({
         modelId,
@@ -72,6 +76,8 @@ async function handlePreflight(req) {
   } catch {
     return NextResponse.json({ success: false, code: "INVALID_JSON", error: "A valid JSON request is required" }, { status: 400 });
   }
+
+  let earliestSignedAssetExpiryMs = null;
 
   if (Array.isArray(body?.assets)) {
     for (const asset of body.assets) {
@@ -111,8 +117,15 @@ async function handlePreflight(req) {
         asset.analysisRevision = storedAsset.analysisRevision;
         asset.analysis = JSON.parse(storedAsset.analysisJson);
         asset.analysis._billing = { creditsCharged: storedAsset.analysisCreditsCharged, workspaceId: storedAsset.analysisWorkspaceId };
+
+        const signedUrlExpirySeconds = 60 * 60;
+        const assetExpiresAtMs = Date.now() + signedUrlExpirySeconds * 1000;
+        if (earliestSignedAssetExpiryMs === null || assetExpiresAtMs < earliestSignedAssetExpiryMs) {
+          earliestSignedAssetExpiryMs = assetExpiresAtMs;
+        }
+
         asset.url = R2StorageService.isConfigured()
-          ? await R2StorageService.generateSignedUrl({ storageKey: storedAsset.storageKey, expiresInSeconds: 60 * 60 })
+          ? await R2StorageService.generateSignedUrl({ storageKey: storedAsset.storageKey, expiresInSeconds: signedUrlExpirySeconds })
           : `/storage/${storedAsset.storageKey}`;
       }
     }
@@ -177,34 +190,41 @@ async function handlePreflight(req) {
   const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
   const roleMap = compiled.roleMap.map(({ url, ...entry }) => entry);
 
-  // Phase 4B Cutover Readiness: Prepare server-only model platform snapshot alongside legacy snapshot
+  // Phase 4B.1 Cutover Readiness Snapshot (Gated behind MODEL_PLATFORM_PREPARED_SNAPSHOT_ENABLED, default OFF)
   let modelPlatformPreparedPlan = null;
-  try {
-    const normalizedInput = mapStudioWorkflowToNormalizedInvocation(body);
-    const modelId = body.modelId || model.id || "seedance-2";
-    const plan = await prepareExecutionPlan({
-      modelId,
-      normalizedInput,
-      env: process.env,
-    });
-    modelPlatformPreparedPlan = {
-      authorityVersion: "MODEL_PLATFORM_PREPARED_V1",
-      canonicalModelId: plan.canonicalModelId,
-      providerModelId: plan.providerModelId,
-      providerEndpoint: plan.providerEndpoint,
-      providerSpecHash: plan.providerSpecHash,
-      providerPayloadJson: plan.providerPayloadJson,
-      providerPayloadHash: plan.providerPayloadHash,
-      providerEstimatedCostMicroUsd: plan.pricing.providerCostMicroUsd,
-      newQuotedCredits: plan.pricing.quotedCredits,
-      pricingRevisionId: plan.pricing.pricingRevisionId,
-      preparedAt: plan.preparedAt,
-      expiresAt: plan.expiresAt,
-      earliestSignedAssetExpiry: null,
-      webhookStrategy: plan.transport.webhookStrategy,
-    };
-  } catch (planError) {
-    console.warn("[Preflight] Model platform prepared snapshot generation warning:", planError.message);
+  if (process.env.MODEL_PLATFORM_PREPARED_SNAPSHOT_ENABLED === "true") {
+    try {
+      const normalizedInput = mapValidatedStudioWorkflowToNormalizedInvocation({
+        request,
+        compiledPrompt: compiled.compiledPrompt,
+        providerImageUrls: compiled.imageUrls,
+        earliestSignedAssetExpiryMs,
+      });
+      const modelId = body.modelId || model.id || "seedance-2";
+      const plan = await prepareExecutionPlan({
+        modelId,
+        normalizedInput,
+        env: process.env,
+      });
+      modelPlatformPreparedPlan = {
+        authorityVersion: "MODEL_PLATFORM_PREPARED_V1",
+        canonicalModelId: plan.canonicalModelId,
+        providerModelId: plan.providerModelId,
+        providerEndpoint: plan.providerEndpoint,
+        providerSpecHash: plan.providerSpecHash,
+        providerPayloadJson: plan.providerPayloadJson,
+        providerPayloadHash: plan.providerPayloadHash,
+        providerEstimatedCostMicroUsd: plan.pricing.providerCostMicroUsd,
+        newQuotedCredits: plan.pricing.quotedCredits,
+        pricingRevisionId: plan.pricing.pricingRevisionId,
+        preparedAt: plan.preparedAt,
+        expiresAt: plan.expiresAt,
+        earliestSignedAssetExpiry: earliestSignedAssetExpiryMs ? new Date(earliestSignedAssetExpiryMs).toISOString() : null,
+        webhookStrategy: plan.transport.webhookStrategy,
+      };
+    } catch (planError) {
+      console.warn("[Preflight] Prepared plan snapshot generation warning:", planError.message);
+    }
   }
 
   const routingSnapshot = {
@@ -248,6 +268,8 @@ async function handlePreflight(req) {
     legacyQuoteBreakdown: quoteBreakdown,
     legacyPayloadFingerprint: providerPayloadFingerprint,
     legacyStartTimestamp,
+    compiledPrompt: compiled.compiledPrompt,
+    providerImageUrls: compiled.imageUrls,
   }).catch((err) => console.warn("[ShadowPreflight] Unhandled shadow error:", err));
 
   return NextResponse.json({

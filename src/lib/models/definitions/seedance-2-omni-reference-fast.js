@@ -16,7 +16,7 @@ export const seedance2OmniReferenceFastDefinition = {
       required: ["prompt"],
       properties: {
         prompt: { type: "string", maxLength: 5000 },
-        images: { type: "array", items: { type: "string" } },
+        images_list: { type: "array", items: { type: "string" }, description: "Actor reference image URLs (max 9)" },
         duration: { type: "integer", minimum: 4, maximum: 15, default: 5 },
         aspect_ratio: { type: "string", enum: ["9:16", "16:9", "1:1", "4:3", "3:4"], default: "9:16" },
         generate_audio: { type: "boolean", default: true }
@@ -68,6 +68,11 @@ export const seedance2OmniReferenceFastDefinition = {
       throw new Error(`[Seedance2Omni] Unsupported aspect ratio '${aspectRatio}'`);
     }
 
+    const imagesInput = normalizedInput.extraInputs?.images || normalizedInput.images || [];
+    if (Array.isArray(imagesInput) && imagesInput.length > 9) {
+      throw new Error(`[Seedance2Omni] Maximum 9 image references permitted (received ${imagesInput.length})`);
+    }
+
     const payload = {
       prompt: normalizedInput.prompt.trim(),
       duration,
@@ -75,8 +80,8 @@ export const seedance2OmniReferenceFastDefinition = {
       generate_audio: normalizedInput.generateAudio !== undefined ? Boolean(normalizedInput.generateAudio) : true
     };
 
-    if (Array.isArray(normalizedInput.extraInputs?.images) && normalizedInput.extraInputs.images.length > 0) {
-      payload.images = normalizedInput.extraInputs.images.map(String);
+    if (Array.isArray(imagesInput) && imagesInput.length > 0) {
+      payload.images_list = imagesInput.map(String);
     }
 
     return payload;
