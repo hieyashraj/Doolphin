@@ -2,37 +2,44 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createClient } from "@supabase/supabase-js";
 import fs from "node:fs";
-import dotenv from "dotenv";
 
-const env = dotenv.parse(fs.readFileSync(".env"));
-const url = env.NEXT_PUBLIC_SUPABASE_URL;
-const pubKey = env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-const serviceKey = env.SUPABASE_SERVICE_ROLE_KEY;
-const directUrl = env.DIRECT_URL || env.DATABASE_URL;
+// Require LOCAL_SUPABASE_* environment variables.
+// A normal `node --test` without LOCAL_SUPABASE_* variables will safely skip local integration tests
+// and NEVER parse .env or hit remote staging / production by accident.
+const url = process.env.LOCAL_SUPABASE_URL;
+const pubKey = process.env.LOCAL_SUPABASE_PUBLISHABLE_KEY || process.env.LOCAL_SUPABASE_ANON_KEY;
+const serviceKey = process.env.LOCAL_SUPABASE_SERVICE_KEY;
 
-for (const k in env) {
-  process.env[k] = env[k];
-}
+const isLocalConfigured = Boolean(url && pubKey && serviceKey && url.includes("127.0.0.1"));
+const localTest = isLocalConfigured ? test : test.skip;
 
 const pubClient = () => createClient(url, pubKey, { auth: { persistSession: false } });
 const adminClient = () => createClient(url, serviceKey, { auth: { persistSession: false } });
 
 let counter = 0;
-const testEmail = (prefix) => `auth_lifecycle_${Date.now()}_${++counter}_${prefix}@gmail.com`;
+const testEmail = (prefix) => `auth_lifecycle_${Date.now()}_${++counter}_${prefix}@example.test`;
 
-test("Auth Lifecycle: signup returns unconfirmed Supabase user", async () => {
-  const email = testEmail("signup");
+localTest("Auth Lifecycle: unconfirmed signInWithPassword returns email_not_confirmed error code", async () => {
+  const email = testEmail("unconfirmed_signin");
   const password = "TestPassword123!";
   const { data, error } = await pubClient().auth.signUp({ email, password });
   assert.equal(error, null);
   assert.ok(data.user);
-  assert.equal(Boolean(data.user.email_confirmed_at), false);
 
-  // Clean up
+  // Attempt sign-in with unconfirmed email
+  const signInRes = await pubClient().auth.signInWithPassword({ email, password });
+  assert.ok(signInRes.error);
+  assert.equal(signInRes.error.code, "email_not_confirmed");
+
+  // Incorrect password returns neutral invalid credentials error
+  const badPassRes = await pubClient().auth.signInWithPassword({ email, password: "WrongPassword123!" });
+  assert.ok(badPassRes.error);
+  assert.notEqual(badPassRes.error.code, "email_not_confirmed");
+
   await adminClient().auth.admin.deleteUser(data.user.id);
 });
 
-test("Auth Lifecycle: disposable sentinel tempmail.local is rejected", async () => {
+localTest("Auth Lifecycle: disposable sentinel tempmail.local is rejected by Before User Created hook", async () => {
   const email = `disposable_${Date.now()}@tempmail.local`;
   const password = "TestPassword123!";
   const { data, error } = await pubClient().auth.signUp({ email, password });
@@ -41,7 +48,7 @@ test("Auth Lifecycle: disposable sentinel tempmail.local is rejected", async () 
   assert.match(error.message || "", /disposable email/i);
 });
 
-test("Auth Lifecycle: unconfirmed user /api/auth/sync is rejected", async () => {
+localTest("Auth Lifecycle: unconfirmed user identity provisioning is rejected by linkSupabaseIdentity helper boundary", async () => {
   const email = testEmail("sync_unconfirmed");
   const password = "TestPassword123!";
   const { data } = await pubClient().auth.signUp({ email, password });
@@ -62,7 +69,7 @@ test("Auth Lifecycle: unconfirmed user /api/auth/sync is rejected", async () => 
   await adminClient().auth.admin.deleteUser(data.user.id);
 });
 
-test("Auth Lifecycle: invalid OTP is rejected and valid OTP confirms account", async () => {
+localTest("Auth Lifecycle: invalid OTP is rejected and valid OTP confirms account", async () => {
   const email = testEmail("otp_verify");
   const password = "TestPassword123!";
 
@@ -86,7 +93,7 @@ test("Auth Lifecycle: invalid OTP is rejected and valid OTP confirms account", a
   await adminClient().auth.admin.deleteUser(generated.data.user.id);
 });
 
-test("Auth Lifecycle: verified user sync creates exactly one User, Workspace, WorkspaceMember, CreditAccount & repeating sync is idempotent", async () => {
+localTest("Auth Lifecycle: confirmed account linkSupabaseIdentity creates exactly one User, Workspace, WorkspaceMember, CreditAccount & repeat sync is idempotent", async () => {
   const email = testEmail("full_flow");
   const password = "TestPassword123!";
 

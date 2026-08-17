@@ -42,6 +42,11 @@ export default function SignInPage() {
       const res = await Promise.race([authPromise, timeoutPromise]);
 
       if (res?.error) {
+        if (res.error.code === "email_not_confirmed") {
+          setSubmitting(false);
+          window.location.replace(`/verify-email?email=${encodeURIComponent(email.trim())}`);
+          return;
+        }
         setError("Email or password is incorrect.");
         setSubmitting(false);
         return;
