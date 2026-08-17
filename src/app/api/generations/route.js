@@ -11,9 +11,9 @@ import { buildMuapiWebhookUrl } from "@/lib/generation/webhookSecurity";
 import { userFacingGenerationMessage } from "@/lib/generation/statusMessages";
 import { claimProviderSubmission, clearSubmissionLease, newSubmissionOwner, submissionOwnerWhere } from "@/lib/generation/providerSubmissionLease";
 import { HARDENED_RECONCILIATION_ENGINE_REVISION } from "@/lib/generation/reconciliationEligibility";
+import { calculateAuthoritativeGenerationQuote } from "@/lib/generation/modelCostRegistry";
 
-import { resolveTrustedExecutionUrl } from "@/lib/models/execution/muapiExecutor.js";
-import { mapValidatedStudioWorkflowToNormalizedInvocation } from "@/lib/models/bridges/studioWorkflowBridge.js";
+import { validateModelPlatformPreparedQuoteForDispatch } from "@/lib/models/execution/validateDispatch.js";
 import { isModelPlatformV1Creation, settleModelPlatformWorkflow } from "@/lib/models/execution/workflowSettlement.js";
 
 export const maxDuration = 300;
@@ -76,13 +76,13 @@ async function handleGenerationSubmission(req) {
     return NextResponse.json({ success: false, code: "QUOTE_SNAPSHOT_INVALID", error: "Quote snapshot failed contract validation" }, { status: 422 });
   }
   const model = validation.model;
-  const totalCreditsToReserve = quote.internalCreditsToReserve;
 
   let providerPayloadJson;
   let payloadFingerprint;
   let executionEndpoint;
-  let registryRevisionId = quote.registryRevision;
-  let pricingRevisionId = quote.pricingRevision;
+  let totalCreditsToReserve;
+  let registryRevisionId;
+  let pricingRevisionId;
 
   const parsedRouting = JSON.parse(quote.routingSnapshot || "{}");
   const isModelPlatformCutover = parsedRouting.authority === "MODEL_PLATFORM_V1";
@@ -96,55 +96,71 @@ async function handleGenerationSubmission(req) {
       }, { status: 503 });
     }
 
-    const preparedPlan = parsedRouting.modelPlatformPreparedPlan;
-    if (!preparedPlan || preparedPlan.authorityVersion !== "MODEL_PLATFORM_PREPARED_V1") {
-      return NextResponse.json({ success: false, code: "PREPARED_PLAN_MISSING", error: "Prepared execution plan is missing from quote snapshot" }, { status: 422 });
-    }
+    try {
+      const validatedPlan = validateModelPlatformPreparedQuoteForDispatch({
+        quote,
+        request,
+        routingSnapshot: parsedRouting,
+      });
 
-    if (preparedPlan.providerPayloadHash !== parsedRouting.providerPayloadFingerprint) {
-      return NextResponse.json({ success: false, code: "PREPARED_PLAN_TAMPERED", error: "Prepared plan payload fingerprint mismatch" }, { status: 422 });
+      providerPayloadJson = validatedPlan.providerPayloadJson;
+      payloadFingerprint = validatedPlan.providerPayloadHash;
+      executionEndpoint = validatedPlan.providerEndpoint;
+      totalCreditsToReserve = validatedPlan.workflowPricing.quotedCredits;
+      registryRevisionId = validatedPlan.providerSpecHash;
+      pricingRevisionId = validatedPlan.pricingRevisionId;
+    } catch (error) {
+      return NextResponse.json({
+        success: false,
+        code: error.code || "PREPARED_PLAN_INVALID",
+        error: error.message,
+      }, { status: 409 });
     }
-
-    if (preparedPlan.workflowPricing.quotedCredits !== totalCreditsToReserve) {
-      return NextResponse.json({ success: false, code: "PREPARED_PLAN_CREDIT_MISMATCH", error: "Prepared plan credit quote mismatch" }, { status: 422 });
-    }
-
-    if (preparedPlan.workflowPricing.outputCount !== request.settings.outputCount) {
-      return NextResponse.json({ success: false, code: "PREPARED_PLAN_OUTPUT_COUNT_MISMATCH", error: "Prepared plan outputCount mismatch" }, { status: 422 });
-    }
-
-    if (preparedPlan.expiresAt && new Date(preparedPlan.expiresAt) <= new Date()) {
-      return NextResponse.json({ success: false, code: "PREPARED_PLAN_EXPIRED", error: "Prepared execution plan has expired" }, { status: 410 });
-    }
-
-    if (preparedPlan.earliestSignedAssetExpiry && new Date(preparedPlan.earliestSignedAssetExpiry) <= new Date(Date.now() + 5 * 60 * 1000)) {
-      return NextResponse.json({ success: false, code: "SIGNED_ASSET_EXPIRING_SOON", error: "Signed asset URL in prepared plan has expired or violates safety margin" }, { status: 422 });
-    }
-
-    providerPayloadJson = preparedPlan.providerPayloadJson;
-    payloadFingerprint = preparedPlan.providerPayloadHash;
-    executionEndpoint = resolveTrustedExecutionUrl(preparedPlan.providerEndpoint);
-    registryRevisionId = preparedPlan.providerSpecHash;
-    pricingRevisionId = preparedPlan.pricingRevisionId;
   } else {
+    // Stage 2 Requirement 2: Restored exact legacy authority path
+    const authoritativeQuote = calculateAuthoritativeGenerationQuote(request, model);
+    if (!authoritativeQuote.priced) {
+      return NextResponse.json({ success: false, code: authoritativeQuote.code || "PRICING_UNAVAILABLE", error: "This generation configuration is temporarily unavailable because its approved cost is not configured." }, { status: 503 });
+    }
+
+    let quotedCostSnapshot;
+    try { quotedCostSnapshot = parsedRouting.quoteCostSnapshot; } catch { quotedCostSnapshot = null; }
+
+    if (!quotedCostSnapshot
+      || quotedCostSnapshot.registryRevision !== authoritativeQuote.registryRevision
+      || quotedCostSnapshot.totalCredits !== authoritativeQuote.totalCredits
+      || quotedCostSnapshot.fullyLoadedCostMicroUsd !== authoritativeQuote.fullyLoadedCostMicroUsd
+      || quote.internalCreditsToReserve !== authoritativeQuote.totalCredits) {
+      return NextResponse.json({ success: false, code: "QUOTE_STALE", error: "This quote is no longer current. Review the generation price again before submitting." }, { status: 409 });
+    }
+
+    totalCreditsToReserve = authoritativeQuote.totalCredits;
+    registryRevisionId = authoritativeQuote.registryRevision;
+    pricingRevisionId = authoritativeQuote.pricingRevision;
+
+    const compiledPrompt = compileCanonicalPrompt(request);
     const providerImages = request.assets
       .map((asset) => asset.url)
       .filter((url) => typeof url === "string" && (url.startsWith("http://") || url.startsWith("https://")));
+
+    const webhookBase = process.env.WEBHOOK_URL || process.env.NEXTAUTH_URL || new URL(req.url).origin;
+    const webhookUrl = buildMuapiWebhookUrl(webhookBase);
+
     const adapter = getProviderAdapter("seedance-2");
     const legacyProviderPayload = adapter.formatPayload({
-      prompt: request.instructions.raw || request.script.text,
+      prompt: compiledPrompt.compiledPrompt,
       settings: {
         duration: request.settings.durationSeconds,
         resolution: request.settings.resolution,
         aspect_ratio: request.settings.aspectRatio,
       },
       images: providerImages,
-      webhookUrl: "https://api.doolphin.com/webhook",
+      webhookUrl,
     });
 
     providerPayloadJson = JSON.stringify(legacyProviderPayload);
     payloadFingerprint = crypto.createHash("sha256").update(providerPayloadJson).digest("hex");
-    executionEndpoint = resolveTrustedExecutionUrl(model.endpoint);
+    executionEndpoint = model.endpoint;
   }
 
   const workspace = await prisma.workspace.findUnique({ where: { id: quote.workspaceId } });

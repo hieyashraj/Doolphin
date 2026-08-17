@@ -7,7 +7,7 @@ import { prisma } from "../../prisma.js";
  * - All outputs succeed (S = N): Charge full quotedCredits, release 0.
  * - All outputs fail (S = 0): Charge 0, release full quotedCredits.
  * - Partial success (0 < S < N): Charge exact preflight settlementSchedule, release unearned remainder.
- * - Fails closed if workflow reservation is missing or inconsistent.
+ * - Fails closed if workflow reservation is missing or inconsistent (INCONSISTENT_SETTLEMENT_STATE).
  * - Idempotent, race-safe, transactional.
  */
 
@@ -139,13 +139,17 @@ export async function settleModelPlatformWorkflow({
         throw new Error(`INCONSISTENT_SETTLEMENT_RESERVATION: Reservation amount ${primaryReservation.amount} does not match expected workflow reserved credits ${totalReservedCredits}`);
       }
 
-      if (primaryReservation.status !== "RESERVED" && !primaryReservation.settledAt) {
-        throw new Error(`INCONSISTENT_SETTLEMENT_RESERVATION: Reservation status '${primaryReservation.status}' is invalid for settlement`);
+      // Requirement 6: If Creation is unsettled (creation.settledAt === null) AND reservation is already settled (primaryReservation.settledAt !== null), fail closed!
+      if (primaryReservation.settledAt !== null || primaryReservation.status !== "RESERVED") {
+        throw new Error(`INCONSISTENT_SETTLEMENT_STATE: Creation '${creation.id}' is unsettled but CreditReservation '${primaryReservation.id}' is already settled (${primaryReservation.status})`);
       }
     } else {
       primaryReservation = await db.creditReservation.findFirst({
         where: { creationId: creation.id },
       });
+      if (primaryReservation && primaryReservation.settledAt !== null && !creation.settledAt) {
+        throw new Error(`INCONSISTENT_SETTLEMENT_STATE: Creation '${creation.id}' is unsettled but CreditReservation '${primaryReservation.id}' is already settled (${primaryReservation.status})`);
+      }
     }
 
     // Single-writer claim inside Serializable transaction
