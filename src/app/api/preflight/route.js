@@ -176,12 +176,44 @@ async function handlePreflight(req) {
   const providerPayloadFingerprint = crypto.createHash("sha256").update(JSON.stringify(providerPayload)).digest("hex");
   const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
   const roleMap = compiled.roleMap.map(({ url, ...entry }) => entry);
+
+  // Phase 4B Cutover Readiness: Prepare server-only model platform snapshot alongside legacy snapshot
+  let modelPlatformPreparedPlan = null;
+  try {
+    const normalizedInput = mapStudioWorkflowToNormalizedInvocation(body);
+    const modelId = body.modelId || model.id || "seedance-2";
+    const plan = await prepareExecutionPlan({
+      modelId,
+      normalizedInput,
+      env: process.env,
+    });
+    modelPlatformPreparedPlan = {
+      authorityVersion: "MODEL_PLATFORM_PREPARED_V1",
+      canonicalModelId: plan.canonicalModelId,
+      providerModelId: plan.providerModelId,
+      providerEndpoint: plan.providerEndpoint,
+      providerSpecHash: plan.providerSpecHash,
+      providerPayloadJson: plan.providerPayloadJson,
+      providerPayloadHash: plan.providerPayloadHash,
+      providerEstimatedCostMicroUsd: plan.pricing.providerCostMicroUsd,
+      newQuotedCredits: plan.pricing.quotedCredits,
+      pricingRevisionId: plan.pricing.pricingRevisionId,
+      preparedAt: plan.preparedAt,
+      expiresAt: plan.expiresAt,
+      earliestSignedAssetExpiry: null,
+      webhookStrategy: plan.transport.webhookStrategy,
+    };
+  } catch (planError) {
+    console.warn("[Preflight] Model platform prepared snapshot generation warning:", planError.message);
+  }
+
   const routingSnapshot = {
     model: safeModelSnapshot(model),
     webhookUrl,
     requestFingerprint,
     quoteCostSnapshot: quoteBreakdown,
     providerPayloadFingerprint,
+    modelPlatformPreparedPlan,
   };
 
   const quote = await prisma.preflightQuote.create({
@@ -209,7 +241,7 @@ async function handlePreflight(req) {
     },
   });
 
-  // Phase 4A Shadow Preflight Path with Bounded Timeout & Duration Isolation
+  // Isolated Shadow Telemetry Path
   executeShadowPreflight({
     legacyBody: body,
     legacyModel: model,

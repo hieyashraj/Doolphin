@@ -6,7 +6,7 @@ const STRICT_TRUSTED_MUAPI_ORIGIN = "https://api.muapi.ai";
 
 export function validateProviderEndpointOrigin(endpointInput) {
   if (!endpointInput || typeof endpointInput !== "string") return false;
-  
+
   if (endpointInput.startsWith("//") || endpointInput.includes("..")) return false;
 
   let fullUrl = endpointInput;
@@ -44,15 +44,15 @@ export async function executeMuapiGenerationPlan({
   fetchImpl = fetch,
   env = process.env,
 } = {}) {
-  if (!preparedPlan || !preparedPlan.providerPayload || !preparedPlan.providerEndpoint) {
+  if (!preparedPlan || !preparedPlan.providerPayloadJson || !preparedPlan.providerEndpoint) {
     throw new ModelPlatformError(
       ERROR_CODES.INVALID_PREPARED_PLAN,
-      "Execution plan is invalid or missing provider payload/endpoint"
+      "Execution plan is invalid or missing provider payload JSON/endpoint"
     );
   }
 
   // 1. Endpoint Security Validation & Origin Binding
-  const targetUrl = resolveTrustedExecutionUrl(preparedPlan.providerEndpoint);
+  const baseUrl = resolveTrustedExecutionUrl(preparedPlan.providerEndpoint);
 
   // 2. Resolve Credentials via Server Boundary
   let apiKey;
@@ -74,22 +74,21 @@ export async function executeMuapiGenerationPlan({
     webhookUrl = `${webhookBase}/api/webhooks/muapi`;
   }
 
-  // 4. Construct Submission Body: Merge pure model payload body with dynamic transport callback
-  const submissionBody = {
-    ...preparedPlan.providerPayload,
-    webhook_url: webhookUrl,
-  };
+  // 4. Attach Webhook URL strictly at Transport Level (Query Param) without altering Body Bytes
+  const requestUrl = new URL(baseUrl);
+  requestUrl.searchParams.set("webhook_url", webhookUrl);
 
-  // 5. Dispatch Submission
+  // 5. Dispatch Submission with EXACT Prepared providerPayloadJson as Body
   try {
-    const response = await fetchImpl(targetUrl, {
+    const response = await fetchImpl(requestUrl.toString(), {
       method: "POST",
       headers: {
+        "x-api-key": apiKey,
         Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
         Accept: "application/json",
       },
-      body: JSON.stringify(submissionBody),
+      body: preparedPlan.providerPayloadJson,
       redirect: "error",
     });
 
