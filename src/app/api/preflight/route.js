@@ -174,12 +174,13 @@ async function handlePreflight(req) {
   if (isCutoverEligible) {
     // Model Platform V1 Authoritative Cutover Path (No Legacy Adapter / No Legacy Pricing)
     try {
-      const outputCount = Math.max(1, Math.floor(Number(request.settings?.outputCount || body.outputCount) || 1));
+      const applicationOrigin = webhookBase || (req?.nextUrl?.origin) || null;
       const normalizedInput = mapValidatedStudioWorkflowToNormalizedInvocation({
         request,
         compiledPrompt: compiled.compiledPrompt,
         providerImageUrls: compiled.imageUrls,
         earliestSignedAssetExpiryMs,
+        applicationOrigin,
       });
       const modelId = body.modelId || model.id || "seedance-2";
       const plan = await prepareExecutionPlan({
