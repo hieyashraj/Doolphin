@@ -13,6 +13,9 @@ const { calculateWorkflowSettlement, settleModelPlatformWorkflow, isModelPlatfor
 const { parseUsdToMicroUsdConservatively } = await import("../../src/lib/models/execution/muapiExecutor.js");
 const { verifyMuapiCallbackToken, getMuapiWebhookToken, buildMuapiWebhookUrl } = await import("../../src/lib/generation/webhookSecurity.js");
 const { validateModelPlatformPreparedQuoteForDispatch } = await import("../../src/lib/models/execution/validateDispatch.js");
+const { validateLegacyGenerationQuoteForDispatch } = await import("../../src/lib/models/execution/validateLegacyDispatch.js");
+const { classifyMuapiProviderStatus } = await import("../../src/lib/generation/muapiStatusClassifier.js");
+const { calculateAuthoritativeGenerationQuote } = await import("../../src/lib/generation/modelCostRegistry.js");
 
 const mockAuthoritativeSpec = {
   providerModelId: "seedance-2-omni-reference-no-video-fast",
@@ -40,6 +43,173 @@ const mockFetchImpl = async (url) => {
     estimate_endpoint: "/api/v1/estimate-cost",
   }), { status: 200, headers: { "content-type": "application/json" } });
 };
+
+const mockLegacyModel = {
+  id: "muapi.seedance2.omni-reference-fast",
+  provider: "MUAPI",
+  endpoint: "https://api.muapi.ai/api/v1/seedance-2-omni-reference-no-video-fast",
+  capabilityRevision: "rev_reg_v1",
+  pricingRevision: "rev_prc_v1",
+};
+
+const mockLegacyRequest = {
+  studio: "PRODUCT_STUDIO",
+  settings: {
+    durationSeconds: 5,
+    resolution: "1080p",
+    aspectRatio: "9:16",
+    outputCount: 1,
+  },
+  script: { text: "Test script" },
+  instructions: { raw: "Test instructions" },
+  assets: [],
+};
+
+test("Phase 4D.3 Defect 1 & 5: validateLegacyGenerationQuoteForDispatch passes valid legacy quote", () => {
+  const authoritative = calculateAuthoritativeGenerationQuote(mockLegacyRequest, mockLegacyModel);
+  assert.equal(authoritative.priced, true);
+
+  const quote = {
+    selectedModelId: "muapi.seedance2.omni-reference-fast",
+    internalCreditsToReserve: authoritative.totalCredits,
+    pricingRevision: authoritative.pricingRevisionId,
+    registryRevision: authoritative.registryRevision,
+  };
+
+  const routingSnapshot = {
+    quoteCostSnapshot: {
+      registryRevision: authoritative.registryRevision,
+      totalCredits: authoritative.totalCredits,
+      fullyLoadedCostMicroUsd: authoritative.fullyLoadedCostMicroUsd,
+      pricingRevisionId: authoritative.pricingRevisionId,
+    },
+  };
+
+  const result = validateLegacyGenerationQuoteForDispatch({ quote, request: mockLegacyRequest, model: mockLegacyModel, routingSnapshot });
+  assert.equal(result.totalCreditsToReserve, authoritative.totalCredits);
+  assert.equal(result.pricingRevisionId, mockLegacyModel.pricingRevision);
+  assert.equal(result.registryRevisionId, mockLegacyModel.capabilityRevision);
+});
+
+test("Phase 4D.3 Defect 1 & 5: validateLegacyGenerationQuoteForDispatch fails QUOTE_STALE on pricing revision mismatch", () => {
+  const authoritative = calculateAuthoritativeGenerationQuote(mockLegacyRequest, mockLegacyModel);
+
+  const quote = {
+    selectedModelId: "muapi.seedance2.omni-reference-fast",
+    internalCreditsToReserve: authoritative.totalCredits,
+    pricingRevision: "rev_prc_OLD",
+    registryRevision: authoritative.registryRevision,
+  };
+
+  const routingSnapshot = {
+    quoteCostSnapshot: {
+      registryRevision: authoritative.registryRevision,
+      totalCredits: authoritative.totalCredits,
+      fullyLoadedCostMicroUsd: authoritative.fullyLoadedCostMicroUsd,
+      pricingRevisionId: authoritative.pricingRevisionId,
+    },
+  };
+
+  assert.throws(
+    () => validateLegacyGenerationQuoteForDispatch({ quote, request: mockLegacyRequest, model: mockLegacyModel, routingSnapshot }),
+    (err) => err.code === "QUOTE_STALE"
+  );
+});
+
+test("Phase 4D.3 Defect 3: Prepared plan authorityVersion validation", async () => {
+  const plan = await prepareExecutionPlan({
+    modelId: "seedance-2-omni-reference-no-video-fast",
+    normalizedInput: { prompt: "Test prompt for authorityVersion check" },
+    outputCount: 1,
+    fetchImpl: mockFetchImpl,
+  });
+
+  const validPlan = JSON.parse(JSON.stringify(plan));
+  validPlan.provenance = { source: "LIVE_PROVIDER", stale: false };
+  validPlan.authorityVersion = "MODEL_PLATFORM_PREPARED_V1";
+
+  const quote = {
+    selectedModelId: "seedance-2-omni-reference-no-video-fast",
+    internalCreditsToReserve: validPlan.workflowPricing.quotedCredits,
+    pricingRevision: validPlan.workflowPricing.pricingRevisionId,
+    registryRevision: validPlan.providerSpecHash,
+  };
+
+  const routingSnapshot = {
+    authority: "MODEL_PLATFORM_V1",
+    providerPayloadFingerprint: validPlan.providerPayloadHash,
+    modelPlatformPreparedPlan: validPlan,
+  };
+
+  const validated = validateModelPlatformPreparedQuoteForDispatch({ quote, request: { settings: { outputCount: 1 } }, routingSnapshot });
+  assert.ok(validated);
+
+  // Missing authorityVersion fails closed
+  const invalidPlan = JSON.parse(JSON.stringify(validPlan));
+  delete invalidPlan.authorityVersion;
+  delete invalidPlan.preparedPlanVersion;
+  assert.throws(
+    () => validateModelPlatformPreparedQuoteForDispatch({ quote, request: { settings: { outputCount: 1 } }, routingSnapshot: { authority: "MODEL_PLATFORM_V1", providerPayloadFingerprint: invalidPlan.providerPayloadHash, modelPlatformPreparedPlan: invalidPlan } }),
+    (err) => err.code === "INVALID_PREPARED_PLAN"
+  );
+
+  // Wrong authorityVersion fails closed
+  const wrongPlan = JSON.parse(JSON.stringify(validPlan));
+  wrongPlan.authorityVersion = "WRONG_VERSION_V9";
+  assert.throws(
+    () => validateModelPlatformPreparedQuoteForDispatch({ quote, request: { settings: { outputCount: 1 } }, routingSnapshot: { authority: "MODEL_PLATFORM_V1", providerPayloadFingerprint: wrongPlan.providerPayloadHash, modelPlatformPreparedPlan: wrongPlan } }),
+    (err) => err.code === "INVALID_PREPARED_PLAN"
+  );
+});
+
+test("Phase 4D.3 Defect 3: Reject missing providerStale metadata", async () => {
+  const plan = await prepareExecutionPlan({
+    modelId: "seedance-2-omni-reference-no-video-fast",
+    normalizedInput: { prompt: "Test prompt" },
+    outputCount: 1,
+    fetchImpl: mockFetchImpl,
+  });
+
+  const missingStalePlan = JSON.parse(JSON.stringify(plan));
+  missingStalePlan.authorityVersion = "MODEL_PLATFORM_PREPARED_V1";
+  missingStalePlan.provenance = { source: "LIVE_PROVIDER" }; // missing stale property
+  delete missingStalePlan.providerStale;
+
+  const quote = {
+    selectedModelId: "seedance-2-omni-reference-no-video-fast",
+    internalCreditsToReserve: missingStalePlan.workflowPricing.quotedCredits,
+    pricingRevision: missingStalePlan.workflowPricing.pricingRevisionId,
+    registryRevision: missingStalePlan.providerSpecHash,
+  };
+
+  const routingSnapshot = {
+    authority: "MODEL_PLATFORM_V1",
+    providerPayloadFingerprint: missingStalePlan.providerPayloadHash,
+    modelPlatformPreparedPlan: missingStalePlan,
+  };
+
+  assert.throws(
+    () => validateModelPlatformPreparedQuoteForDispatch({ quote, request: { settings: { outputCount: 1 } }, routingSnapshot }),
+    (err) => err.code === "PROVENANCE_STALE"
+  );
+});
+
+test("Phase 4D.3 Defect 4: classifyMuapiProviderStatus returns correct classification type", () => {
+  assert.deepEqual(classifyMuapiProviderStatus({ status: "processing" }), { type: "INTERMEDIATE", status: "processing" });
+  assert.deepEqual(classifyMuapiProviderStatus({ status: "queued" }), { type: "INTERMEDIATE", status: "queued" });
+  assert.deepEqual(classifyMuapiProviderStatus({ status: "pending" }), { type: "INTERMEDIATE", status: "pending" });
+
+  assert.deepEqual(classifyMuapiProviderStatus({ status: "completed" }), { type: "SUCCESS_TERMINAL", status: "completed" });
+  assert.deepEqual(classifyMuapiProviderStatus({ status: "succeeded" }), { type: "SUCCESS_TERMINAL", status: "succeeded" });
+
+  assert.deepEqual(classifyMuapiProviderStatus({ status: "failed" }), { type: "FAILURE_TERMINAL", status: "failed" });
+  assert.deepEqual(classifyMuapiProviderStatus({ status: "cancelled" }), { type: "FAILURE_TERMINAL", status: "cancelled" });
+  assert.deepEqual(classifyMuapiProviderStatus({ status: "error" }), { type: "FAILURE_TERMINAL", status: "error" });
+  assert.deepEqual(classifyMuapiProviderStatus({ error: "Something failed" }), { type: "FAILURE_TERMINAL", status: "failed" });
+
+  assert.deepEqual(classifyMuapiProviderStatus({ status: "UNKNOWN_CUSTOM_STATUS" }), { type: "UNKNOWN", status: "unknown_custom_status" });
+  assert.deepEqual(classifyMuapiProviderStatus(null), { type: "UNKNOWN", status: "missing_payload" });
+});
 
 test("Phase 4D.3 SQL Migration: File exists with duplicate cleanup and orphan quoteId normalization", () => {
   const migrationDir = path.join(process.cwd(), "prisma/migrations");
@@ -91,6 +261,7 @@ test("Phase 4D.3 Dispatch Validation: All 16 Model Platform V1 cutover pre-dispa
 
   const livePlan = JSON.parse(JSON.stringify(plan));
   livePlan.provenance = { source: "LIVE_PROVIDER", stale: false };
+  livePlan.authorityVersion = "MODEL_PLATFORM_PREPARED_V1";
 
   const quote = {
     selectedModelId: "seedance-2-omni-reference-no-video-fast",
@@ -124,6 +295,7 @@ test("Phase 4D.3 Dispatch Validation: Reject providerSpecSource !== LIVE_PROVIDE
 
   const bootstrapPlan = JSON.parse(JSON.stringify(plan));
   bootstrapPlan.provenance = { source: "BOOTSTRAP", stale: false };
+  bootstrapPlan.authorityVersion = "MODEL_PLATFORM_PREPARED_V1";
 
   const quote = {
     selectedModelId: "seedance-2-omni-reference-no-video-fast",
@@ -154,6 +326,7 @@ test("Phase 4D.3 Dispatch Validation: Reject providerStale === true", async () =
 
   const stalePlan = JSON.parse(JSON.stringify(plan));
   stalePlan.provenance = { source: "LIVE_PROVIDER", stale: true };
+  stalePlan.authorityVersion = "MODEL_PLATFORM_PREPARED_V1";
 
   const quote = {
     selectedModelId: "seedance-2-omni-reference-no-video-fast",
@@ -184,6 +357,7 @@ test("Phase 4D.3 Dispatch Validation: Reject payload JSON hash tampering", async
 
   const tamperedPlan = JSON.parse(JSON.stringify(plan));
   tamperedPlan.provenance = { source: "LIVE_PROVIDER", stale: false };
+  tamperedPlan.authorityVersion = "MODEL_PLATFORM_PREPARED_V1";
   tamperedPlan.providerPayloadJson = JSON.stringify({ prompt: "Tampered prompt" });
 
   const quote = {

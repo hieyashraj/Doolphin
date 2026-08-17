@@ -12,6 +12,7 @@ import { handleVerificationResult, startQualityVerification } from "@/lib/genera
 import { fetchAuthenticatedMuapiResult } from "@/lib/generation/muapiResult";
 import { isReconciliationEligibleVariant } from "@/lib/generation/reconciliationEligibility";
 import { verifyMuapiCallbackToken } from "@/lib/generation/webhookSecurity";
+import { classifyMuapiProviderStatus } from "@/lib/generation/muapiStatusClassifier";
 import { parseUsdToMicroUsdConservatively } from "@/lib/models/execution/muapiExecutor.js";
 import { isModelPlatformV1Creation, settleModelPlatformWorkflow } from "@/lib/models/execution/workflowSettlement.js";
 
@@ -67,7 +68,7 @@ async function updateCreationAggregate(creationId) {
 }
 
 export async function POST(req) {
-  // Requirement 3: Webhook secret fail-closed token verification
+  // Requirement 3: Token validation before DB write
   const url = new URL(req.url);
   const token = url.searchParams.get("token") || url.searchParams.get("webhook_token") || req.headers.get("x-doolphin-webhook-token");
 
@@ -136,7 +137,6 @@ export async function POST(req) {
   let providerPayload;
   try {
     providerPayload = await fetchAuthenticatedMuapiResult(providerRequestId);
-    // Mark verifiedAt ONLY after authenticated provider result is fetched/validated
     await prisma.webhookEvent.update({ where: { id: event.id }, data: { verifiedAt: new Date(), signatureStatus: "UNVERIFIED" } });
   } catch (error) {
     await prisma.webhookEvent.update({ where: { id: event.id }, data: { processingStatus: "FAILED", processedAt: new Date(), errorCode: error.code || "RESULT_AUTH_FAILED" } });
@@ -150,10 +150,27 @@ export async function POST(req) {
     return NextResponse.json({ success: true, ...verification });
   }
 
-  const isModelPlatform = await isModelPlatformV1Creation(job.variant.creationId);
-  const providerStatus = String(providerPayload.status || "").toLowerCase();
+  // Defect 4: Provider status classification before financial reconciliation
+  const rawStatus = providerPayload.status;
+  const classification = classifyMuapiProviderStatus(providerPayload);
 
-  // Requirement 4: Provider Cost Semantics (parsed amount, WAIVED when refunded=true, ESTIMATED when null)
+  if (classification.type === "UNKNOWN") {
+    await prisma.webhookEvent.update({ where: { id: event.id }, data: { processingStatus: "FAILED", processedAt: new Date(), errorCode: "UNKNOWN_PROVIDER_STATUS" } });
+    return NextResponse.json({ error: `Unrecognized provider status '${classification.status || rawStatus}'` }, { status: 503 });
+  }
+
+  if (classification.type === "INTERMEDIATE") {
+    // Intermediate status (even if payload contains a videoUrl):
+    // Update ProviderJob operational status & lastCheckedAt ONLY.
+    // Do NOT touch ProviderCostLedger.reconciledAt, do NOT trigger workflow credit settlement!
+    await prisma.providerJob.update({ where: { id: job.id }, data: { status: "PROCESSING", lastCheckedAt: new Date(), webhookCount: { increment: 1 } } });
+    await prisma.webhookEvent.update({ where: { id: event.id }, data: { processingStatus: "PROCESSED", processedAt: new Date() } });
+    return NextResponse.json({ success: true, processing: true });
+  }
+
+  const isModelPlatform = await isModelPlatformV1Creation(job.variant.creationId);
+
+  // Defect 4: Financial Cost Reconciliation on Terminal Statuses Only
   const rawCostUsd = providerPayload?.cost?.amount_usd ?? providerPayload?.cost?.amount;
   const isRefunded = Boolean(providerPayload?.cost?.refunded);
 
@@ -168,7 +185,7 @@ export async function POST(req) {
     providerBillingStatus = "BILLED";
   }
 
-  if (["failed", "error", "cancelled", "canceled"].includes(providerStatus) || providerPayload.error) {
+  if (classification.type === "FAILURE_TERMINAL") {
     if (!isModelPlatform) {
       await CreditEscrowService.releaseVariantReservations(job.creationVariantId, "PROVIDER_GENERATION_FAILED");
     }
@@ -182,7 +199,7 @@ export async function POST(req) {
           providerBillingStatus,
           errorCode: "PROVIDER_GENERATION_FAILED",
           safeError: String(providerPayload.error || "Provider generation failed"),
-          sanitizedResultPayload: JSON.stringify({ status: providerStatus, error: String(providerPayload.error || "failed") })
+          sanitizedResultPayload: JSON.stringify({ status: classification.status, error: String(providerPayload.error || "failed") })
         }
       }),
       prisma.providerCostLedger.updateMany({
@@ -201,9 +218,9 @@ export async function POST(req) {
     return NextResponse.json({ success: true });
   }
 
+  // SUCCESS_TERMINAL status handling
   const videoUrl = extractVideoUrl(providerPayload);
   if (!videoUrl) {
-    // Intermediate status: Do NOT update ProviderCostLedger.reconciledAt
     await prisma.providerJob.update({ where: { id: job.id }, data: { status: "PROCESSING", lastCheckedAt: new Date(), webhookCount: { increment: 1 } } });
     await prisma.webhookEvent.update({ where: { id: event.id }, data: { processingStatus: "PROCESSED", processedAt: new Date() } });
     return NextResponse.json({ success: true, processing: true });
@@ -233,7 +250,7 @@ export async function POST(req) {
         await CreditEscrowService.settleVerifiedVariant(job.creationVariantId, false);
       }
       await prisma.$transaction([
-        prisma.providerJob.update({ where: { id: job.id }, data: { status: "SUCCEEDED", completedAt: new Date(), actualCostMicroUsd, providerBillingStatus, sanitizedResultPayload: JSON.stringify({ status: providerStatus, output: "[REDACTED_URL]" }) } }),
+        prisma.providerJob.update({ where: { id: job.id }, data: { status: "SUCCEEDED", completedAt: new Date(), actualCostMicroUsd, providerBillingStatus, sanitizedResultPayload: JSON.stringify({ status: classification.status, output: "[REDACTED_URL]" }) } }),
         prisma.providerCostLedger.updateMany({
           where: { providerJobId: job.id },
           data: {
@@ -258,7 +275,7 @@ export async function POST(req) {
           completedAt: new Date(),
           actualCostMicroUsd,
           providerBillingStatus,
-          sanitizedResultPayload: JSON.stringify({ status: providerStatus, output: "[REDACTED_URL]" })
+          sanitizedResultPayload: JSON.stringify({ status: classification.status, output: "[REDACTED_URL]" })
         }
       }),
       prisma.providerCostLedger.updateMany({

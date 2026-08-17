@@ -11,12 +11,23 @@ import { buildMuapiWebhookUrl } from "@/lib/generation/webhookSecurity";
 import { userFacingGenerationMessage } from "@/lib/generation/statusMessages";
 import { claimProviderSubmission, clearSubmissionLease, newSubmissionOwner, submissionOwnerWhere } from "@/lib/generation/providerSubmissionLease";
 import { HARDENED_RECONCILIATION_ENGINE_REVISION } from "@/lib/generation/reconciliationEligibility";
-import { calculateAuthoritativeGenerationQuote } from "@/lib/generation/modelCostRegistry";
+import { resolveTrustedExecutionUrl } from "@/lib/models/execution/muapiExecutor.js";
 
 import { validateModelPlatformPreparedQuoteForDispatch } from "@/lib/models/execution/validateDispatch.js";
+import { validateLegacyGenerationQuoteForDispatch } from "@/lib/models/execution/validateLegacyDispatch.js";
 import { isModelPlatformV1Creation, settleModelPlatformWorkflow } from "@/lib/models/execution/workflowSettlement.js";
 
 export const maxDuration = 300;
+
+function publicAssetUrl(url, requestUrl) {
+  if (url.startsWith("https://")) return new URL(url).toString();
+  if (!url.startsWith("/")) throw new Error(`Asset URL '${url}' is not provider-fetchable`);
+  const configuredBase = process.env.WEBHOOK_URL || process.env.NEXTAUTH_URL || new URL(requestUrl).origin;
+  if (process.env.NODE_ENV === "production" && !configuredBase.startsWith("https://")) {
+    throw new Error("Public HTTPS asset URLs are required in production");
+  }
+  return new URL(url, `${configuredBase.replace(/\/$/, "")}/`).toString();
+}
 
 function mediaTypeFor(asset) {
   if (asset.role === "ACTOR_REFERENCE") return "IMAGE";
@@ -117,31 +128,29 @@ async function handleGenerationSubmission(req) {
       }, { status: 409 });
     }
   } else {
-    // Stage 2 Requirement 2: Restored exact legacy authority path
-    const authoritativeQuote = calculateAuthoritativeGenerationQuote(request, model);
-    if (!authoritativeQuote.priced) {
-      return NextResponse.json({ success: false, code: authoritativeQuote.code || "PRICING_UNAVAILABLE", error: "This generation configuration is temporarily unavailable because its approved cost is not configured." }, { status: 503 });
+    // Defect 1 & 2 & 5: Restored 7133908 legacy dispatch behavior via pure helper
+    let legacyResult;
+    try {
+      legacyResult = validateLegacyGenerationQuoteForDispatch({
+        quote,
+        request,
+        model,
+        routingSnapshot: parsedRouting,
+      });
+    } catch (error) {
+      return NextResponse.json({
+        success: false,
+        code: error.code || "QUOTE_STALE",
+        error: error.message,
+      }, { status: error.code === "PRICING_UNAVAILABLE" ? 503 : 409 });
     }
 
-    let quotedCostSnapshot;
-    try { quotedCostSnapshot = parsedRouting.quoteCostSnapshot; } catch { quotedCostSnapshot = null; }
-
-    if (!quotedCostSnapshot
-      || quotedCostSnapshot.registryRevision !== authoritativeQuote.registryRevision
-      || quotedCostSnapshot.totalCredits !== authoritativeQuote.totalCredits
-      || quotedCostSnapshot.fullyLoadedCostMicroUsd !== authoritativeQuote.fullyLoadedCostMicroUsd
-      || quote.internalCreditsToReserve !== authoritativeQuote.totalCredits) {
-      return NextResponse.json({ success: false, code: "QUOTE_STALE", error: "This quote is no longer current. Review the generation price again before submitting." }, { status: 409 });
-    }
-
-    totalCreditsToReserve = authoritativeQuote.totalCredits;
-    registryRevisionId = authoritativeQuote.registryRevision;
-    pricingRevisionId = authoritativeQuote.pricingRevision;
+    totalCreditsToReserve = legacyResult.totalCreditsToReserve;
+    registryRevisionId = legacyResult.registryRevisionId;
+    pricingRevisionId = legacyResult.pricingRevisionId;
 
     const compiledPrompt = compileCanonicalPrompt(request);
-    const providerImages = request.assets
-      .map((asset) => asset.url)
-      .filter((url) => typeof url === "string" && (url.startsWith("http://") || url.startsWith("https://")));
+    const providerImages = compiledPrompt.imageUrls.map((url) => publicAssetUrl(url, req.url));
 
     const webhookBase = process.env.WEBHOOK_URL || process.env.NEXTAUTH_URL || new URL(req.url).origin;
     const webhookUrl = buildMuapiWebhookUrl(webhookBase);
@@ -160,7 +169,7 @@ async function handleGenerationSubmission(req) {
 
     providerPayloadJson = JSON.stringify(legacyProviderPayload);
     payloadFingerprint = crypto.createHash("sha256").update(providerPayloadJson).digest("hex");
-    executionEndpoint = model.endpoint;
+    executionEndpoint = resolveTrustedExecutionUrl(model.endpoint);
   }
 
   const workspace = await prisma.workspace.findUnique({ where: { id: quote.workspaceId } });

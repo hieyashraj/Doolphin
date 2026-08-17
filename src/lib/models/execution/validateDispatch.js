@@ -5,7 +5,7 @@ import { ModelPlatformError, ERROR_CODES } from "../errors.js";
 
 /**
  * Pure production helper for MODEL_PLATFORM_V1 prepared plan dispatch validation.
- * Enforces all 16 cutover pre-dispatch invariants before allowing paid provider POST.
+ * Enforces all cutover pre-dispatch invariants before allowing paid provider POST.
  */
 export function validateModelPlatformPreparedQuoteForDispatch({
   quote,
@@ -22,16 +22,35 @@ export function validateModelPlatformPreparedQuoteForDispatch({
     throw new ModelPlatformError(ERROR_CODES.INVALID_PREPARED_PLAN, "Prepared execution plan is missing");
   }
 
+  // Defect 3: Mandatory authorityVersion check
+  const authorityVersion = preparedPlan.authorityVersion || preparedPlan.preparedPlanVersion;
+  if (authorityVersion !== "MODEL_PLATFORM_PREPARED_V1") {
+    throw new ModelPlatformError(
+      ERROR_CODES.INVALID_PREPARED_PLAN,
+      `Prepared plan authorityVersion '${authorityVersion}' is invalid; expected 'MODEL_PLATFORM_PREPARED_V1'`
+    );
+  }
+
   // A1. providerSpecSource === LIVE_PROVIDER
   const specSource = preparedPlan.provenance?.source || preparedPlan.providerSpecSource;
   if (specSource !== "LIVE_PROVIDER") {
     throw new ModelPlatformError(ERROR_CODES.PROVENANCE_NOT_LIVE, "MODEL_PLATFORM_V1 quote requires LIVE_PROVIDER spec source");
   }
 
-  // A2. providerStale === false
-  const isStale = preparedPlan.provenance?.stale ?? preparedPlan.providerStale ?? false;
-  if (isStale) {
+  // Defect 3: Tighten stale provenance checks (missing stale field = fail closed, contradictory fields = fail closed)
+  const provStale = preparedPlan.provenance?.stale;
+  const rootStale = preparedPlan.providerStale;
+
+  if (provStale === undefined && rootStale === undefined) {
+    throw new ModelPlatformError(ERROR_CODES.PROVENANCE_STALE, "MODEL_PLATFORM_V1 quote has missing providerStale metadata");
+  }
+
+  if (provStale === true || rootStale === true) {
     throw new ModelPlatformError(ERROR_CODES.PROVENANCE_STALE, "MODEL_PLATFORM_V1 quote cannot use a stale provider spec");
+  }
+
+  if (provStale !== undefined && rootStale !== undefined && provStale !== rootStale) {
+    throw new ModelPlatformError(ERROR_CODES.PROVENANCE_STALE, "MODEL_PLATFORM_V1 quote has contradictory providerStale metadata");
   }
 
   // A3. prepared-plan expiration check
