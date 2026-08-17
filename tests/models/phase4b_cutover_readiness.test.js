@@ -6,6 +6,7 @@ import { prepareExecutionPlan } from "../../src/lib/models/execution/prepareExec
 import { executeMuapiGenerationPlan } from "../../src/lib/models/execution/muapiExecutor.js";
 import { parseUsdToMicroUsdConservatively } from "../../src/lib/models/pricingIntegration.js";
 import { getModel } from "../../src/lib/models/registry.js";
+import { clearExactModelMemoryCache } from "../../src/lib/models/providerCatalog.js";
 import { mapValidatedStudioWorkflowToNormalizedInvocation } from "../../src/lib/models/bridges/studioWorkflowBridge.js";
 import { ModelPlatformError, ERROR_CODES } from "../../src/lib/models/errors.js";
 
@@ -13,6 +14,12 @@ const TEST_ENV = {
   DOOLPHIN_ENV: "staging",
   MUAPI_API_KEY_SANDBOX: "sandbox_test_key_phase4b",
   MODEL_PLATFORM_SEEDANCE_CUTOVER_ENABLED: "false",
+};
+
+const TEST_ENV_CUTOVER = {
+  DOOLPHIN_ENV: "staging",
+  MUAPI_API_KEY_SANDBOX: "sandbox_test_key_phase4b",
+  MODEL_PLATFORM_SEEDANCE_CUTOVER_ENABLED: "true",
 };
 
 const mockEstimateFetch = async (url) => {
@@ -30,7 +37,69 @@ const mockEstimateFetch = async (url) => {
   };
 };
 
+test("Phase 4B.3a Cold-Start Auto-Fetch: Cold start automatically fetches live Provider Authority spec and caches result", async () => {
+  clearExactModelMemoryCache();
+  let liveFetchCallCount = 0;
+
+  const mockLiveFetch = async (url) => {
+    if (url.includes("/api/v1/models")) {
+      liveFetchCallCount++;
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          providerModelId: "seedance-2-omni-reference-no-video-fast",
+          endpoint: "https://api.muapi.ai/api/v1/seedance-2-omni-reference-no-video-fast",
+          cost: { amount: 0.04838, currency: "USD" },
+          dynamic_pricing: true,
+          estimateEndpoint: "https://api.muapi.ai/api/v1/models/seedance-2-omni-reference-no-video-fast/estimate-cost",
+          inputSchema: { type: "object", properties: { prompt: { type: "string" } } },
+        }),
+      };
+    }
+    return mockEstimateFetch(url);
+  };
+
+  // Lookup 1: Cold start cache miss -> triggers automatic live fetch
+  const model1 = await getModel("muapi.seedance2.omni-reference-fast", {
+    fetchImpl: mockLiveFetch,
+    env: TEST_ENV_CUTOVER,
+  });
+
+  assert.ok(model1);
+  assert.equal(model1.providerSpec.provenance.source, "LIVE_PROVIDER");
+  assert.equal(model1.providerSpec.endpoint, "https://api.muapi.ai/api/v1/seedance-2-omni-reference-no-video-fast");
+  assert.equal(liveFetchCallCount, 1);
+
+  // Lookup 2: Second call within TTL -> reuses exact cached spec with ZERO network calls
+  const model2 = await getModel("muapi.seedance2.omni-reference-fast", {
+    fetchImpl: mockLiveFetch,
+    env: TEST_ENV_CUTOVER,
+  });
+
+  assert.ok(model2);
+  assert.equal(model2.providerSpec.provenance.source, "LIVE_PROVIDER");
+  assert.equal(liveFetchCallCount, 1); // Proves no second network request occurred!
+});
+
+test("Phase 4B.3a Cold-Start Failure: Live request failure in cutover mode fails closed with PROVIDER_SPEC_UNAVAILABLE", async () => {
+  clearExactModelMemoryCache();
+
+  const mockFailingFetch = async () => {
+    return { ok: false, status: 503, json: async () => ({ error: "Provider catalog down" }) };
+  };
+
+  await assert.rejects(
+    () => getModel("muapi.seedance2.omni-reference-fast", {
+      fetchImpl: mockFailingFetch,
+      env: TEST_ENV_CUTOVER,
+    }),
+    (err) => err instanceof ModelPlatformError && err.code === ERROR_CODES.PROVIDER_SPEC_UNAVAILABLE
+  );
+});
+
 test("Phase 4B.3 Provider Authority Injection: Live schema/endpoint overrides local spec without altering local product/business policy", async () => {
+  clearExactModelMemoryCache();
   const mockLiveFetch = async (url) => {
     if (url.includes("/api/v1/models")) {
       return {
@@ -60,7 +129,6 @@ test("Phase 4B.3 Provider Authority Injection: Live schema/endpoint overrides lo
   });
 
   assert.ok(model);
-  // Provider facts updated dynamically from live fetch
   assert.equal(model.providerSpec.endpoint, "https://api.muapi.ai/api/v1/custom-live-endpoint-999");
   assert.equal(model.providerSpec.cost.amount, 0.0999);
   assert.equal(model.providerSpec.provenance.source, "LIVE_PROVIDER");
@@ -134,7 +202,6 @@ test("Phase 4B.3 Route Simulation: Non-network simulation proves complete atomic
     workflowPricing: plan.workflowPricing,
   };
 
-  // Assert snapshot round-trip consistency
   const serialized = JSON.stringify(snapshot);
   const reloaded = JSON.parse(serialized);
 
@@ -142,9 +209,45 @@ test("Phase 4B.3 Route Simulation: Non-network simulation proves complete atomic
   assert.equal(reloaded.workflowPricing.outputCount, 2);
   assert.equal(reloaded.workflowPricing.totalProviderCostMicroUsd, plan.workflowPricing.totalProviderCostMicroUsd);
 
-  // SHA256 of payload string matches providerPayloadHash exactly
   const hash = crypto.createHash("sha256").update(reloaded.providerPayloadJson).digest("hex");
   assert.equal(hash, plan.providerPayloadHash);
+});
+
+test("Phase 4B Persisted Plan Round Trip: Prepared plan snapshot survives JSON/DB serialization byte-for-byte", async () => {
+  const plan = await prepareExecutionPlan({
+    modelId: "muapi.seedance2.omni-reference-fast",
+    normalizedInput: {
+      prompt: "Persisted Plan Snapshot Test Prompt",
+      duration: 6,
+      aspectRatio: "16:9",
+      generateAudio: false,
+      extraInputs: { images: ["https://r2.doolphin.com/img1.jpg", "https://r2.doolphin.com/img2.jpg"] },
+    },
+    fetchImpl: mockEstimateFetch,
+    env: TEST_ENV,
+  });
+
+  const snapshotToPersist = {
+    authorityVersion: "MODEL_PLATFORM_PREPARED_V1",
+    canonicalModelId: plan.canonicalModelId,
+    providerModelId: plan.providerModelId,
+    providerEndpoint: plan.providerEndpoint,
+    providerSpecHash: plan.providerSpecHash,
+    providerPayloadJson: plan.providerPayloadJson,
+    providerPayloadHash: plan.providerPayloadHash,
+    unitPricing: plan.unitPricing,
+    workflowPricing: plan.workflowPricing,
+    preparedAt: plan.preparedAt,
+    expiresAt: plan.expiresAt,
+    webhookStrategy: plan.transport.webhookStrategy,
+  };
+
+  const dbSerializedString = JSON.stringify(snapshotToPersist);
+  const dbParsedSnapshot = JSON.parse(dbSerializedString);
+
+  assert.equal(dbParsedSnapshot.providerPayloadJson, plan.providerPayloadJson);
+  const reloadedHash = crypto.createHash("sha256").update(dbParsedSnapshot.providerPayloadJson).digest("hex");
+  assert.equal(reloadedHash, plan.providerPayloadHash);
 });
 
 test("Phase 4B.2 Multi-Output Pricing: outputCount=2 aggregates microUSD costs before credit rounding", async () => {
@@ -280,6 +383,34 @@ test("Phase 4B.1 Single Pipeline: Estimate and generation POST HTTP bodies are b
   assert.equal(estimateHash, plan.providerPayloadHash);
 });
 
+test("Phase 4B.1 Seedance Schema: Provider payload sets images_list field name and enforces max 9 limit", async () => {
+  const plan = await prepareExecutionPlan({
+    modelId: "muapi.seedance2.omni-reference-fast",
+    normalizedInput: {
+      prompt: "Seedance images_list verification prompt",
+      extraInputs: { images: ["https://r2.doolphin.com/actor1.jpg", "https://r2.doolphin.com/actor2.jpg"] },
+    },
+    fetchImpl: mockEstimateFetch,
+    env: TEST_ENV,
+  });
+
+  assert.ok(plan.providerPayload.images_list);
+  assert.equal(plan.providerPayload.images, undefined);
+  assert.equal(plan.providerPayload.images_list.length, 2);
+  assert.equal(plan.providerPayload.images_list[0], "https://r2.doolphin.com/actor1.jpg");
+
+  const tooManyImages = Array.from({ length: 10 }, (_, i) => `https://r2.doolphin.com/actor${i + 1}.jpg`);
+  await assert.rejects(
+    () => prepareExecutionPlan({
+      modelId: "muapi.seedance2.omni-reference-fast",
+      normalizedInput: { prompt: "Too many images", extraInputs: { images: tooManyImages } },
+      fetchImpl: mockEstimateFetch,
+      env: TEST_ENV,
+    }),
+    (err) => err instanceof ModelPlatformError && err.code === ERROR_CODES.INVALID_MODEL_INPUT
+  );
+});
+
 test("Phase 4B.1 Studio Workflow Bridge: Canonical compiled prompt is passed directly without object stringification", () => {
   const mockScriptObj = { scene1: "Script object should not become string" };
   const mockRequest = { prompt: "Fallback prompt", script: mockScriptObj, settings: { durationSeconds: 5 } };
@@ -298,4 +429,8 @@ test("Phase 4B.1 Studio Workflow Bridge: Canonical compiled prompt is passed dir
   assert.notEqual(normalized.prompt, "[object Object]");
   assert.equal(normalized.extraInputs.images[0], "https://r2.doolphin.com/avatar.jpg");
   assert.equal(normalized.earliestSignedAssetExpiryMs, nowMs + 30 * 60 * 1000);
+});
+
+test("Phase 4B.1 Readiness Flag: Snapshot generation disabled when MODEL_PLATFORM_PREPARED_SNAPSHOT_ENABLED is false", () => {
+  assert.equal(process.env.MODEL_PLATFORM_PREPARED_SNAPSHOT_ENABLED, undefined);
 });

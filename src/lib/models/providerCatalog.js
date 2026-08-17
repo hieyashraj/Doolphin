@@ -3,6 +3,15 @@ import { getMuapiApiKey } from "../generation/muapiCredentials.js";
 import { getProviderCatalog, clearCatalogMemoryCache } from "./catalogStore.js";
 
 const DEFAULT_NETWORK_TIMEOUT_MS = 3000;
+const DEFAULT_SPEC_TTL_MS = 60 * 60 * 1000; // 1 hour memory TTL
+
+// In-Memory Exact-Model Provider Spec Cache
+let exactModelCache = new Map();
+
+export function clearExactModelMemoryCache() {
+  exactModelCache.clear();
+  clearCatalogMemoryCache();
+}
 
 export function computeCatalogHash(catalogData) {
   if (!catalogData || typeof catalogData !== "object") return "";
@@ -13,7 +22,9 @@ export function computeCatalogHash(catalogData) {
 
 export function validateProviderModelEntry(entry) {
   if (!entry || typeof entry !== "object") return false;
-  if (typeof entry.providerModelId !== "string" || !entry.providerModelId) return false;
+
+  const providerModelId = entry.providerModelId || entry.id;
+  if (typeof providerModelId !== "string" || !providerModelId) return false;
   if (typeof entry.endpoint !== "string" || !entry.endpoint) return false;
 
   const isDynamic = Boolean(entry.dynamic_pricing ?? entry.dynamicPricing);
@@ -126,38 +137,119 @@ export async function fetchLiveMuapiCatalog({
   }
 }
 
+export async function fetchLiveSingleMuapiModel(providerModelId, {
+  fetchImpl = fetch,
+  env = process.env,
+  timeoutMs = DEFAULT_NETWORK_TIMEOUT_MS,
+} = {}) {
+  const singleUrl = `https://api.muapi.ai/api/v1/models/${encodeURIComponent(providerModelId)}`;
+  let headers = { Accept: "application/json" };
+  try {
+    const apiKey = getMuapiApiKey(env);
+    if (apiKey && !apiKey.includes("placeholder")) {
+      headers["x-api-key"] = apiKey;
+    }
+  } catch {
+    // Optional credentials
+  }
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetchImpl(singleUrl, {
+      method: "GET",
+      headers,
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+
+    if (response.ok) {
+      const payload = await response.json();
+      const rawEntry = payload.model || payload.data || payload;
+      const normalizedEntry = {
+        providerModelId: rawEntry.providerModelId || rawEntry.id || providerModelId,
+        endpoint: rawEntry.endpoint || `https://api.muapi.ai/api/v1/${providerModelId}`,
+        cost: rawEntry.cost,
+        dynamic_pricing: Boolean(rawEntry.dynamic_pricing ?? rawEntry.dynamicPricing),
+        estimateEndpoint: rawEntry.estimateEndpoint || rawEntry.estimate_endpoint || `https://api.muapi.ai/api/v1/models/${providerModelId}/estimate-cost`,
+        inputSchema: rawEntry.inputSchema || rawEntry.input_schema || { type: "object", properties: { prompt: { type: "string" } } },
+      };
+
+      if (validateProviderModelEntry(normalizedEntry)) {
+        return { success: true, spec: normalizedEntry };
+      }
+    }
+  } catch {
+    clearTimeout(timer);
+  }
+
+  // Fallback to catalog list query
+  const catalogRes = await fetchLiveMuapiCatalog({ fetchImpl, env, timeoutMs });
+  if (catalogRes.success) {
+    const match = catalogRes.catalog.models.find(
+      (m) => m.providerModelId === providerModelId || m.id === providerModelId
+    );
+    if (match) {
+      return { success: true, spec: match };
+    }
+  }
+
+  return { success: false };
+}
+
+/**
+ * Authoritative Provider Spec Resolver with Cold-Path Auto-Fetch on Cache Miss.
+ */
 export async function resolveAuthoritativeProviderSpec(providerModelId, {
   fetchImpl = fetch,
   env = process.env,
   forceRefresh = false,
+  ttlMs = DEFAULT_SPEC_TTL_MS,
   timeoutMs = DEFAULT_NETWORK_TIMEOUT_MS,
 } = {}) {
-  const nowIso = new Date().toISOString();
+  const now = Date.now();
+  const nowIso = new Date(now).toISOString();
 
-  // 1. Attempt Live Refresh if forced or missing
-  if (forceRefresh) {
-    const liveRes = await fetchLiveMuapiCatalog({ fetchImpl, env, timeoutMs });
-    if (liveRes.success) {
-      const match = liveRes.catalog.models.find(
-        (m) => m.providerModelId === providerModelId || m.id === providerModelId
-      );
-      if (match) {
-        return {
-          success: true,
-          spec: match,
-          provenance: {
-            source: "LIVE_PROVIDER",
-            loadedAt: nowIso,
-            providerFetchedAt: nowIso,
-            providerSpecHash: computeCatalogHash(match),
-            stale: false,
-          },
-        };
-      }
+  // 1. Exact-Model Memory Cache Check
+  if (!forceRefresh && exactModelCache.has(providerModelId)) {
+    const cached = exactModelCache.get(providerModelId);
+    if (cached.expiresAt > now) {
+      return {
+        success: true,
+        spec: cached.spec,
+        provenance: cached.provenance,
+      };
     }
   }
 
-  // 2. Check Store / Memory / Bootstrap Cache (via getProviderCatalog)
+  // 2. Automatic Live Cold-Path Fetch on Cache Miss
+  const liveRes = await fetchLiveSingleMuapiModel(providerModelId, { fetchImpl, env, timeoutMs });
+  if (liveRes.success) {
+    const spec = liveRes.spec;
+    const providerSpecHash = computeCatalogHash(spec);
+    const provenance = {
+      source: "LIVE_PROVIDER",
+      loadedAt: nowIso,
+      providerFetchedAt: nowIso,
+      providerSpecHash,
+      stale: false,
+    };
+
+    exactModelCache.set(providerModelId, {
+      spec,
+      provenance,
+      expiresAt: now + ttlMs,
+    });
+
+    return {
+      success: true,
+      spec,
+      provenance,
+    };
+  }
+
+  // 3. Check Store / Bootstrap Catalog
   const storeRes = await getProviderCatalog({ forceRefresh: false });
   const storeModels = Array.isArray(storeRes?.catalog?.models) ? storeRes.catalog.models : [];
   const storeMatch = storeModels.find(
@@ -165,26 +257,30 @@ export async function resolveAuthoritativeProviderSpec(providerModelId, {
   );
 
   if (storeMatch) {
-    const source = storeRes.source === "LIVE_PROVIDER"
-      ? "LIVE_PROVIDER"
-      : storeRes.source === "DURABLE_LKG"
-      ? "DURABLE_LKG"
-      : "BOOTSTRAP";
+    const source = storeRes.source === "LIVE_PROVIDER" ? "LIVE_PROVIDER" : "BOOTSTRAP";
+    const providerSpecHash = computeCatalogHash(storeMatch);
+    const provenance = {
+      source,
+      loadedAt: nowIso,
+      providerFetchedAt: storeRes?.catalog?.fetchedAt || null,
+      providerSpecHash,
+      stale: source === "BOOTSTRAP",
+    };
+
+    exactModelCache.set(providerModelId, {
+      spec: storeMatch,
+      provenance,
+      expiresAt: now + ttlMs,
+    });
 
     return {
       success: true,
       spec: storeMatch,
-      provenance: {
-        source,
-        loadedAt: nowIso,
-        providerFetchedAt: storeRes?.catalog?.fetchedAt || null,
-        providerSpecHash: computeCatalogHash(storeMatch),
-        stale: source === "BOOTSTRAP",
-      },
+      provenance,
     };
   }
 
-  // 3. Local Fallback provenance
+  // 4. Local Fallback provenance (non-authoritative)
   return {
     success: false,
     code: "PROVIDER_SPEC_UNAVAILABLE",
@@ -205,7 +301,7 @@ export async function syncAndGetProviderCatalog({
   timeoutMs = DEFAULT_NETWORK_TIMEOUT_MS,
 } = {}) {
   if (forceRefresh) {
-    clearCatalogMemoryCache();
+    clearExactModelMemoryCache();
   }
 
   if (forceRefresh) {
