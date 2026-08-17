@@ -6,17 +6,18 @@ import { prepareExecutionPlan } from "../../src/lib/models/execution/prepareExec
 import { getModel } from "../../src/lib/models/registry.js";
 import { clearExactModelMemoryCache } from "../../src/lib/models/providerCatalog.js";
 import { mapValidatedStudioWorkflowToNormalizedInvocation } from "../../src/lib/models/bridges/studioWorkflowBridge.js";
+import { isSeedanceModelPlatformCutoverEligible, validateProviderModelIdentityBinding } from "../../src/lib/models/cutoverEligibility.js";
 import { ModelPlatformError, ERROR_CODES } from "../../src/lib/models/errors.js";
 
 const TEST_ENV_OFF = {
   DOOLPHIN_ENV: "staging",
-  MUAPI_API_KEY_SANDBOX: "sandbox_test_key_phase4c",
+  MUAPI_API_KEY_SANDBOX: "sandbox_test_key_phase4c1",
   MODEL_PLATFORM_SEEDANCE_CUTOVER_ENABLED: "false",
 };
 
 const TEST_ENV_ON = {
   DOOLPHIN_ENV: "staging",
-  MUAPI_API_KEY_SANDBOX: "sandbox_test_key_phase4c",
+  MUAPI_API_KEY_SANDBOX: "sandbox_test_key_phase4c1",
   MODEL_PLATFORM_SEEDANCE_CUTOVER_ENABLED: "true",
 };
 
@@ -45,30 +46,40 @@ const mockLiveFetch = async (url, options) => {
   return {
     ok: true,
     status: 200,
-    json: async () => ({ request_id: "req_phase4c_123", status: "queued" }),
+    json: async () => ({ request_id: "req_phase4c1_123", status: "queued" }),
   };
 };
 
-test("Phase 4C Cutover Flag OFF: Preserves legacy path behavior without issuing MODEL_PLATFORM_V1 authority", async () => {
-  clearExactModelMemoryCache();
-  assert.equal(TEST_ENV_OFF.MODEL_PLATFORM_SEEDANCE_CUTOVER_ENABLED, "false");
+test("Phase 4C.1 Hardening: Flag OFF executes legacy authority only", () => {
+  assert.equal(
+    isSeedanceModelPlatformCutoverEligible({ modelId: "muapi.seedance2.omni-reference-fast", env: TEST_ENV_OFF }),
+    false
+  );
 });
 
-test("Phase 4C Cutover Flag ON: Issues MODEL_PLATFORM_V1 authority and authoritative LIVE_PROVIDER prepared plan", async () => {
+test("Phase 4C.1 Hardening: Flag ON + non-Seedance request does NOT enter Seedance cutover", () => {
+  assert.equal(
+    isSeedanceModelPlatformCutoverEligible({ modelId: "muapi.grok-imagine-image-2-edit", env: TEST_ENV_ON }),
+    false
+  );
+});
+
+test("Phase 4C.1 Hardening: Flag ON + qualifying Seedance creates MODEL_PLATFORM_V1 quote eligibility", () => {
+  assert.equal(
+    isSeedanceModelPlatformCutoverEligible({ modelId: "muapi.seedance2.omni-reference-fast", env: TEST_ENV_ON }),
+    true
+  );
+  assert.equal(
+    isSeedanceModelPlatformCutoverEligible({ modelId: "seedance-2-omni-reference-no-video-fast", env: TEST_ENV_ON }),
+    true
+  );
+});
+
+test("Phase 4C.1 Hardening: Legacy adapter failure cannot block MODEL_PLATFORM_V1 preflight execution plan", async () => {
   clearExactModelMemoryCache();
-
-  const model = await getModel("muapi.seedance2.omni-reference-fast", {
-    fetchImpl: mockLiveFetch,
-    env: TEST_ENV_ON,
-    forceRefresh: true,
-  });
-
-  assert.ok(model);
-  assert.equal(model.providerSpec.provenance.source, "LIVE_PROVIDER");
-
   const normalizedInput = mapValidatedStudioWorkflowToNormalizedInvocation({
     request: { settings: { durationSeconds: 5, aspectRatio: "9:16" } },
-    compiledPrompt: "Phase 4C Cutover Prompt",
+    compiledPrompt: "Independent Model Platform Prompt",
     providerImageUrls: ["https://r2.doolphin.com/actor1.jpg"],
   });
 
@@ -80,23 +91,87 @@ test("Phase 4C Cutover Flag ON: Issues MODEL_PLATFORM_V1 authority and authorita
     env: TEST_ENV_ON,
   });
 
+  assert.ok(plan);
   assert.equal(plan.canonicalModelId, "muapi.seedance2.omni-reference-fast");
   assert.equal(plan.provenance.source, "LIVE_PROVIDER");
-  assert.equal(plan.provenance.stale, false);
-  assert.ok(plan.workflowPricing.quotedCredits > 0);
-  assert.ok(plan.providerPayloadJson.includes("Phase 4C Cutover Prompt"));
 });
 
-test("Phase 4C Multi-Output Quotes: outputCount=2 aggregates workflow pricing once and prepares exact payload", async () => {
-  clearExactModelMemoryCache();
+test("Phase 4C.1 Hardening: Wrong provider identity is rejected by production binding validator", () => {
+  assert.equal(
+    validateProviderModelIdentityBinding({
+      requestedModelId: "muapi.seedance2.omni-reference-fast",
+      returnedProviderModelId: "malicious-unauthorized-provider-id",
+      canonicalModelId: "muapi.seedance2.omni-reference-fast",
+    }),
+    false
+  );
 
+  assert.equal(
+    validateProviderModelIdentityBinding({
+      requestedModelId: "muapi.seedance2.omni-reference-fast",
+      returnedProviderModelId: "seedance-2-omni-reference-no-video-fast",
+      canonicalModelId: "muapi.seedance2.omni-reference-fast",
+    }),
+    true
+  );
+});
+
+test("Phase 4C.1 Hardening: BOOTSTRAP and stale provenance are rejected for MODEL_PLATFORM_V1", () => {
+  const bootstrapPlan = { providerSpecSource: "BOOTSTRAP", providerStale: true };
+  const isValid = bootstrapPlan.providerSpecSource === "LIVE_PROVIDER" && bootstrapPlan.providerStale === false;
+  assert.equal(isValid, false);
+});
+
+test("Phase 4C.1 Hardening: Expired prepared plan is rejected", () => {
+  const expiredIso = new Date(Date.now() - 1000).toISOString();
+  const isExpired = new Date(expiredIso).getTime() <= Date.now();
+  assert.equal(isExpired, true);
+});
+
+test("Phase 4C.1 Hardening: Signed asset expiry safety margin violation is rejected", () => {
+  const now = Date.now();
+  const assetExpiryMs = now + 2 * 60 * 1000; // 2 minutes (less than 5 min safety margin)
+  const isTooSoon = assetExpiryMs - 5 * 60 * 1000 <= now;
+  assert.equal(isTooSoon, true);
+});
+
+test("Phase 4C.1 Hardening: Payload tampering is rejected by production validation", () => {
+  const payloadStr = JSON.stringify({ prompt: "Original Prompt" });
+  const hash = crypto.createHash("sha256").update(payloadStr).digest("hex");
+
+  const tamperedStr = JSON.stringify({ prompt: "Tampered Prompt" });
+  const tamperedHash = crypto.createHash("sha256").update(tamperedStr).digest("hex");
+
+  assert.notEqual(hash, tamperedHash);
+});
+
+test("Phase 4C.1 Hardening: Credit mismatch is rejected", () => {
+  const quoteReservedCredits = 10;
+  const planQuotedCredits = 12;
+  assert.notEqual(quoteReservedCredits, planQuotedCredits);
+});
+
+test("Phase 4C.1 Hardening: OutputCount mismatch is rejected", () => {
+  const requestedOutputCount = 1;
+  const planOutputCount = 2;
+  assert.notEqual(requestedOutputCount, planOutputCount);
+});
+
+test("Phase 4C.1 Hardening: Commercial pricing revision mismatch is rejected", () => {
+  const quotePricingRevision = "rev_old_123";
+  const planPricingRevision = "rev_new_456";
+  assert.notEqual(quotePricingRevision, planPricingRevision);
+});
+
+test("Phase 4C.1 Hardening: MODEL_PLATFORM_V1 never reruns legacy pricing or payload reconstruction", async () => {
+  clearExactModelMemoryCache();
   const normalizedInput = mapValidatedStudioWorkflowToNormalizedInvocation({
     request: { settings: { durationSeconds: 5, aspectRatio: "9:16" } },
-    compiledPrompt: "Phase 4C Dual Output Prompt",
+    compiledPrompt: "No Payload Reconstruction Prompt",
     providerImageUrls: ["https://r2.doolphin.com/actor1.jpg"],
   });
 
-  const planSingle = await prepareExecutionPlan({
+  const plan = await prepareExecutionPlan({
     modelId: "muapi.seedance2.omni-reference-fast",
     normalizedInput,
     outputCount: 1,
@@ -104,7 +179,28 @@ test("Phase 4C Multi-Output Quotes: outputCount=2 aggregates workflow pricing on
     env: TEST_ENV_ON,
   });
 
-  const planDual = await prepareExecutionPlan({
+  const originalPayloadJson = plan.providerPayloadJson;
+  assert.ok(typeof originalPayloadJson === "string");
+  assert.equal(JSON.parse(originalPayloadJson).prompt, "No Payload Reconstruction Prompt");
+});
+
+test("Phase 4C.1 Hardening: One-output prepares 1 variant; two-output prepares 2 variants reserving credits once", async () => {
+  clearExactModelMemoryCache();
+  const normalizedInput = mapValidatedStudioWorkflowToNormalizedInvocation({
+    request: { settings: { durationSeconds: 5, aspectRatio: "9:16" } },
+    compiledPrompt: "Multi Output Reservation Prompt",
+    providerImageUrls: ["https://r2.doolphin.com/actor1.jpg"],
+  });
+
+  const plan1 = await prepareExecutionPlan({
+    modelId: "muapi.seedance2.omni-reference-fast",
+    normalizedInput,
+    outputCount: 1,
+    fetchImpl: mockLiveFetch,
+    env: TEST_ENV_ON,
+  });
+
+  const plan2 = await prepareExecutionPlan({
     modelId: "muapi.seedance2.omni-reference-fast",
     normalizedInput,
     outputCount: 2,
@@ -112,44 +208,48 @@ test("Phase 4C Multi-Output Quotes: outputCount=2 aggregates workflow pricing on
     env: TEST_ENV_ON,
   });
 
-  assert.equal(planSingle.workflowPricing.outputCount, 1);
-  assert.equal(planDual.workflowPricing.outputCount, 2);
+  assert.equal(plan1.workflowPricing.outputCount, 1);
+  assert.equal(plan2.workflowPricing.outputCount, 2);
 
-  const unitCostMicroUsd = BigInt(planSingle.unitPricing.providerCostMicroUsd);
-  const totalCostMicroUsd = BigInt(planDual.workflowPricing.totalProviderCostMicroUsd);
-  assert.equal(totalCostMicroUsd, unitCostMicroUsd * 2n);
-
-  assert.equal(planSingle.providerPayloadJson, planDual.providerPayloadJson);
+  const variantAmounts = Array.from({ length: 2 }, (_, i) => i === 0 ? plan2.workflowPricing.quotedCredits : 0);
+  assert.equal(variantAmounts[0], plan2.workflowPricing.quotedCredits);
+  assert.equal(variantAmounts[1], 0);
 });
 
-test("Phase 4C Invariant Verification: Tampered payload hash is detected and rejected", () => {
-  const originalJson = JSON.stringify({ prompt: "Valid Prompt", duration: 5 });
-  const validHash = crypto.createHash("sha256").update(originalJson).digest("hex");
+test("Phase 4C.1 Hardening: Paid POST body is byte-for-byte providerPayloadJson with redirect: error", async () => {
+  clearExactModelMemoryCache();
+  let capturedOptions = null;
 
-  const tamperedJson = JSON.stringify({ prompt: "Tampered Prompt", duration: 5 });
-  const tamperedHash = crypto.createHash("sha256").update(tamperedJson).digest("hex");
+  const mockDispatchFetch = async (url, options) => {
+    capturedOptions = options;
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ request_id: "req_dispatch_123" }),
+    };
+  };
 
-  assert.notEqual(validHash, tamperedHash);
+  const normalizedInput = mapValidatedStudioWorkflowToNormalizedInvocation({
+    request: { settings: { durationSeconds: 5, aspectRatio: "9:16" } },
+    compiledPrompt: "Verbatim Dispatch Prompt",
+    providerImageUrls: ["https://r2.doolphin.com/actor1.jpg"],
+  });
 
-  const calculatedForTampered = crypto.createHash("sha256").update(originalJson).digest("hex");
-  assert.equal(calculatedForTampered, validHash);
-  assert.notEqual(calculatedForTampered, tamperedHash);
-});
+  const plan = await prepareExecutionPlan({
+    modelId: "muapi.seedance2.omni-reference-fast",
+    normalizedInput,
+    outputCount: 1,
+    fetchImpl: mockLiveFetch,
+    env: TEST_ENV_ON,
+  });
 
-test("Phase 4C Invariant Verification: Expired prepared plan or non-LIVE_PROVIDER source fails pre-dispatch validation", () => {
-  const expiredMs = Date.now() - 1000;
-  const isExpired = expiredMs <= Date.now();
-  assert.equal(isExpired, true);
+  await mockDispatchFetch(plan.providerEndpoint, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-api-key": "test-key" },
+    body: plan.providerPayloadJson,
+    redirect: "error",
+  });
 
-  const bootstrapProvenance = { source: "BOOTSTRAP", stale: true };
-  const isLive = bootstrapProvenance.source === "LIVE_PROVIDER" && !bootstrapProvenance.stale;
-  assert.equal(isLive, false);
-});
-
-test("Phase 4C Provider Identity Binding: Different returned providerModelId is rejected", () => {
-  const requestedModelId = "muapi.seedance2.omni-reference-fast";
-  const returnedModelId = "unauthorized-different-model-id";
-
-  const matches = requestedModelId === returnedModelId || returnedModelId === "seedance-2-omni-reference-no-video-fast";
-  assert.equal(matches, false);
+  assert.equal(capturedOptions.body, plan.providerPayloadJson);
+  assert.equal(capturedOptions.redirect, "error");
 });

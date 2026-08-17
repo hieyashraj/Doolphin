@@ -13,6 +13,7 @@ import { userFacingGenerationMessage } from "@/lib/generation/statusMessages";
 import { claimProviderSubmission, clearSubmissionLease, newSubmissionOwner, submissionOwnerWhere } from "@/lib/generation/providerSubmissionLease";
 import { HARDENED_RECONCILIATION_ENGINE_REVISION } from "@/lib/generation/reconciliationEligibility";
 import { resolveTrustedExecutionUrl } from "@/lib/models/execution/muapiExecutor.js";
+import { validateProviderModelIdentityBinding } from "@/lib/models/cutoverEligibility.js";
 
 function publicAssetUrl(url, requestUrl) {
   if (url.startsWith("https://")) return new URL(url).toString();
@@ -84,6 +85,8 @@ async function handleGenerationSubmission(req) {
   let executionEndpoint = null;
   let totalCreditsToReserve = 0;
   let preparedPlan = null;
+  let pricingRevisionId = model.pricingRevision;
+  let registryRevisionId = model.capabilityRevision;
 
   if (isModelPlatformQuote) {
     preparedPlan = routingSnapshotObj.modelPlatformPreparedPlan;
@@ -118,14 +121,26 @@ async function handleGenerationSubmission(req) {
       return NextResponse.json({ success: false, code: "OUTPUT_COUNT_MISMATCH", error: "Output count does not match persisted workflow pricing" }, { status: 409 });
     }
 
-    // Provider Model Identity Binding check
-    if (quote.selectedModelId !== preparedPlan.canonicalModelId && preparedPlan.providerModelId !== "seedance-2-omni-reference-no-video-fast" && preparedPlan.providerModelId !== "seedance-2.5-spicy-video-extend-480p" && preparedPlan.providerModelId !== "grok-imagine-image-2-edit") {
+    // Commercial pricing revision mismatch check
+    if (quote.pricingRevision !== preparedPlan.workflowPricing.pricingRevisionId) {
+      return NextResponse.json({ success: false, code: "PRICING_REVISION_MISMATCH", error: "Pricing revision mismatch" }, { status: 409 });
+    }
+
+    // Provider Model Identity Binding Check (using cutoverEligibility helper)
+    const validBinding = validateProviderModelIdentityBinding({
+      requestedModelId: quote.selectedModelId,
+      returnedProviderModelId: preparedPlan.providerModelId,
+      canonicalModelId: preparedPlan.canonicalModelId,
+    });
+    if (!validBinding) {
       return NextResponse.json({ success: false, code: "MODEL_IDENTITY_MISMATCH", error: "Returned providerModelId does not match requested providerModelId" }, { status: 409 });
     }
 
     providerPayloadJson = preparedPlan.providerPayloadJson;
     payloadFingerprint = preparedPlan.providerPayloadHash;
     executionEndpoint = resolveTrustedExecutionUrl(preparedPlan.providerEndpoint);
+    pricingRevisionId = preparedPlan.workflowPricing.pricingRevisionId;
+    registryRevisionId = preparedPlan.providerSpecHash;
   } else {
     // Legacy Path (when cutover is OFF or quote was issued under legacy path)
     const authoritativeQuote = calculateAuthoritativeGenerationQuote(request, model);
@@ -318,8 +333,8 @@ async function handleGenerationSubmission(req) {
           status: "PREPARED",
           stageIdempotencyKey: `provider_${variant.id}`,
           inputFingerprint: payloadFingerprint,
-          registryRevision: preparedPlan?.providerSpecHash || model.capabilityRevision,
-          pricingRevision: preparedPlan?.providerSpecHash || model.pricingRevision,
+          registryRevision: registryRevisionId,
+          pricingRevision: pricingRevisionId,
           adapterVersion: model.adapterVersion,
           routingSnapshot: JSON.stringify({ ...baseRouting, providerEnvironment: providerEnv }),
           capabilitySnapshot: quote.capabilitySummary || "{}",
@@ -372,6 +387,7 @@ async function handleGenerationSubmission(req) {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-api-key": apiKey },
         body: providerPayloadJson,
+        redirect: "error",
         signal: AbortSignal.timeout(30000),
       });
       const raw = await response.text();

@@ -14,6 +14,7 @@ import { R2StorageService } from "@/lib/storage/r2StorageService";
 import { mapValidatedStudioWorkflowToNormalizedInvocation } from "@/lib/models/bridges/studioWorkflowBridge.js";
 import { prepareExecutionPlan } from "@/lib/models/execution/prepareExecutionPlan.js";
 import { recordShadowPreflightTelemetry, runShadowWithSingleTelemetry } from "@/lib/models/telemetry/shadowTelemetry.js";
+import { isSeedanceModelPlatformCutoverEligible } from "@/lib/models/cutoverEligibility.js";
 
 function safeModelSnapshot(model) {
   return {
@@ -155,6 +156,136 @@ async function handlePreflight(req) {
   } catch (error) {
     return NextResponse.json({ success: false, code: "WEBHOOK_NOT_CONFIGURED", error: error.message }, { status: 503 });
   }
+
+  const workspace = await CreditEscrowService.ensureUserWorkspace(session.user.id);
+  if (!workspace?.id || workspace.id === "ws_default_fallback") {
+    return NextResponse.json({ success: false, code: "DATABASE_UNAVAILABLE", error: "Preflight cannot continue without durable workspace storage" }, { status: 503 });
+  }
+
+  const isCutoverEligible = isSeedanceModelPlatformCutoverEligible({
+    modelId: body.modelId || model.id,
+    env: process.env,
+  });
+
+  const requestFingerprint = fingerprintGenerationRequest(request);
+  const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
+  const roleMap = compiled.roleMap.map(({ url, ...entry }) => entry);
+
+  if (isCutoverEligible) {
+    // Model Platform V1 Authoritative Cutover Path (No Legacy Adapter / No Legacy Pricing)
+    try {
+      const outputCount = Math.max(1, Math.floor(Number(request.settings?.outputCount || body.outputCount) || 1));
+      const normalizedInput = mapValidatedStudioWorkflowToNormalizedInvocation({
+        request,
+        compiledPrompt: compiled.compiledPrompt,
+        providerImageUrls: compiled.imageUrls,
+        earliestSignedAssetExpiryMs,
+      });
+      const modelId = body.modelId || model.id || "seedance-2";
+      const plan = await prepareExecutionPlan({
+        modelId,
+        normalizedInput,
+        outputCount,
+        env: process.env,
+      });
+
+      const modelPlatformPreparedPlan = {
+        authorityVersion: "MODEL_PLATFORM_PREPARED_V1",
+        canonicalModelId: plan.canonicalModelId,
+        providerModelId: plan.providerModelId,
+        providerEndpoint: plan.providerEndpoint,
+        providerSpecHash: plan.providerSpecHash,
+        providerSpecSource: plan.provenance?.source || "BOOTSTRAP",
+        providerFetchedAt: plan.provenance?.providerFetchedAt || null,
+        providerStale: Boolean(plan.provenance?.stale),
+        providerPayloadJson: plan.providerPayloadJson,
+        providerPayloadHash: plan.providerPayloadHash,
+        unitPricing: plan.unitPricing,
+        workflowPricing: plan.workflowPricing,
+        pricingRevisionId: plan.workflowPricing.pricingRevisionId,
+        outputCount: plan.workflowPricing.outputCount,
+        preparedAt: plan.preparedAt,
+        expiresAt: plan.expiresAt,
+        earliestSignedAssetExpiry: earliestSignedAssetExpiryMs ? new Date(earliestSignedAssetExpiryMs).toISOString() : null,
+        webhookStrategy: plan.transport.webhookStrategy,
+      };
+
+      const quoteCostSnapshot = {
+        priced: true,
+        totalCredits: plan.workflowPricing.quotedCredits,
+        fullyLoadedCostMicroUsd: Number(plan.workflowPricing.fullyLoadedCostMicroUsd),
+        pricingRevisionId: plan.workflowPricing.pricingRevisionId,
+        components: {
+          providerGeneration: Number(plan.workflowPricing.totalProviderCostMicroUsd),
+          infrastructure: Number(plan.workflowPricing.costComponents.infrastructureEstMicroUsd || 0),
+          margin: Number(plan.workflowPricing.costComponents.targetMarginMicroUsd || 0),
+        },
+      };
+
+      const routingSnapshot = {
+        authority: "MODEL_PLATFORM_V1",
+        model: safeModelSnapshot(model),
+        webhookUrl,
+        requestFingerprint,
+        quoteCostSnapshot,
+        providerPayloadFingerprint: plan.providerPayloadHash,
+        modelPlatformPreparedPlan,
+      };
+
+      const quote = await prisma.preflightQuote.create({
+        data: {
+          workspaceId: workspace.id,
+          userId: session.user.id,
+          generationType: request.studio,
+          requestSnapshot: JSON.stringify(request),
+          normalizedAssetSummary: JSON.stringify(roleMap),
+          routingSnapshot: JSON.stringify(routingSnapshot),
+          selectedModelId: model.id,
+          provider: model.provider,
+          providerEndpoint: plan.providerEndpoint,
+          registryRevision: plan.providerSpecHash,
+          pricingRevision: plan.workflowPricing.pricingRevisionId,
+          adapterVersion: model.adapterVersion,
+          estimatedProviderCostMinMicroUsd: BigInt(plan.workflowPricing.totalProviderCostMicroUsd),
+          estimatedProviderCostMaxMicroUsd: BigInt(plan.workflowPricing.totalProviderCostMicroUsd),
+          infrastructureCostEstimateMicroUsd: BigInt(plan.workflowPricing.fullyLoadedCostMicroUsd) - BigInt(plan.workflowPricing.totalProviderCostMicroUsd),
+          expectedFailureLossMicroUsd: BigInt(0),
+          internalCreditsToReserve: plan.workflowPricing.quotedCredits,
+          warnings: JSON.stringify([]),
+          capabilitySummary: JSON.stringify(safeModelSnapshot(model)),
+          expiresAt,
+        },
+      });
+
+      return NextResponse.json({
+        success: true,
+        quote: {
+          id: quote.id,
+          expiresAt,
+          requestFingerprint,
+          model: safeModelSnapshot(model),
+          settings: request.settings,
+          estimatedSpeechSeconds,
+          delivery: request.instructions.confirmedDelivery,
+          roleMap,
+          scenePlan: compiled.compiledPrompt,
+          costs: quoteCostSnapshot,
+          providerPreview: {
+            endpoint: plan.providerEndpoint,
+            payload: { prompt: compiled.compiledPrompt, images_list: compiled.imageUrls.map((_, idx) => `[signed-asset-${idx + 1}]`) },
+          },
+        },
+      });
+    } catch (planError) {
+      return NextResponse.json({
+        success: false,
+        code: planError.code || "PREFLIGHT_FAILED",
+        error: planError.message || "Model Platform preflight execution plan generation failed",
+      }, { status: 503 });
+    }
+  }
+
+  // Legacy Preflight Path (Cutover OFF or non-qualifying model)
   const adapter = getProviderAdapter("seedance-2");
   let providerPayload;
   try {
@@ -172,13 +303,8 @@ async function handlePreflight(req) {
     return NextResponse.json({ success: false, code: "ADAPTER_VALIDATION_FAILED", error: error.message }, { status: 422 });
   }
 
-  const workspace = await CreditEscrowService.ensureUserWorkspace(session.user.id);
-  if (!workspace?.id || workspace.id === "ws_default_fallback") {
-    return NextResponse.json({ success: false, code: "DATABASE_UNAVAILABLE", error: "Preflight cannot continue without durable workspace storage" }, { status: 503 });
-  }
-
   const legacyQuoteBreakdown = calculateAuthoritativeGenerationQuote(request, model);
-  if (!legacyQuoteBreakdown.priced && process.env.MODEL_PLATFORM_SEEDANCE_CUTOVER_ENABLED !== "true") {
+  if (!legacyQuoteBreakdown.priced) {
     return NextResponse.json({
       success: false,
       code: legacyQuoteBreakdown.code,
@@ -187,74 +313,10 @@ async function handlePreflight(req) {
     }, { status: 503 });
   }
 
-  const requestFingerprint = fingerprintGenerationRequest(request);
   const providerPayloadFingerprint = crypto.createHash("sha256").update(JSON.stringify(providerPayload)).digest("hex");
-  const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
-  const roleMap = compiled.roleMap.map(({ url, ...entry }) => entry);
 
-  let activeQuoteBreakdown = legacyQuoteBreakdown;
   let modelPlatformPreparedPlan = null;
-  let authority = undefined;
-
-  const isCutoverEnabled = process.env.MODEL_PLATFORM_SEEDANCE_CUTOVER_ENABLED === "true";
-
-  if (isCutoverEnabled) {
-    try {
-      const outputCount = Math.max(1, Math.floor(Number(request.settings?.outputCount || body.outputCount) || 1));
-      const normalizedInput = mapValidatedStudioWorkflowToNormalizedInvocation({
-        request,
-        compiledPrompt: compiled.compiledPrompt,
-        providerImageUrls: compiled.imageUrls,
-        earliestSignedAssetExpiryMs,
-      });
-      const modelId = body.modelId || model.id || "seedance-2";
-      const plan = await prepareExecutionPlan({
-        modelId,
-        normalizedInput,
-        outputCount,
-        env: process.env,
-      });
-
-      modelPlatformPreparedPlan = {
-        authorityVersion: "MODEL_PLATFORM_PREPARED_V1",
-        canonicalModelId: plan.canonicalModelId,
-        providerModelId: plan.providerModelId,
-        providerEndpoint: plan.providerEndpoint,
-        providerSpecHash: plan.providerSpecHash,
-        providerSpecSource: plan.provenance?.source || "BOOTSTRAP",
-        providerFetchedAt: plan.provenance?.providerFetchedAt || null,
-        providerStale: Boolean(plan.provenance?.stale),
-        providerPayloadJson: plan.providerPayloadJson,
-        providerPayloadHash: plan.providerPayloadHash,
-        unitPricing: plan.unitPricing,
-        workflowPricing: plan.workflowPricing,
-        outputCount: plan.workflowPricing.outputCount,
-        preparedAt: plan.preparedAt,
-        expiresAt: plan.expiresAt,
-        earliestSignedAssetExpiry: earliestSignedAssetExpiryMs ? new Date(earliestSignedAssetExpiryMs).toISOString() : null,
-        webhookStrategy: plan.transport.webhookStrategy,
-      };
-
-      activeQuoteBreakdown = {
-        priced: true,
-        totalCredits: plan.workflowPricing.quotedCredits,
-        fullyLoadedCostMicroUsd: Number(plan.workflowPricing.totalProviderCostMicroUsd),
-        pricingRevisionId: plan.providerSpecHash,
-        components: {
-          providerGeneration: Number(plan.workflowPricing.totalProviderCostMicroUsd),
-          infrastructure: 0,
-          margin: 0,
-        },
-      };
-      authority = "MODEL_PLATFORM_V1";
-    } catch (planError) {
-      return NextResponse.json({
-        success: false,
-        code: planError.code || "PREFLIGHT_FAILED",
-        error: planError.message || "Model Platform preflight execution plan generation failed",
-      }, { status: 503 });
-    }
-  } else if (process.env.MODEL_PLATFORM_PREPARED_SNAPSHOT_ENABLED === "true") {
+  if (process.env.MODEL_PLATFORM_PREPARED_SNAPSHOT_ENABLED === "true") {
     try {
       const outputCount = Math.max(1, Math.floor(Number(request.settings?.outputCount || body.outputCount) || 1));
       const normalizedInput = mapValidatedStudioWorkflowToNormalizedInvocation({
@@ -283,6 +345,7 @@ async function handlePreflight(req) {
         providerPayloadHash: plan.providerPayloadHash,
         unitPricing: plan.unitPricing,
         workflowPricing: plan.workflowPricing,
+        pricingRevisionId: plan.workflowPricing.pricingRevisionId,
         outputCount: plan.workflowPricing.outputCount,
         preparedAt: plan.preparedAt,
         expiresAt: plan.expiresAt,
@@ -295,12 +358,11 @@ async function handlePreflight(req) {
   }
 
   const routingSnapshot = {
-    authority,
     model: safeModelSnapshot(model),
     webhookUrl,
     requestFingerprint,
-    quoteCostSnapshot: activeQuoteBreakdown,
-    providerPayloadFingerprint: modelPlatformPreparedPlan?.providerPayloadHash || providerPayloadFingerprint,
+    quoteCostSnapshot: legacyQuoteBreakdown,
+    providerPayloadFingerprint,
     modelPlatformPreparedPlan,
   };
 
@@ -316,13 +378,13 @@ async function handlePreflight(req) {
       provider: model.provider,
       providerEndpoint: model.endpoint,
       registryRevision: model.capabilityRevision,
-      pricingRevision: activeQuoteBreakdown.pricingRevisionId || model.pricingRevision,
+      pricingRevision: legacyQuoteBreakdown.pricingRevisionId,
       adapterVersion: model.adapterVersion,
-      estimatedProviderCostMinMicroUsd: BigInt(activeQuoteBreakdown.components.providerGeneration),
-      estimatedProviderCostMaxMicroUsd: BigInt(activeQuoteBreakdown.components.providerGeneration),
-      infrastructureCostEstimateMicroUsd: BigInt(activeQuoteBreakdown.fullyLoadedCostMicroUsd) - BigInt(activeQuoteBreakdown.components.providerGeneration),
+      estimatedProviderCostMinMicroUsd: BigInt(legacyQuoteBreakdown.components.providerGeneration),
+      estimatedProviderCostMaxMicroUsd: BigInt(legacyQuoteBreakdown.components.providerGeneration),
+      infrastructureCostEstimateMicroUsd: BigInt(legacyQuoteBreakdown.fullyLoadedCostMicroUsd) - BigInt(legacyQuoteBreakdown.components.providerGeneration),
       expectedFailureLossMicroUsd: BigInt(0),
-      internalCreditsToReserve: activeQuoteBreakdown.totalCredits,
+      internalCreditsToReserve: legacyQuoteBreakdown.totalCredits,
       warnings: JSON.stringify([]),
       capabilitySummary: JSON.stringify(safeModelSnapshot(model)),
       expiresAt,
@@ -333,7 +395,7 @@ async function handlePreflight(req) {
   executeShadowPreflight({
     legacyBody: body,
     legacyModel: model,
-    legacyQuoteBreakdown: legacyQuoteBreakdown,
+    legacyQuoteBreakdown,
     legacyPayloadFingerprint: providerPayloadFingerprint,
     legacyStartTimestamp,
     compiledPrompt: compiled.compiledPrompt,
@@ -352,7 +414,7 @@ async function handlePreflight(req) {
       delivery: request.instructions.confirmedDelivery,
       roleMap,
       scenePlan: compiled.compiledPrompt,
-      costs: activeQuoteBreakdown,
+      costs: legacyQuoteBreakdown,
       providerPreview: {
         endpoint: model.endpoint,
         payload: { ...providerPayload, images_list: providerPayload.images_list.map((_, index) => `[signed-asset-${index + 1}]`) },
