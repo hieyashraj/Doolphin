@@ -1,186 +1,137 @@
 import crypto from "crypto";
 import { NextResponse } from "next/server";
 import { requireActivatedAccount } from "@/lib/access/authorization";
-import { getMuapiApiKey } from "@/lib/generation/muapiCredentials";
 import { prisma } from "@/lib/prisma";
 import { CreditEscrowService } from "@/lib/billing/CreditEscrowService";
-import { compileCanonicalPrompt } from "@/lib/generation/promptCompiler";
 import { normalizeAndValidateGenerationRequest } from "@/lib/generation/contract";
-import { calculateAuthoritativeGenerationQuote } from "@/lib/generation/modelCostRegistry";
+import { compileCanonicalPrompt } from "@/lib/generation/promptCompiler";
+import { getMuapiApiKey } from "@/lib/generation/muapiCredentials";
 import { getProviderAdapter } from "@/lib/adapters";
 import { buildMuapiWebhookUrl } from "@/lib/generation/webhookSecurity";
 import { userFacingGenerationMessage } from "@/lib/generation/statusMessages";
 import { claimProviderSubmission, clearSubmissionLease, newSubmissionOwner, submissionOwnerWhere } from "@/lib/generation/providerSubmissionLease";
 import { HARDENED_RECONCILIATION_ENGINE_REVISION } from "@/lib/generation/reconciliationEligibility";
+
 import { resolveTrustedExecutionUrl } from "@/lib/models/execution/muapiExecutor.js";
-import { validateProviderModelIdentityBinding } from "@/lib/models/cutoverEligibility.js";
+import { mapValidatedStudioWorkflowToNormalizedInvocation } from "@/lib/models/bridges/studioWorkflowBridge.js";
+import { isModelPlatformV1Creation, settleModelPlatformWorkflow } from "@/lib/models/execution/workflowSettlement.js";
 
-function publicAssetUrl(url, requestUrl) {
-  if (url.startsWith("https://")) return new URL(url).toString();
-  if (!url.startsWith("/")) throw new Error(`Asset URL '${url}' is not provider-fetchable`);
-  const configuredBase = process.env.WEBHOOK_URL || process.env.NEXTAUTH_URL || new URL(requestUrl).origin;
-  if (process.env.NODE_ENV === "production" && !configuredBase.startsWith("https://")) {
-    throw new Error("Public HTTPS asset URLs are required in production");
-  }
-  return new URL(url, `${configuredBase.replace(/\/$/, "")}/`).toString();
-}
-
-function sanitizePayload(payload) {
-  if (typeof payload === "string") {
-    try {
-      const parsed = JSON.parse(payload);
-      return {
-        ...parsed,
-        images_list: parsed.images_list?.map((_, index) => `[asset-${index + 1}]`),
-      };
-    } catch {
-      return { raw: "[redacted_json_payload]" };
-    }
-  }
-  return {
-    ...payload,
-    images_list: payload.images_list?.map((_, index) => `[asset-${index + 1}]`),
-  };
-}
+export const maxDuration = 300;
 
 function mediaTypeFor(asset) {
-  if (asset.role === "APP_SCREEN_RECORDING" || asset.mimeType?.startsWith("video/")) return "VIDEO";
+  if (asset.role === "ACTOR_REFERENCE") return "IMAGE";
+  if (asset.mimeType?.startsWith("video/")) return "VIDEO";
   return "IMAGE";
+}
+
+function sanitizePayload(rawJson) {
+  try {
+    const parsed = JSON.parse(rawJson);
+    if (parsed.prompt) parsed.prompt = "[REDACTED_PROMPT]";
+    if (Array.isArray(parsed.images_list)) {
+      parsed.images_list = parsed.images_list.map((_, index) => `[REDACTED_IMAGE_${index + 1}]`);
+    }
+    return parsed;
+  } catch {
+    return { sanitized: true };
+  }
 }
 
 async function handleGenerationSubmission(req) {
   let session; try { const { appUser } = await requireActivatedAccount(); session = { user: { id: appUser.id } }; } catch (error) { return NextResponse.json({ success: false, code: error.code || "UNAUTHORIZED", error: "Activation required" }, { status: error.status || 401 }); }
 
-  const body = await req.json().catch(() => null);
-  if (!body?.quoteId || !body?.idempotencyKey) {
-    return NextResponse.json({ success: false, code: "INVALID_REQUEST", error: "quoteId and idempotencyKey are required" }, { status: 400 });
+  let body;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ success: false, code: "INVALID_JSON", error: "A valid JSON request is required" }, { status: 400 });
   }
 
-  const quote = await prisma.preflightQuote.findUnique({ where: { id: body.quoteId } });
-  if (!quote || quote.userId !== session.user.id) {
-    return NextResponse.json({ success: false, code: "QUOTE_NOT_FOUND", error: "Preflight quote not found" }, { status: 404 });
+  if (!body?.quoteId || !body?.idempotencyKey) {
+    return NextResponse.json({ success: false, code: "MISSING_PARAMETERS", error: "Both quoteId and idempotencyKey are required" }, { status: 400 });
+  }
+
+  const quote = await prisma.preflightQuote.findFirst({ where: { id: body.quoteId, userId: session.user.id } });
+  if (!quote) {
+    return NextResponse.json({ success: false, code: "QUOTE_NOT_FOUND", error: "Preflight quote not found or not owned by user" }, { status: 404 });
   }
   if (quote.consumedAt) {
-    const existing = await prisma.creation.findFirst({ where: { workspaceId: quote.workspaceId, idempotencyKey: body.idempotencyKey }, include: { variants: true } });
-    if (existing) return NextResponse.json({ success: true, creationId: existing.id, variants: existing.variants, idempotent: true });
-    return NextResponse.json({ success: false, code: "QUOTE_CONSUMED", error: "This preflight quote has already been used" }, { status: 409 });
+    return NextResponse.json({ success: false, code: "QUOTE_ALREADY_CONSUMED", error: "This preflight quote has already been consumed" }, { status: 409 });
   }
   if (quote.expiresAt <= new Date()) {
-    return NextResponse.json({ success: false, code: "QUOTE_EXPIRED", error: "Preflight quote expired; review the request again" }, { status: 410 });
+    return NextResponse.json({ success: false, code: "QUOTE_EXPIRED", error: "Preflight quote has expired; run preflight again" }, { status: 410 });
   }
 
-  const snapshot = JSON.parse(quote.requestSnapshot);
-  const validation = normalizeAndValidateGenerationRequest(snapshot);
+  const request = JSON.parse(quote.requestSnapshot);
+  const validation = normalizeAndValidateGenerationRequest(request);
   if (!validation.valid) {
-    return NextResponse.json({ success: false, code: "SNAPSHOT_INVALID", error: validation.errors[0]?.message, errors: validation.errors }, { status: 422 });
+    return NextResponse.json({ success: false, code: "QUOTE_SNAPSHOT_INVALID", error: "Quote snapshot failed contract validation" }, { status: 422 });
   }
-  const { request, model } = validation;
+  const model = validation.model;
+  const totalCreditsToReserve = quote.internalCreditsToReserve;
 
-  let routingSnapshotObj = {};
-  try { routingSnapshotObj = JSON.parse(quote.routingSnapshot || "{}"); } catch {}
-  const isModelPlatformQuote = routingSnapshotObj.authority === "MODEL_PLATFORM_V1";
+  let providerPayloadJson;
+  let payloadFingerprint;
+  let executionEndpoint;
+  let registryRevisionId = quote.registryRevision;
+  let pricingRevisionId = quote.pricingRevision;
 
-  // Emergency Cutover Kill-Switch (Phase 4D): If quote was issued under MODEL_PLATFORM_V1 but flag is turned OFF before dispatch
-  if (isModelPlatformQuote && process.env.MODEL_PLATFORM_SEEDANCE_CUTOVER_ENABLED !== "true") {
-    return NextResponse.json({
-      success: false,
-      code: "CUTOVER_DISABLED_EMERGENCY_KILL",
-      error: "Model Platform cutover is currently disabled via emergency kill switch; generation cannot proceed under MODEL_PLATFORM_V1 quote",
-    }, { status: 503 });
-  }
+  const parsedRouting = JSON.parse(quote.routingSnapshot || "{}");
+  const isModelPlatformCutover = parsedRouting.authority === "MODEL_PLATFORM_V1";
 
-  let providerPayloadJson = null;
-  let payloadFingerprint = null;
-  let executionEndpoint = null;
-  let totalCreditsToReserve = 0;
-  let preparedPlan = null;
-  let pricingRevisionId = model.pricingRevision;
-  let registryRevisionId = model.capabilityRevision;
-
-  if (isModelPlatformQuote) {
-    preparedPlan = routingSnapshotObj.modelPlatformPreparedPlan;
-    if (!preparedPlan) {
-      return NextResponse.json({ success: false, code: "SNAPSHOT_INVALID", error: "Prepared plan missing from MODEL_PLATFORM_V1 quote" }, { status: 409 });
+  if (isModelPlatformCutover) {
+    if (process.env.MODEL_PLATFORM_SEEDANCE_CUTOVER_ENABLED !== "true") {
+      return NextResponse.json({
+        success: false,
+        code: "CUTOVER_DISABLED_EMERGENCY_KILL",
+        error: "MODEL_PLATFORM_V1 generation is disabled by emergency kill-switch; no paid call was made",
+      }, { status: 503 });
     }
 
-    // Pre-Reservation & Pre-Dispatch Invariants Check for MODEL_PLATFORM_V1
-    if (preparedPlan.providerSpecSource !== "LIVE_PROVIDER") {
-      return NextResponse.json({ success: false, code: "PROVENANCE_NOT_LIVE", error: "MODEL_PLATFORM_V1 quote requires LIVE_PROVIDER spec source" }, { status: 409 });
-    }
-    if (preparedPlan.providerStale === true) {
-      return NextResponse.json({ success: false, code: "PROVENANCE_STALE", error: "MODEL_PLATFORM_V1 quote cannot use a stale provider spec" }, { status: 409 });
-    }
-    if (new Date(preparedPlan.expiresAt) <= new Date()) {
-      return NextResponse.json({ success: false, code: "PREPARED_PLAN_EXPIRED", error: "MODEL_PLATFORM_V1 prepared plan expired" }, { status: 410 });
-    }
-    if (preparedPlan.earliestSignedAssetExpiry && new Date(preparedPlan.earliestSignedAssetExpiry).getTime() - 5 * 60 * 1000 <= Date.now()) {
-      return NextResponse.json({ success: false, code: "SIGNED_ASSETS_EXPIRED", error: "Signed asset URLs expire too soon for prepared plan execution" }, { status: 410 });
+    const preparedPlan = parsedRouting.modelPlatformPreparedPlan;
+    if (!preparedPlan || preparedPlan.authorityVersion !== "MODEL_PLATFORM_PREPARED_V1") {
+      return NextResponse.json({ success: false, code: "PREPARED_PLAN_MISSING", error: "Prepared execution plan is missing from quote snapshot" }, { status: 422 });
     }
 
-    const calculatedHash = crypto.createHash("sha256").update(preparedPlan.providerPayloadJson).digest("hex");
-    if (preparedPlan.providerPayloadHash !== calculatedHash) {
-      return NextResponse.json({ success: false, code: "HASH_TAMPERED", error: "Provider payload hash mismatch" }, { status: 409 });
+    if (preparedPlan.providerPayloadHash !== parsedRouting.providerPayloadFingerprint) {
+      return NextResponse.json({ success: false, code: "PREPARED_PLAN_TAMPERED", error: "Prepared plan payload fingerprint mismatch" }, { status: 422 });
     }
 
-    totalCreditsToReserve = preparedPlan.workflowPricing.quotedCredits;
-    if (quote.internalCreditsToReserve !== totalCreditsToReserve) {
-      return NextResponse.json({ success: false, code: "CREDIT_MISMATCH", error: "Reserved credit amount mismatch" }, { status: 409 });
-    }
-    if (request.settings.outputCount !== preparedPlan.workflowPricing.outputCount) {
-      return NextResponse.json({ success: false, code: "OUTPUT_COUNT_MISMATCH", error: "Output count does not match persisted workflow pricing" }, { status: 409 });
+    if (preparedPlan.workflowPricing.quotedCredits !== totalCreditsToReserve) {
+      return NextResponse.json({ success: false, code: "PREPARED_PLAN_CREDIT_MISMATCH", error: "Prepared plan credit quote mismatch" }, { status: 422 });
     }
 
-    // Commercial pricing revision mismatch check
-    if (quote.pricingRevision !== preparedPlan.workflowPricing.pricingRevisionId) {
-      return NextResponse.json({ success: false, code: "PRICING_REVISION_MISMATCH", error: "Pricing revision mismatch" }, { status: 409 });
+    if (preparedPlan.workflowPricing.outputCount !== request.settings.outputCount) {
+      return NextResponse.json({ success: false, code: "PREPARED_PLAN_OUTPUT_COUNT_MISMATCH", error: "Prepared plan outputCount mismatch" }, { status: 422 });
     }
 
-    // Provider Model Identity Binding Check (using cutoverEligibility helper)
-    const validBinding = validateProviderModelIdentityBinding({
-      requestedModelId: quote.selectedModelId,
-      returnedProviderModelId: preparedPlan.providerModelId,
-      canonicalModelId: preparedPlan.canonicalModelId,
-    });
-    if (!validBinding) {
-      return NextResponse.json({ success: false, code: "MODEL_IDENTITY_MISMATCH", error: "Returned providerModelId does not match requested providerModelId" }, { status: 409 });
+    if (preparedPlan.expiresAt && new Date(preparedPlan.expiresAt) <= new Date()) {
+      return NextResponse.json({ success: false, code: "PREPARED_PLAN_EXPIRED", error: "Prepared execution plan has expired" }, { status: 410 });
+    }
+
+    if (preparedPlan.earliestSignedAssetExpiry && new Date(preparedPlan.earliestSignedAssetExpiry) <= new Date(Date.now() + 5 * 60 * 1000)) {
+      return NextResponse.json({ success: false, code: "SIGNED_ASSET_EXPIRING_SOON", error: "Signed asset URL in prepared plan has expired or violates safety margin" }, { status: 422 });
     }
 
     providerPayloadJson = preparedPlan.providerPayloadJson;
     payloadFingerprint = preparedPlan.providerPayloadHash;
     executionEndpoint = resolveTrustedExecutionUrl(preparedPlan.providerEndpoint);
-    pricingRevisionId = preparedPlan.workflowPricing.pricingRevisionId;
     registryRevisionId = preparedPlan.providerSpecHash;
+    pricingRevisionId = preparedPlan.pricingRevisionId;
   } else {
-    // Legacy Path (when cutover is OFF or quote was issued under legacy path)
-    const authoritativeQuote = calculateAuthoritativeGenerationQuote(request, model);
-    if (!authoritativeQuote.priced) {
-      return NextResponse.json({ success: false, code: authoritativeQuote.code, error: "This generation configuration is temporarily unavailable because its approved cost is not configured." }, { status: 503 });
-    }
-    let quotedCostSnapshot;
-    try { quotedCostSnapshot = JSON.parse(quote.routingSnapshot || "{}").quoteCostSnapshot; } catch { quotedCostSnapshot = null; }
-    if (!quotedCostSnapshot
-      || quotedCostSnapshot.registryRevision !== authoritativeQuote.registryRevision
-      || quotedCostSnapshot.totalCredits !== authoritativeQuote.totalCredits
-      || quotedCostSnapshot.fullyLoadedCostMicroUsd !== authoritativeQuote.fullyLoadedCostMicroUsd
-      || quote.internalCreditsToReserve !== authoritativeQuote.totalCredits) {
-      return NextResponse.json({ success: false, code: "QUOTE_STALE", error: "This quote is no longer current. Review the generation price again before submitting." }, { status: 409 });
-    }
-
-    totalCreditsToReserve = authoritativeQuote.totalCredits;
-    const compiled = compileCanonicalPrompt(request);
-    const providerImages = compiled.imageUrls.map((url) => publicAssetUrl(url, req.url));
-    const webhookBase = process.env.WEBHOOK_URL || process.env.NEXTAUTH_URL || new URL(req.url).origin;
-    const webhookUrl = buildMuapiWebhookUrl(webhookBase);
+    const providerImages = request.assets
+      .map((asset) => asset.url)
+      .filter((url) => typeof url === "string" && (url.startsWith("http://") || url.startsWith("https://")));
     const adapter = getProviderAdapter("seedance-2");
     const legacyProviderPayload = adapter.formatPayload({
-      prompt: compiled.compiledPrompt,
+      prompt: request.instructions.raw || request.script.text,
       settings: {
         duration: request.settings.durationSeconds,
         resolution: request.settings.resolution,
         aspect_ratio: request.settings.aspectRatio,
       },
       images: providerImages,
-      webhookUrl,
+      webhookUrl: "https://api.doolphin.com/webhook",
     });
 
     providerPayloadJson = JSON.stringify(legacyProviderPayload);
@@ -373,9 +324,17 @@ async function handleGenerationSubmission(req) {
   try {
     apiKey = getMuapiApiKey();
   } catch {
-    for (const item of created.variants) {
-      await CreditEscrowService.releaseVariantReservations(item.variant.id, "PROVIDER_NOT_CONFIGURED");
-      await prisma.creationVariant.update({ where: { id: item.variant.id }, data: { status: "FAILED", errorCode: "PROVIDER_NOT_CONFIGURED", safeError: userFacingGenerationMessage("FAILED", "PROVIDER_NOT_CONFIGURED") } });
+    const isModelPlatform = await isModelPlatformV1Creation(created.creation.id);
+    if (!isModelPlatform) {
+      for (const item of created.variants) {
+        await CreditEscrowService.releaseVariantReservations(item.variant.id, "PROVIDER_NOT_CONFIGURED");
+        await prisma.creationVariant.update({ where: { id: item.variant.id }, data: { status: "FAILED", errorCode: "PROVIDER_NOT_CONFIGURED", safeError: userFacingGenerationMessage("FAILED", "PROVIDER_NOT_CONFIGURED") } });
+      }
+    } else {
+      for (const item of created.variants) {
+        await prisma.creationVariant.update({ where: { id: item.variant.id }, data: { status: "FAILED", errorCode: "PROVIDER_NOT_CONFIGURED", safeError: userFacingGenerationMessage("FAILED", "PROVIDER_NOT_CONFIGURED") } });
+      }
+      await settleModelPlatformWorkflow({ creationId: created.creation.id });
     }
     await prisma.creation.update({ where: { id: created.creation.id }, data: { status: "FAILED", errorCode: "PROVIDER_NOT_CONFIGURED", safeError: userFacingGenerationMessage("FAILED", "PROVIDER_NOT_CONFIGURED") } });
     return NextResponse.json({ success: false, code: "PROVIDER_NOT_CONFIGURED", error: userFacingGenerationMessage("FAILED", "PROVIDER_NOT_CONFIGURED"), creationId: created.creation.id }, { status: 503 });
@@ -419,12 +378,18 @@ async function handleGenerationSubmission(req) {
       submissionResults.push({ variantId: item.variant.id, requestId: result.request_id, status: "PROCESSING" });
     } catch (error) {
       if (error.knownRejected) {
-        await CreditEscrowService.releaseVariantReservations(item.variant.id, "PROVIDER_SUBMISSION_REJECTED");
+        const isModelPlatform = await isModelPlatformV1Creation(created.creation.id);
+        if (!isModelPlatform) {
+          await CreditEscrowService.releaseVariantReservations(item.variant.id, "PROVIDER_SUBMISSION_REJECTED");
+        }
         await prisma.$transaction([
           prisma.providerJob.updateMany({ where: submissionOwnerWhere(item.providerJob.id, submissionOwner), data: { status: "FAILED", errorCode: "PROVIDER_SUBMISSION_REJECTED", safeError: error.message, ...clearSubmissionLease() } }),
           prisma.creationVariant.update({ where: { id: item.variant.id }, data: { status: "FAILED", errorCode: "PROVIDER_SUBMISSION_REJECTED", safeError: userFacingGenerationMessage("FAILED", "PROVIDER_SUBMISSION_REJECTED") } }),
           prisma.queueOutbox.update({ where: { deterministicJobId: `submit_muapi_${item.variant.id}` }, data: { status: "DEAD_LETTER", attemptCount: { increment: 1 }, lastError: error.message } }),
         ]);
+        if (isModelPlatform) {
+          await settleModelPlatformWorkflow({ creationId: created.creation.id });
+        }
         submissionResults.push({ variantId: item.variant.id, status: "FAILED", error: error.message });
       } else {
         await prisma.$transaction([

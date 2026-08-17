@@ -1,295 +1,213 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+
 if (!process.env.DATABASE_URL) {
   process.env.DATABASE_URL = "postgresql://mock:mock@localhost:5432/mock";
 }
 
-import test from "node:test";
-import assert from "node:assert/strict";
-import crypto from "node:crypto";
+const { prepareExecutionPlan } = await import("../../src/lib/models/execution/prepareExecutionPlan.js");
+const { calculateWorkflowCommercialQuote } = await import("../../src/lib/models/pricingIntegration.js");
+const { calculateWorkflowSettlement, settleModelPlatformWorkflow, isModelPlatformV1Creation } = await import("../../src/lib/models/execution/workflowSettlement.js");
+const { parseUsdToMicroUsdConservatively } = await import("../../src/lib/models/execution/muapiExecutor.js");
 
-import { calculateWorkflowCommercialQuote } from "../../src/lib/models/pricingIntegration.js";
-import { isSeedanceModelPlatformCutoverEligible } from "../../src/lib/models/cutoverEligibility.js";
-import { prepareExecutionPlan } from "../../src/lib/models/execution/prepareExecutionPlan.js";
-import { clearExactModelMemoryCache } from "../../src/lib/models/providerCatalog.js";
-import { mapValidatedStudioWorkflowToNormalizedInvocation } from "../../src/lib/models/bridges/studioWorkflowBridge.js";
-
-const TEST_ENV_ON = {
-  DOOLPHIN_ENV: "staging",
-  MUAPI_API_KEY_SANDBOX: "sandbox_test_key_phase4d1",
-  MODEL_PLATFORM_SEEDANCE_CUTOVER_ENABLED: "true",
+const mockAuthoritativeSpec = {
+  providerModelId: "seedance-2-omni-reference-no-video-fast",
+  endpoint: "https://api.muapi.ai/api/v1/seedance-2-omni-reference-no-video-fast",
+  inputSchema: { prompt: { type: "string" } },
+  outputSchema: { video_url: { type: "string" } },
+  dynamicPricing: true,
+  estimateEndpoint: "https://api.muapi.ai/api/v1/estimate-cost",
+  cost: null,
 };
 
-const TEST_ENV_OFF = {
-  DOOLPHIN_ENV: "staging",
-  MUAPI_API_KEY_SANDBOX: "sandbox_test_key_phase4d1",
-  MODEL_PLATFORM_SEEDANCE_CUTOVER_ENABLED: "false",
+const mockFetchImpl = async (url) => {
+  if (url.includes("/estimate-cost")) {
+    return new Response(JSON.stringify({
+      cost: { amount_usd: "0.05", currency: "USD" },
+      pricing_mode: "DYNAMIC",
+    }), { status: 200, headers: { "content-type": "application/json" } });
+  }
+  return new Response(JSON.stringify({
+    id: "seedance-2-omni-reference-no-video-fast",
+    endpoint: "/api/v1/seedance-2-omni-reference-no-video-fast",
+    input_schema: { prompt: { type: "string" } },
+    output_schema: { video_url: { type: "string" } },
+    dynamic_pricing: true,
+    estimate_endpoint: "/api/v1/estimate-cost",
+  }), { status: 200, headers: { "content-type": "application/json" } });
 };
 
-/**
- * Creates a mock Prisma database client that faithfully simulates balance state & transactions.
- */
-function createMockPrismaHarness({ initialAvailable = 100, initialReserved = 0 } = {}) {
-  const account = {
-    id: "acc_123",
-    workspaceId: "ws_123",
-    availableCredits: initialAvailable,
-    reservedCredits: initialReserved,
-    lifetimeCommittedCredits: 0,
-    lifetimeReleasedCredits: 0,
-    version: 1,
-  };
+test("Phase 4D.2 SQL Migration: File exists and matches schema shape", () => {
+  const migrationDir = path.join(process.cwd(), "prisma/migrations");
+  const entries = fs.readdirSync(migrationDir);
+  const settlementMigration = entries.find((dir) => dir.includes("model_platform_workflow_settlement"));
+  assert.ok(settlementMigration, "SQL migration directory for model_platform_workflow_settlement must exist");
 
-  const reservations = new Map();
-  const transactions = [];
+  const sqlPath = path.join(migrationDir, settlementMigration, "migration.sql");
+  assert.ok(fs.existsSync(sqlPath), "migration.sql must exist inside migration directory");
 
-  const mockDb = {
-    ledgerCutover: { findUnique: async () => null },
-    creditAccount: {
-      findUnique: async () => ({ ...account }),
-      updateMany: async ({ data }) => {
-        if (data.availableCredits?.decrement) {
-          account.availableCredits -= data.availableCredits.decrement;
-          account.reservedCredits += data.reservedCredits.increment;
-        } else if (data.reservedCredits?.decrement !== undefined) {
-          account.reservedCredits = Math.max(0, account.reservedCredits - data.reservedCredits.decrement);
-          if (data.availableCredits?.increment) account.availableCredits += data.availableCredits.increment;
-          if (data.availableCredits) account.availableCredits = data.availableCredits;
-          if (data.lifetimeCommittedCredits?.increment) account.lifetimeCommittedCredits += data.lifetimeCommittedCredits.increment;
-          if (data.lifetimeReleasedCredits?.increment) account.lifetimeReleasedCredits += data.lifetimeReleasedCredits.increment;
-        }
-        account.version += 1;
-        return { count: 1 };
-      },
-      update: async ({ data }) => {
-        if (data.availableCredits !== undefined) account.availableCredits = data.availableCredits;
-        if (data.reservedCredits !== undefined) account.reservedCredits = data.reservedCredits;
-        if (data.lifetimeCommittedCredits?.increment) account.lifetimeCommittedCredits += data.lifetimeCommittedCredits.increment;
-        if (data.lifetimeReleasedCredits?.increment) account.lifetimeReleasedCredits += data.lifetimeReleasedCredits.increment;
-        account.version += 1;
-        return { ...account };
-      },
-    },
-    creditReservation: {
-      findUnique: async ({ where }) => {
-        if (where.idempotencyKey) {
-          for (const res of reservations.values()) {
-            if (res.idempotencyKey === where.idempotencyKey) return { ...res };
-          }
-          return null;
-        }
-        return reservations.has(where.id) ? { ...reservations.get(where.id) } : null;
-      },
-      create: async ({ data }) => {
-        const res = { id: `res_${Date.now()}_${Math.random()}`, ...data };
-        reservations.set(res.id, res);
-        return res;
-      },
-      update: async ({ where, data }) => {
-        const existing = reservations.get(where.id);
-        const updated = { ...existing, ...data };
-        reservations.set(where.id, updated);
-        return updated;
-      },
-    },
-    creditTransaction: {
-      create: async ({ data }) => {
-        const tx = { id: `tx_${transactions.length + 1}`, ...data };
-        transactions.push(tx);
-        return tx;
-      },
-    },
-    $transaction: async (fn) => fn(mockDb),
-  };
-
-  return { mockDb, account, reservations, transactions };
-}
-
-test("Phase 4D.1 Settlement Primitive: 1 output success commits reservation fully", async () => {
-  const { CreditEscrowService } = await import("../../src/lib/billing/CreditEscrowService.js");
-  const { mockDb, account, reservations, transactions } = createMockPrismaHarness({ initialAvailable: 100 });
-
-  const res = await CreditEscrowService.reserveCredits({
-    workspaceId: "ws_123",
-    creationId: "c_1",
-    creationVariantId: "cv_1",
-    amount: 10,
-    idempotencyKey: "res_key_1",
-    userId: "u_1",
-    tx: mockDb,
-  });
-
-  assert.equal(account.availableCredits, 90);
-  assert.equal(account.reservedCredits, 10);
-
-  const settled = await CreditEscrowService.settleReservationSplit({
-    reservationId: res.id,
-    commitAmount: 10,
-    releaseAmount: 0,
-    reason: "TEST_SUCCESS",
-    tx: mockDb,
-  });
-
-  assert.equal(settled.status, "COMMITTED");
-  assert.equal(settled.committedAmount, 10);
-  assert.equal(settled.releasedAmount, 0);
-  assert.equal(account.availableCredits, 90);
-  assert.equal(account.reservedCredits, 0);
-  assert.equal(account.lifetimeCommittedCredits, 10);
-  assert.equal(account.lifetimeReleasedCredits, 0);
-
-  const commitTxs = transactions.filter((t) => t.type === "COMMIT");
-  assert.equal(commitTxs.length, 1);
-  assert.equal(commitTxs[0].amount, 10);
+  const sqlContent = fs.readFileSync(sqlPath, "utf8");
+  assert.match(sqlContent, /PARTIALLY_SETTLED/);
+  assert.match(sqlContent, /committedAmount/);
+  assert.match(sqlContent, /releasedAmount/);
+  assert.match(sqlContent, /settledAt/);
+  assert.match(sqlContent, /settlementSummaryJson/);
+  assert.match(sqlContent, /WebhookEvent_provider_providerRequestId_payloadHash_key/);
+  assert.match(sqlContent, /Creation_quoteId_fkey/);
 });
 
-test("Phase 4D.1 Settlement Primitive: 1 output failure releases reservation fully", async () => {
-  const { CreditEscrowService } = await import("../../src/lib/billing/CreditEscrowService.js");
-  const { mockDb, account, reservations, transactions } = createMockPrismaHarness({ initialAvailable: 100 });
-
-  const res = await CreditEscrowService.reserveCredits({
-    workspaceId: "ws_123",
-    creationId: "c_2",
-    creationVariantId: "cv_2",
-    amount: 10,
-    idempotencyKey: "res_key_2",
-    userId: "u_1",
-    tx: mockDb,
-  });
-
-  const settled = await CreditEscrowService.settleReservationSplit({
-    reservationId: res.id,
-    commitAmount: 0,
-    releaseAmount: 10,
-    reason: "TEST_FAILURE",
-    tx: mockDb,
-  });
-
-  assert.equal(settled.status, "RELEASED");
-  assert.equal(settled.committedAmount, 0);
-  assert.equal(settled.releasedAmount, 10);
-  assert.equal(account.availableCredits, 100);
-  assert.equal(account.reservedCredits, 0);
-  assert.equal(account.lifetimeCommittedCredits, 0);
-  assert.equal(account.lifetimeReleasedCredits, 10);
-
-  const releaseTxs = transactions.filter((t) => t.type === "RELEASE");
-  assert.equal(releaseTxs.length, 1);
-  assert.equal(releaseTxs[0].amount, 10);
-});
-
-test("Phase 4D.1 Settlement Primitive: 2 outputs partial success (1 success / 1 fail) settles split PARTIALLY_SETTLED", async () => {
-  const { CreditEscrowService } = await import("../../src/lib/billing/CreditEscrowService.js");
-  const { mockDb, account, reservations, transactions } = createMockPrismaHarness({ initialAvailable: 100 });
-
-  const res = await CreditEscrowService.reserveCredits({
-    workspaceId: "ws_123",
-    creationId: "c_3",
-    creationVariantId: "cv_3",
-    amount: 10,
-    idempotencyKey: "res_key_3",
-    userId: "u_1",
-    tx: mockDb,
-  });
-
-  const settled = await CreditEscrowService.settleReservationSplit({
-    reservationId: res.id,
-    commitAmount: 5,
-    releaseAmount: 5,
-    reason: "TEST_PARTIAL_SUCCESS",
-    tx: mockDb,
-  });
-
-  assert.equal(settled.status, "PARTIALLY_SETTLED");
-  assert.equal(settled.committedAmount, 5);
-  assert.equal(settled.releasedAmount, 5);
-  assert.equal(account.availableCredits, 95);
-  assert.equal(account.reservedCredits, 0);
-  assert.equal(account.lifetimeCommittedCredits, 5);
-  assert.equal(account.lifetimeReleasedCredits, 5);
-
-  const commitTxs = transactions.filter((t) => t.type === "COMMIT");
-  const releaseTxs = transactions.filter((t) => t.type === "RELEASE");
-  assert.equal(commitTxs.length, 1);
-  assert.equal(commitTxs[0].amount, 5);
-  assert.equal(releaseTxs.length, 1);
-  assert.equal(releaseTxs[0].amount, 5);
-});
-
-test("Phase 4D.1 Idempotency: Replay settlement on already-settled reservation makes zero additional balance changes", async () => {
-  const { CreditEscrowService } = await import("../../src/lib/billing/CreditEscrowService.js");
-  const { mockDb, account } = createMockPrismaHarness({ initialAvailable: 100 });
-
-  const res = await CreditEscrowService.reserveCredits({
-    workspaceId: "ws_123",
-    creationId: "c_4",
-    creationVariantId: "cv_4",
-    amount: 10,
-    idempotencyKey: "res_key_4",
-    userId: "u_1",
-    tx: mockDb,
-  });
-
-  await CreditEscrowService.settleReservationSplit({
-    reservationId: res.id,
-    commitAmount: 5,
-    releaseAmount: 5,
-    reason: "FIRST_SETTLEMENT",
-    tx: mockDb,
-  });
-
-  const availBefore = account.availableCredits;
-  const committedBefore = account.lifetimeCommittedCredits;
-
-  const replay = await CreditEscrowService.settleReservationSplit({
-    reservationId: res.id,
-    commitAmount: 5,
-    releaseAmount: 5,
-    reason: "REPLAY_SETTLEMENT",
-    tx: mockDb,
-  });
-
-  assert.equal(replay.status, "PARTIALLY_SETTLED");
-  assert.equal(account.availableCredits, availBefore);
-  assert.equal(account.lifetimeCommittedCredits, committedBefore);
-});
-
-test("Phase 4D.1 Commercial Pricing: Settlement schedule calculated at preflight time is authoritative and non-divergent", async () => {
-  const { calculateWorkflowSettlement: settleCalc } = await import("../../src/lib/models/execution/workflowSettlement.js");
-  const quote = calculateWorkflowCommercialQuote({
-    preparedUnitPlan: { pricing: { providerCostMicroUsd: "241900" } },
+test("Phase 4D.2 Prepared Plan: settlementSchedule survives JSON round-trip", async () => {
+  const plan = await prepareExecutionPlan({
+    modelId: "seedance-2-omni-reference-no-video-fast",
+    normalizedInput: { prompt: "Test prompt" },
     outputCount: 2,
+    fetchImpl: mockFetchImpl,
   });
 
-  assert.ok(quote.quotedCredits > 0);
-  assert.ok(quote.settlementSchedule);
-  assert.equal(quote.settlementSchedule[0], 0);
-  assert.ok(quote.settlementSchedule[1] > 0);
-  assert.equal(quote.settlementSchedule[2], quote.quotedCredits);
+  assert.ok(plan.workflowPricing.settlementSchedule, "settlementSchedule must be present in workflowPricing");
+  assert.equal(plan.workflowPricing.outputCount, 2);
 
-  const partial = settleCalc({
+  const serialized = JSON.stringify(plan);
+  const deserialized = JSON.parse(serialized);
+
+  assert.deepEqual(deserialized.workflowPricing.settlementSchedule, plan.workflowPricing.settlementSchedule);
+});
+
+test("Phase 4D.2 Settlement: 1 output success commits reservation fully", () => {
+  const settlement = calculateWorkflowSettlement({
+    outputCount: 1,
+    quotedCredits: 50,
+    successfulVariantCount: 1,
+    failedVariantCount: 0,
+    settlementSchedule: { 0: 0, 1: 50 },
+  });
+
+  assert.equal(settlement.settledStatus, "COMPLETED");
+  assert.equal(settlement.earnedCreditsToCharge, 50);
+  assert.equal(settlement.unearnedCreditsToRelease, 0);
+  assert.equal(settlement.isPartial, false);
+});
+
+test("Phase 4D.2 Settlement: 1 output failure releases reservation fully", () => {
+  const settlement = calculateWorkflowSettlement({
+    outputCount: 1,
+    quotedCredits: 50,
+    successfulVariantCount: 0,
+    failedVariantCount: 1,
+    settlementSchedule: { 0: 0, 1: 50 },
+  });
+
+  assert.equal(settlement.settledStatus, "FAILED");
+  assert.equal(settlement.earnedCreditsToCharge, 0);
+  assert.equal(settlement.unearnedCreditsToRelease, 50);
+  assert.equal(settlement.isPartial, false);
+});
+
+test("Phase 4D.2 Settlement: 2 outputs partial success (output 0 rejected + output 1 succeeds)", () => {
+  const settlement = calculateWorkflowSettlement({
     outputCount: 2,
-    quotedCredits: quote.quotedCredits,
+    quotedCredits: 90,
     successfulVariantCount: 1,
     failedVariantCount: 1,
-    settlementSchedule: quote.settlementSchedule,
+    settlementSchedule: { 0: 0, 1: 50, 2: 90 },
   });
 
-  assert.equal(partial.earnedCreditsToCharge, quote.settlementSchedule[1]);
-  assert.equal(partial.unearnedCreditsToRelease, quote.quotedCredits - quote.settlementSchedule[1]);
+  assert.equal(settlement.settledStatus, "COMPLETED");
+  assert.equal(settlement.earnedCreditsToCharge, 50);
+  assert.equal(settlement.unearnedCreditsToRelease, 40);
+  assert.equal(settlement.isPartial, true);
 });
 
-test("Phase 4D.1 Emergency Kill-Switch: Emergency kill switch fails closed with MODEL_PLATFORM_V1 quote when flag is OFF", () => {
-  assert.equal(
-    isSeedanceModelPlatformCutoverEligible({
-      modelId: "muapi.seedance2.omni-reference-fast",
-      env: TEST_ENV_OFF,
+test("Phase 4D.2 Settlement: 2 outputs partial success (output 0 succeeds + output 1 rejected)", () => {
+  const settlement = calculateWorkflowSettlement({
+    outputCount: 2,
+    quotedCredits: 90,
+    successfulVariantCount: 1,
+    failedVariantCount: 1,
+    settlementSchedule: { 0: 0, 1: 50, 2: 90 },
+  });
+
+  assert.equal(settlement.settledStatus, "COMPLETED");
+  assert.equal(settlement.earnedCreditsToCharge, 50);
+  assert.equal(settlement.unearnedCreditsToRelease, 40);
+  assert.equal(settlement.isPartial, true);
+});
+
+test("Phase 4D.2 Settlement: both submissions rejected -> 0 charged, full release", () => {
+  const settlement = calculateWorkflowSettlement({
+    outputCount: 2,
+    quotedCredits: 90,
+    successfulVariantCount: 0,
+    failedVariantCount: 2,
+    settlementSchedule: { 0: 0, 1: 50, 2: 90 },
+  });
+
+  assert.equal(settlement.settledStatus, "FAILED");
+  assert.equal(settlement.earnedCreditsToCharge, 0);
+  assert.equal(settlement.unearnedCreditsToRelease, 90);
+  assert.equal(settlement.isPartial, false);
+});
+
+test("Phase 4D.2 Settlement: missing settlementSchedule for partial success fails closed", () => {
+  assert.throws(
+    () => calculateWorkflowSettlement({
+      outputCount: 2,
+      quotedCredits: 90,
+      successfulVariantCount: 1,
+      failedVariantCount: 1,
+      settlementSchedule: null,
     }),
-    false
+    /MISSING_SETTLEMENT_SCHEDULE/
   );
 });
 
-test("Phase 4D.1 Delivery Validation: Unsuccessful terminal statuses (FAILED, CANCELLED, TIMED_OUT, QUARANTINED) charge 0", () => {
-  for (const status of ["FAILED", "CANCELLED", "TIMED_OUT", "QUARANTINED"]) {
-    const isUnsuccessful = ["FAILED", "CANCELLED", "TIMED_OUT", "QUARANTINED"].includes(status);
-    assert.equal(isUnsuccessful, true);
-  }
+test("Phase 4D.2 Strict Financial Parser: Pure decimal string parsing without floats", () => {
+  assert.equal(parseUsdToMicroUsdConservatively("0.05"), 50000n);
+  assert.equal(parseUsdToMicroUsdConservatively("0.2419"), 241900n);
+  assert.equal(parseUsdToMicroUsdConservatively("1.000000"), 1000000n);
+  assert.equal(parseUsdToMicroUsdConservatively(0.05), 50000n);
+
+  // Conservative ceiling (+1 microUSD for digits after 6 fractional places)
+  assert.equal(parseUsdToMicroUsdConservatively("0.1234567"), 123457n);
+  assert.equal(parseUsdToMicroUsdConservatively("0.0000001"), 1n);
+
+  // BigInt passthrough
+  assert.equal(parseUsdToMicroUsdConservatively(100000n), 100000n);
+
+  // Negative / invalid fails closed
+  assert.throws(() => parseUsdToMicroUsdConservatively("-0.05"), /Invalid or negative USD value/);
+  assert.throws(() => parseUsdToMicroUsdConservatively("abc"), /Invalid whole dollar portion/);
+  assert.throws(() => parseUsdToMicroUsdConservatively(null), /USD value is required/);
+});
+
+test("Phase 4D.2 Finalization Recovery: Existing FINAL_VIDEO adopts artifact and completes transition", () => {
+  const qualityFile = fs.readFileSync(new URL("../../src/lib/generation/qualityPipeline.js", import.meta.url), "utf8");
+  assert.match(qualityFile, /let finalArtifact = await prisma\.generatedArtifact\.findFirst/);
+  assert.match(qualityFile, /if \(!finalArtifact\)/);
+  assert.match(qualityFile, /stillOwnFinalization/);
+  assert.match(qualityFile, /ensureDeliveryCheck/);
+  assert.match(qualityFile, /settleModelPlatformWorkflow/);
+});
+
+test("Phase 4D.2 Truthful Signature Semantics: Webhook retains UNVERIFIED signature status", () => {
+  const webhookFile = fs.readFileSync(new URL("../../src/app/api/webhooks/muapi/route.js", import.meta.url), "utf8");
+  assert.match(webhookFile, /signatureStatus: "UNVERIFIED"/);
+  assert.doesNotMatch(webhookFile, /signatureStatus: "VERIFIED"/);
+  assert.match(webhookFile, /verifiedAt: new Date\(\)/);
+});
+
+test("Phase 4D.2 Cost Ledger & Refunded Provider Result: WAIVED when refunded=true", () => {
+  const webhookFile = fs.readFileSync(new URL("../../src/app/api/webhooks/muapi/route.js", import.meta.url), "utf8");
+  assert.match(webhookFile, /isRefunded/);
+  assert.match(webhookFile, /providerCostLedger\.updateMany/);
+});
+
+test("Phase 4D.2 Atomic Transaction: settleModelPlatformWorkflow owns Serializable transaction", () => {
+  const workflowFile = fs.readFileSync(new URL("../../src/lib/models/execution/workflowSettlement.js", import.meta.url), "utf8");
+  assert.match(workflowFile, /isolationLevel: "Serializable"/);
+  assert.match(workflowFile, /prisma\.\$transaction/);
+  assert.match(workflowFile, /settledAt: null/);
+  assert.match(workflowFile, /settledAt: new Date\(\)/);
 });

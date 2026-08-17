@@ -1,92 +1,87 @@
-import crypto from "crypto";
 import fs from "fs";
 import os from "os";
 import path from "path";
+import crypto from "crypto";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { verifyMuapiWebhookUrl } from "@/lib/generation/webhookSecurity";
-import { downloadMediaBufferSsrfSafe } from "@/lib/downloader";
-import { R2StorageService } from "@/lib/storage/r2StorageService";
-import { runFfprobe } from "@/lib/media/FfmpegRunner";
 import { CreditEscrowService } from "@/lib/billing/CreditEscrowService";
-import { handleVerificationResult, startQualityVerification } from "@/lib/generation/qualityPipeline";
 import { userFacingGenerationMessage } from "@/lib/generation/statusMessages";
+import { runFfprobe } from "@/lib/media/FfmpegRunner";
+import { downloadMediaBufferSsrfSafe } from "@/lib/downloader";
+import { handleVerificationResult, startQualityVerification } from "@/lib/generation/qualityPipeline";
 import { fetchAuthenticatedMuapiResult } from "@/lib/generation/muapiResult";
 import { isReconciliationEligibleVariant } from "@/lib/generation/reconciliationEligibility";
-import { isModelPlatformV1Creation, settleModelPlatformWorkflow } from "@/lib/models/execution/workflowSettlement.js";
 import { parseUsdToMicroUsdConservatively } from "@/lib/models/execution/muapiExecutor.js";
+import { isModelPlatformV1Creation, settleModelPlatformWorkflow } from "@/lib/models/execution/workflowSettlement.js";
 
-export const maxDuration = 300;
-
-function extractVideoUrl(value, depth = 0) {
-  if (depth > 6 || value == null) return null;
-  if (typeof value === "string" && /^https:\/\//.test(value)) return value;
-  if (Array.isArray(value)) {
-    for (const item of value) {
-      const found = extractVideoUrl(item, depth + 1);
-      if (found) return found;
+function extractVideoUrl(payload) {
+  const visit = (val, depth = 0) => {
+    if (depth > 7 || val == null) return null;
+    if (typeof val === "string") {
+      if (val.startsWith("http://") || val.startsWith("https://")) {
+        const lower = val.toLowerCase();
+        if (lower.includes(".mp4") || lower.includes("/video") || lower.includes("result") || lower.includes("output")) return val;
+      }
+      try { return visit(JSON.parse(val), depth + 1); } catch { return null; }
     }
-    return null;
-  }
-  if (typeof value === "object") {
-    for (const key of ["video", "video_url", "url", "output", "outputs", "result", "data"]) {
-      if (key in value) {
-        const found = extractVideoUrl(value[key], depth + 1);
+    if (Array.isArray(val)) {
+      for (const item of val) {
+        const found = visit(item, depth + 1);
         if (found) return found;
       }
     }
-  }
-  return null;
+    if (typeof val === "object") {
+      for (const key of ["video_url", "video", "output_url", "url", "result", "file"]) {
+        if (key in val) {
+          const found = visit(val[key], depth + 1);
+          if (found) return found;
+        }
+      }
+    }
+    return null;
+  };
+  return visit(payload);
 }
 
 async function updateCreationAggregate(creationId) {
   const isModelPlatform = await isModelPlatformV1Creation(creationId);
   if (isModelPlatform) {
-    await settleModelPlatformWorkflow({ creationId, tx: prisma });
-    return;
+    return await settleModelPlatformWorkflow({ creationId });
   }
 
-  // Legacy Creation Aggregate Update
-  const variants = await prisma.creationVariant.findMany({ where: { creationId } });
-  const completed = variants.filter((variant) => variant.status === "COMPLETED");
-  const active = variants.filter((variant) => ["QUEUED", "PROCESSING"].includes(variant.status));
-  const quarantined = variants.filter((variant) => variant.status === "QUARANTINED");
-  const failed = variants.filter((variant) => ["FAILED", "TIMED_OUT", "CANCELLED"].includes(variant.status));
-  let status = "FAILED";
-  if (completed.length === variants.length) status = "COMPLETED";
-  else if (active.length) status = "PROCESSING";
-  else if (completed.length) status = "PARTIAL_COMPLETED";
-  else if (quarantined.length) status = "QUARANTINED";
-  const firstFailure = failed[0] || quarantined[0];
-  const firstCompleted = completed[0];
-  let url = null;
-  if (firstCompleted?.finalArtifactId) {
-    const artifact = await prisma.generatedArtifact.findUnique({ where: { id: firstCompleted.finalArtifactId } });
-    if (artifact) url = await R2StorageService.generateSignedUrl({ storageKey: artifact.storageKey, expiresInSeconds: 900 });
+  const creation = await prisma.creation.findUnique({ where: { id: creationId }, include: { variants: true } });
+  if (!creation) return;
+  const statuses = creation.variants.map((v) => v.status);
+  const isCompleted = statuses.length > 0 && statuses.every((s) => s === "COMPLETED");
+  const isFailed = statuses.length > 0 && statuses.every((s) => ["FAILED", "CANCELLED", "QUARANTINED"].includes(s));
+  const isPartial = statuses.some((s) => s === "COMPLETED") && statuses.some((s) => ["FAILED", "CANCELLED", "QUARANTINED"].includes(s));
+
+  if (isCompleted) {
+    await prisma.creation.update({ where: { id: creationId }, data: { status: "COMPLETED", currentStage: "delivery", completedAt: new Date() } });
+  } else if (isFailed) {
+    await prisma.creation.update({ where: { id: creationId }, data: { status: "FAILED", currentStage: "failed" } });
+  } else if (isPartial) {
+    await prisma.creation.update({ where: { id: creationId }, data: { status: "COMPLETED", currentStage: "delivery", completedAt: new Date() } });
   }
-  await prisma.creation.update({
-    where: { id: creationId },
-    data: {
-      status,
-      currentStage: status === "COMPLETED" ? "delivery" : status === "PROCESSING" ? "provider_generation" : "quality_verification",
-      progressValue: variants.length ? (completed.length / variants.length) * 100 : 0,
-      completedAt: ["COMPLETED", "PARTIAL_COMPLETED", "FAILED", "QUARANTINED"].includes(status) ? new Date() : null,
-      url,
-      errorCode: firstFailure?.errorCode || null,
-      safeError: firstFailure ? userFacingGenerationMessage(firstFailure.status, firstFailure.errorCode) : null,
-    },
-  });
 }
 
 export async function POST(req) {
-  if (!verifyMuapiWebhookUrl(req.url)) return NextResponse.json({ error: "Invalid webhook token" }, { status: 401 });
-  const rawBody = await req.text();
-  let payload;
-  try { payload = JSON.parse(rawBody); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
+  const authHeader = req.headers.get("x-doolphin-webhook-token") || req.headers.get("authorization") || "";
+  const callbackToken = authHeader.replace(/^Bearer\s+/i, "").trim();
 
-  const providerRequestId = payload.request_id || payload.id;
-  if (!providerRequestId) return NextResponse.json({ error: "Missing request_id" }, { status: 400 });
-  const payloadHash = crypto.createHash("sha256").update(rawBody).digest("hex");
+  let body;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+  }
+
+  const providerRequestId = String(body.request_id || body.requestId || body.id || "").trim();
+  if (!providerRequestId) {
+    return NextResponse.json({ error: "Missing provider request_id" }, { status: 400 });
+  }
+
+  const payloadHash = crypto.createHash("sha256").update(JSON.stringify(body)).digest("hex");
 
   let event;
   try {
@@ -94,24 +89,24 @@ export async function POST(req) {
       data: {
         provider: "MUAPI",
         providerRequestId,
-        providerEventId: payload.event_id || null,
-        eventType: String(payload.status || "result"),
         payloadHash,
         signatureStatus: "UNVERIFIED",
+        payloadJson: JSON.stringify(body),
         processingStatus: "RECEIVED",
-        payload: rawBody.slice(0, 100000),
-        sanitizedHeaders: JSON.stringify({ "content-type": req.headers.get("content-type") }),
       },
     });
-  } catch (dbError) {
-    // P2002 duplicate constraint catch for exact replay idempotency
-    if (dbError.code === "P2002") {
+  } catch (error) {
+    if (error.code === "P2002") {
       return NextResponse.json({ success: true, duplicate: true });
     }
-    throw dbError;
+    throw error;
   }
 
-  const job = await prisma.providerJob.findFirst({ where: { providerRequestId }, include: { variant: { include: { creation: true } } } });
+  const job = await prisma.providerJob.findFirst({
+    where: { providerRequestId },
+    include: { variant: { include: { creation: true } } },
+  });
+
   if (!job) {
     await prisma.webhookEvent.update({ where: { id: event.id }, data: { processingStatus: "IGNORED", processedAt: new Date(), errorCode: "JOB_NOT_FOUND" } });
     return NextResponse.json({ success: true, ignored: true });
@@ -131,7 +126,8 @@ export async function POST(req) {
   try {
     providerPayload = await fetchAuthenticatedMuapiResult(providerRequestId);
     // Mark verifiedAt ONLY after authenticated provider result is fetched/validated
-    await prisma.webhookEvent.update({ where: { id: event.id }, data: { verifiedAt: new Date(), signatureStatus: "VERIFIED" } });
+    // signatureStatus remains UNVERIFIED to keep signature semantics truthful
+    await prisma.webhookEvent.update({ where: { id: event.id }, data: { verifiedAt: new Date(), signatureStatus: "UNVERIFIED" } });
   } catch (error) {
     await prisma.webhookEvent.update({ where: { id: event.id }, data: { processingStatus: "FAILED", processedAt: new Date(), errorCode: error.code || "RESULT_AUTH_FAILED" } });
     return NextResponse.json({ error: "Provider result verification is temporarily unavailable" }, { status: 503 });
@@ -147,7 +143,7 @@ export async function POST(req) {
   const isModelPlatform = await isModelPlatformV1Creation(job.variant.creationId);
   const providerStatus = String(providerPayload.status || "").toLowerCase();
 
-  // Conservative microUSD cost parsing
+  // Strict conservative microUSD cost parsing
   const rawCostUsd = providerPayload?.cost?.amount_usd ?? providerPayload?.cost?.amount;
   const isRefunded = Boolean(providerPayload?.cost?.refunded);
   let actualCostMicroUsd = 0n;
@@ -156,6 +152,19 @@ export async function POST(req) {
   } else if (!isRefunded) {
     actualCostMicroUsd = job.estimatedCostMinMicroUsd || 0n;
   }
+
+  const providerBillingStatus = isRefunded ? "WAIVED" : "BILLED";
+  const finalCostMicroUsd = isRefunded ? 0n : actualCostMicroUsd;
+
+  await prisma.providerCostLedger.updateMany({
+    where: { providerJobId: job.id },
+    data: {
+      actualCostMicroUsd: finalCostMicroUsd,
+      providerBillingStatus,
+      providerRequestId,
+      reconciledAt: new Date(),
+    },
+  }).catch(() => {});
 
   if (["failed", "error", "cancelled", "canceled"].includes(providerStatus) || providerPayload.error) {
     if (!isModelPlatform) {
@@ -167,8 +176,8 @@ export async function POST(req) {
         data: {
           status: "FAILED",
           completedAt: new Date(),
-          actualCostMicroUsd: isRefunded ? 0n : actualCostMicroUsd,
-          providerBillingStatus: isRefunded ? "WAIVED" : "BILLED",
+          actualCostMicroUsd: finalCostMicroUsd,
+          providerBillingStatus,
           errorCode: "PROVIDER_GENERATION_FAILED",
           safeError: String(providerPayload.error || "Provider generation failed"),
           sanitizedResultPayload: JSON.stringify({ status: providerStatus, error: String(providerPayload.error || "failed") })
@@ -221,21 +230,29 @@ export async function POST(req) {
     }
 
     await prisma.$transaction([
-      prisma.providerJob.update({ where: { id: job.id }, data: { status: "PROCESSING", actualCostMicroUsd: actualCostMicroUsd, providerBillingStatus: "BILLED", sanitizedResultPayload: JSON.stringify({ status: providerStatus, cost: providerPayload.cost ? "[RECORDED]" : null, output: "[STORED_IN_R2]" }) } }),
-      prisma.creationVariant.update({ where: { id: job.creationVariantId }, data: { status: "PROCESSING", currentStage: "quality_verification", progressValue: 70 } }),
+      prisma.providerJob.update({
+        where: { id: job.id },
+        data: {
+          status: "SUCCEEDED",
+          completedAt: new Date(),
+          actualCostMicroUsd: finalCostMicroUsd,
+          providerBillingStatus,
+          sanitizedResultPayload: JSON.stringify({ status: providerStatus, output: "[REDACTED_URL]" })
+        }
+      }),
+      prisma.creationVariant.update({ where: { id: job.creationVariantId }, data: { status: "PROCESSING", currentStage: "quality_verification", progressValue: 50 } }),
       prisma.webhookEvent.update({ where: { id: event.id }, data: { processingStatus: "PROCESSED", processedAt: new Date() } }),
     ]);
-    await startQualityVerification({ seedanceJob: job, videoUrl, buffer: downloaded.buffer, probe, webhookUrl: req.url });
-    await prisma.providerJob.update({ where: { id: job.id }, data: { status: "SUCCEEDED", completedAt: new Date() } });
-    await updateCreationAggregate(job.variant.creationId);
-    return NextResponse.json({ success: true, verification: "PROCESSING" });
+
+    await startQualityVerification({ seedanceJob: job, videoUrl, buffer: downloaded.buffer, probe, webhookUrl: process.env.WEBHOOK_URL || process.env.NEXTAUTH_URL || "https://api.doolphin.com" });
+    return NextResponse.json({ success: true, verified: true });
   } catch (error) {
     await prisma.$transaction([
-      prisma.providerJob.update({ where: { id: job.id }, data: { status: "PROCESSING", errorCode: "RESULT_PROCESSING_RETRYABLE", safeError: "Provider output is being recovered", lastCheckedAt: new Date() } }),
-      prisma.creationVariant.update({ where: { id: job.creationVariantId }, data: { status: "PROCESSING", currentStage: "result_processing_retry", errorCode: "RESULT_PROCESSING_RETRYABLE", safeError: "Output processing is being recovered" } }),
-      prisma.webhookEvent.update({ where: { id: event.id }, data: { processingStatus: "FAILED", processedAt: new Date(), errorCode: "RESULT_PROCESSING_RETRYABLE" } }),
+      prisma.providerJob.update({ where: { id: job.id }, data: { status: "PROCESSING", lastCheckedAt: new Date(), errorCode: "RESULT_PROCESSING_RETRYABLE", safeError: "Result delivery is being processed" } }),
+      prisma.creationVariant.update({ where: { id: job.creationVariantId }, data: { status: "PROCESSING", currentStage: "result_processing_retry", errorCode: "RESULT_PROCESSING_RETRYABLE", safeError: "Result delivery is being processed" } }),
+      prisma.webhookEvent.update({ where: { id: event.id }, data: { processingStatus: "FAILED", processedAt: new Date(), errorCode: error.message } }),
     ]);
-    return NextResponse.json({ error: "Result processing is recoverable" }, { status: 503 });
+    return NextResponse.json({ error: "Result processing failed temporarily" }, { status: 503 });
   } finally {
     if (tempPath) await fs.promises.unlink(tempPath).catch(() => {});
   }

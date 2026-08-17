@@ -65,7 +65,7 @@ async function quarantineVariant(variantId, errorCode, safeError) {
   await prisma.creationVariant.update({ where: { id: variantId }, data: { status: "QUARANTINED", currentStage: "quality_verification", errorCode, safeError } });
 
   if (isModelPlatform && variant) {
-    await settleModelPlatformWorkflow({ creationId: variant.creationId, tx: prisma });
+    await settleModelPlatformWorkflow({ creationId: variant.creationId });
   }
 }
 
@@ -101,18 +101,19 @@ async function stillOwnFinalization(variantId, ownerId) {
 
 async function finalizeDeliverable({ variant, rawArtifact, evidence, ownerId }) {
   const finalStorageKey = buildStorageKey("final", [variant.creation.workspaceId, variant.creation.id, `variant_${variant.variantIndex}.mp4`]);
-  const existingFinal = await prisma.generatedArtifact.findFirst({ where: { creationVariantId: variant.id, type: "FINAL_VIDEO", storageKey: finalStorageKey } });
-  if (existingFinal) return existingFinal;
+  let finalArtifact = await prisma.generatedArtifact.findFirst({ where: { creationVariantId: variant.id, type: "FINAL_VIDEO", storageKey: finalStorageKey } });
 
-  const originalObject = await R2StorageService.generateSignedUrl({ storageKey: rawArtifact.storageKey, expiresInSeconds: 900 });
-  const downloaded = await downloadMediaBufferSsrfSafe(originalObject);
-  await R2StorageService.uploadObject({ storageKey: finalStorageKey, buffer: downloaded.buffer, contentType: rawArtifact.mimeType });
-  const finalStored = await R2StorageService.checkObjectExists(finalStorageKey);
-  const finalArtifact = await prisma.generatedArtifact.upsert({
-    where: { creationVariantId_type_storageKey: { creationVariantId: variant.id, type: "FINAL_VIDEO", storageKey: finalStorageKey } },
-    create: { workspaceId: rawArtifact.workspaceId, creationVariantId: variant.id, type: "FINAL_VIDEO", storageKey: finalStorageKey, checksumSha256: finalStored.checksumSha256, mimeType: rawArtifact.mimeType, fileSizeBytes: finalStored.fileSizeBytes, width: rawArtifact.width, height: rawArtifact.height, durationMs: rawArtifact.durationMs, frameRate: rawArtifact.frameRate, videoCodec: rawArtifact.videoCodec, audioCodec: rawArtifact.audioCodec, validationStatus: "VALID", validationMetadata: JSON.stringify(evidence), sourceProviderUrlHost: rawArtifact.sourceProviderUrlHost, validatedAt: new Date() },
-    update: {},
-  });
+  if (!finalArtifact) {
+    const originalObject = await R2StorageService.generateSignedUrl({ storageKey: rawArtifact.storageKey, expiresInSeconds: 900 });
+    const downloaded = await downloadMediaBufferSsrfSafe(originalObject);
+    await R2StorageService.uploadObject({ storageKey: finalStorageKey, buffer: downloaded.buffer, contentType: rawArtifact.mimeType });
+    const finalStored = await R2StorageService.checkObjectExists(finalStorageKey);
+    finalArtifact = await prisma.generatedArtifact.upsert({
+      where: { creationVariantId_type_storageKey: { creationVariantId: variant.id, type: "FINAL_VIDEO", storageKey: finalStorageKey } },
+      create: { workspaceId: rawArtifact.workspaceId, creationVariantId: variant.id, type: "FINAL_VIDEO", storageKey: finalStorageKey, checksumSha256: finalStored.checksumSha256, mimeType: rawArtifact.mimeType, fileSizeBytes: finalStored.fileSizeBytes, width: rawArtifact.width, height: rawArtifact.height, durationMs: rawArtifact.durationMs, frameRate: rawArtifact.frameRate, videoCodec: rawArtifact.videoCodec, audioCodec: rawArtifact.audioCodec, validationStatus: "VALID", validationMetadata: JSON.stringify(evidence), sourceProviderUrlHost: rawArtifact.sourceProviderUrlHost, validatedAt: new Date() },
+      update: {},
+    });
+  }
 
   if (!await stillOwnFinalization(variant.id, ownerId)) return null;
 
@@ -126,7 +127,7 @@ async function finalizeDeliverable({ variant, rawArtifact, evidence, ownerId }) 
   const completed = await prisma.creationVariant.updateMany({ where: finalizationOwnerWhere(variant.id, ownerId), data: { status: "COMPLETED", currentStage: "delivery", completedAt: new Date(), finalArtifactId: finalArtifact.id, progressValue: 100, errorCode: null, safeError: null, finalizationLeaseId: null, finalizationClaimedAt: null, finalizationLeaseExpiresAt: null } });
 
   if (isModelPlatform) {
-    await settleModelPlatformWorkflow({ creationId: variant.creationId, tx: prisma });
+    await settleModelPlatformWorkflow({ creationId: variant.creationId });
   }
   return completed.count === 1 ? finalArtifact : null;
 }

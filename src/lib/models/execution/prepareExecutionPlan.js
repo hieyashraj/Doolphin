@@ -13,7 +13,7 @@ export function resolveServerWebhookUrl(env = process.env) {
   let baseUrl;
   try {
     const parsed = new URL(configuredBase);
-    baseUrl = parsed.protocol === "https:" ? parsed.origin : "https://api.doolphin.com";
+    baseUrl = parsed.origin;
   } catch {
     baseUrl = "https://api.doolphin.com";
   }
@@ -248,6 +248,7 @@ export async function prepareExecutionPlan({
       quotedCredits: workflowQuote.quotedCredits,
       pricingRevisionId: workflowQuote.pricingRevisionId,
       costComponents: workflowQuote.costComponents,
+      settlementSchedule: workflowQuote.settlementSchedule,
     }),
 
     // Legacy Compatibility Proxy Properties

@@ -4,18 +4,62 @@ import { ModelPlatformError, ERROR_CODES } from "../errors.js";
 
 const STRICT_TRUSTED_MUAPI_ORIGIN = "https://api.muapi.ai";
 
+/**
+ * Strict Decimal-String MicroUSD Financial Parser (Phase 4D.2).
+ * Converts USD amounts to BigInt microUSD using pure string decimal arithmetic without floating-point calculations.
+ * Enforces conservative ceiling rounding (+1 microUSD) for fractional values beyond 6 decimal places.
+ * Fails closed on invalid or negative inputs.
+ */
 export function parseUsdToMicroUsdConservatively(val) {
-  if (val === null || val === undefined) return 0n;
-  if (typeof val === "bigint") return val;
-  if (typeof val === "number") {
-    return BigInt(Math.ceil(val * 1_000_000));
+  if (val === null || val === undefined) {
+    throw new ModelPlatformError(ERROR_CODES.INVALID_PREPARED_PLAN, "USD value is required for microUSD conversion");
   }
-  if (typeof val === "string") {
-    const num = Number(val);
-    if (isNaN(num)) return 0n;
-    return BigInt(Math.ceil(num * 1_000_000));
+
+  if (typeof val === "bigint") {
+    if (val < 0n) throw new ModelPlatformError(ERROR_CODES.INVALID_PREPARED_PLAN, "Negative USD value is invalid");
+    return val;
   }
-  return 0n;
+
+  if (typeof val === "object") {
+    val = val.amount_usd ?? val.amount ?? val.value;
+    if (val === null || val === undefined) {
+      throw new ModelPlatformError(ERROR_CODES.INVALID_PREPARED_PLAN, "USD value property is missing from object");
+    }
+  }
+
+  const str = String(val).trim();
+  if (!str || str.startsWith("-")) {
+    throw new ModelPlatformError(ERROR_CODES.INVALID_PREPARED_PLAN, `Invalid or negative USD value: '${val}'`);
+  }
+
+  const parts = str.split(".");
+  if (parts.length > 2) {
+    throw new ModelPlatformError(ERROR_CODES.INVALID_PREPARED_PLAN, `Invalid USD decimal format: '${val}'`);
+  }
+
+  const wholeStr = parts[0] || "0";
+  if (!/^\d+$/.test(wholeStr)) {
+    throw new ModelPlatformError(ERROR_CODES.INVALID_PREPARED_PLAN, `Invalid whole dollar portion: '${wholeStr}'`);
+  }
+
+  const wholeMicroUsd = BigInt(wholeStr) * 1_000_000n;
+
+  if (parts.length === 1 || !parts[1]) {
+    return wholeMicroUsd;
+  }
+
+  const fracStr = parts[1];
+  if (!/^\d+$/.test(fracStr)) {
+    throw new ModelPlatformError(ERROR_CODES.INVALID_PREPARED_PLAN, `Invalid fractional dollar portion: '${fracStr}'`);
+  }
+
+  const first6 = fracStr.slice(0, 6).padEnd(6, "0");
+  const fracMicroUsd = BigInt(first6);
+
+  const remainder = fracStr.slice(6);
+  const hasRemainderNonZero = Boolean(remainder && /[1-9]/.test(remainder));
+
+  return wholeMicroUsd + fracMicroUsd + (hasRemainderNonZero ? 1n : 0n);
 }
 
 export function validateProviderEndpointOrigin(endpointInput) {
