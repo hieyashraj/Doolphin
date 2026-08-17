@@ -26,7 +26,13 @@ export function mapValidatedStudioWorkflowToNormalizedInvocation({
   const aspectRatio = settings.aspectRatio || "9:16";
   const generateAudio = settings.generateAudio !== false;
 
-  const images = Array.isArray(providerImageUrls) ? providerImageUrls.map(String) : [];
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.APP_BASE_URL || "https://doolphin.ai";
+  const images = Array.isArray(providerImageUrls)
+    ? providerImageUrls.map((urlStr) => {
+        const str = String(urlStr || "");
+        return str.startsWith("/") ? `${baseUrl}${str}` : str;
+      })
+    : [];
 
   return {
     prompt: promptStr.trim(),
@@ -54,11 +60,16 @@ export function mapStudioWorkflowToNormalizedInvocation(legacyRequest = {}) {
   const aspectRatio = settings.aspectRatio || "9:16";
   const generateAudio = settings.generateAudio !== false;
 
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.APP_BASE_URL || "https://doolphin.ai";
   const images = [];
   if (Array.isArray(legacyRequest.assets)) {
     legacyRequest.assets.forEach((asset) => {
-      if (typeof asset === "string") images.push(asset);
-      else if (asset?.url && asset?.role !== "SCREEN_RECORDING") images.push(asset.url);
+      let u = null;
+      if (typeof asset === "string") u = asset;
+      else if (asset?.url && asset?.role !== "SCREEN_RECORDING") u = asset.url;
+      if (u) {
+        images.push(u.startsWith("/") ? `${baseUrl}${u}` : u);
+      }
     });
   }
 
