@@ -6,7 +6,7 @@ import { getModel } from "../../src/lib/models/registry.js";
 import { getProviderCatalog, clearCatalogMemoryCache } from "../../src/lib/models/catalogStore.js";
 import { computeCatalogHash } from "../../src/lib/models/providerCatalog.js";
 import { mapStudioWorkflowToNormalizedInvocation } from "../../src/lib/models/bridges/studioWorkflowBridge.js";
-import { recordShadowPreflightTelemetry } from "../../src/lib/models/telemetry/shadowTelemetry.js";
+import { recordShadowPreflightTelemetry, runShadowWithSingleTelemetry } from "../../src/lib/models/telemetry/shadowTelemetry.js";
 import { ModelPlatformError, ERROR_CODES } from "../../src/lib/models/errors.js";
 
 const TEST_ENV = {
@@ -105,4 +105,62 @@ test("Phase 3.3 Canonical JSON & Immutability: Key insertion order produces iden
 
   assert.equal(jsonA, jsonB);
   assert.notEqual(canonicalJsonSerialize(objA), canonicalJsonSerialize({ b: [3, 2, 1] }));
+});
+
+test("Phase 4A.2 Shadow Race: shadow success before timeout emits exactly one SUCCESS event and zero timeout events", async () => {
+  const events = [];
+  await runShadowWithSingleTelemetry({
+    shadowFn: async () => ({ canonicalModelId: "muapi.seedance2.omni-reference-fast" }),
+    timeoutMs: 100,
+    telemetryRecorder: (evt) => events.push(evt),
+  });
+
+  assert.equal(events.length, 1);
+  assert.equal(events[0].shadowStatus, "SUCCESS");
+  assert.equal(events[0].shadowTimedOut, false);
+});
+
+test("Phase 4A.2 Shadow Race: shadow failure before timeout emits exactly one SHADOW_FAILED event and zero timeout events", async () => {
+  const events = [];
+  await runShadowWithSingleTelemetry({
+    shadowFn: async () => { throw new Error("Shadow error"); },
+    timeoutMs: 100,
+    telemetryRecorder: (evt) => events.push(evt),
+  });
+
+  assert.equal(events.length, 1);
+  assert.equal(events[0].shadowStatus, "SHADOW_FAILED");
+  assert.equal(events[0].shadowTimedOut, false);
+});
+
+test("Phase 4A.2 Shadow Race: timeout before late successful shadow emits exactly one SHADOW_TIMEOUT event and no later SUCCESS", async () => {
+  const events = [];
+  await runShadowWithSingleTelemetry({
+    shadowFn: () => new Promise((resolve) => setTimeout(() => resolve({ canonicalModelId: "late" }), 150)),
+    timeoutMs: 30,
+    telemetryRecorder: (evt) => events.push(evt),
+  });
+
+  // Wait for late shadow promise to complete
+  await new Promise((res) => setTimeout(res, 200));
+
+  assert.equal(events.length, 1);
+  assert.equal(events[0].shadowStatus, "SHADOW_TIMEOUT");
+  assert.equal(events[0].shadowTimedOut, true);
+});
+
+test("Phase 4A.2 Shadow Race: timeout before late failure emits exactly one SHADOW_TIMEOUT event and no later SHADOW_FAILED", async () => {
+  const events = [];
+  await runShadowWithSingleTelemetry({
+    shadowFn: () => new Promise((_, reject) => setTimeout(() => reject(new Error("Late error")), 150)),
+    timeoutMs: 30,
+    telemetryRecorder: (evt) => events.push(evt),
+  });
+
+  // Wait for late shadow promise rejection to complete
+  await new Promise((res) => setTimeout(res, 200));
+
+  assert.equal(events.length, 1);
+  assert.equal(events[0].shadowStatus, "SHADOW_TIMEOUT");
+  assert.equal(events[0].shadowTimedOut, true);
 });

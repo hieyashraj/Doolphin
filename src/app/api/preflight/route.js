@@ -13,7 +13,7 @@ import { R2StorageService } from "@/lib/storage/r2StorageService";
 
 import { mapStudioWorkflowToNormalizedInvocation } from "@/lib/models/bridges/studioWorkflowBridge.js";
 import { prepareExecutionPlan } from "@/lib/models/execution/prepareExecutionPlan.js";
-import { recordShadowPreflightTelemetry } from "@/lib/models/telemetry/shadowTelemetry.js";
+import { recordShadowPreflightTelemetry, runShadowWithSingleTelemetry } from "@/lib/models/telemetry/shadowTelemetry.js";
 
 function safeModelSnapshot(model) {
   return {
@@ -44,74 +44,22 @@ async function executeShadowPreflight({ legacyBody, legacyModel, legacyQuoteBrea
     return;
   }
 
-  const shadowStart = Date.now();
-  const legacyPreflightDurationMs = shadowStart - legacyStartTimestamp;
-
-  let shadowTimedOut = false;
-
-  const shadowPromise = (async () => {
-    try {
+  await runShadowWithSingleTelemetry({
+    shadowFn: async () => {
       const normalizedInput = mapStudioWorkflowToNormalizedInvocation(legacyBody);
       const modelId = legacyBody.modelId || legacyModel.id || "seedance-2";
-
-      const plan = await prepareExecutionPlan({
+      return prepareExecutionPlan({
         modelId,
         normalizedInput,
         env: process.env,
       });
-
-      const shadowDurationMs = Date.now() - shadowStart;
-
-      recordShadowPreflightTelemetry({
-        canonicalModelId: plan.canonicalModelId,
-        providerModelId: plan.providerModelId,
-        legacyEndpoint: legacyModel.endpoint,
-        newEndpoint: plan.providerEndpoint,
-        legacyPayloadHash: legacyPayloadFingerprint,
-        newPayloadHash: plan.providerPayloadHash,
-        providerSpecHash: plan.providerSpecHash,
-        legacyCostUsd: Number(legacyQuoteBreakdown.components?.providerGeneration || 0) / 1_000_000,
-        authoritativeMuapiCostUsd: Number(plan.pricing.providerCostMicroUsd || 0) / 1_000_000,
-        legacyQuotedCredits: legacyQuoteBreakdown.totalCredits,
-        newQuotedCredits: plan.pricing.quotedCredits,
-        legacyPreflightDurationMs,
-        shadowDurationMs,
-        shadowTimedOut: false,
-        shadowStatus: "SUCCESS",
-      });
-    } catch (error) {
-      const shadowDurationMs = Date.now() - shadowStart;
-      console.warn("[ShadowPreflight] Isolated shadow exception:", error.message);
-      recordShadowPreflightTelemetry({
-        canonicalModelId: legacyModel?.id || "unknown",
-        legacyEndpoint: legacyModel?.endpoint || null,
-        legacyPreflightDurationMs,
-        shadowDurationMs,
-        shadowTimedOut: false,
-        shadowStatus: "SHADOW_FAILED",
-        shadowErrorCode: error.code || "SHADOW_EXCEPTION",
-      });
-    }
-  })();
-
-  const timeoutPromise = new Promise((resolve) => {
-    setTimeout(() => {
-      shadowTimedOut = true;
-      const shadowDurationMs = Date.now() - shadowStart;
-      recordShadowPreflightTelemetry({
-        canonicalModelId: legacyModel?.id || "unknown",
-        legacyEndpoint: legacyModel?.endpoint || null,
-        legacyPreflightDurationMs,
-        shadowDurationMs,
-        shadowTimedOut: true,
-        shadowStatus: "SHADOW_TIMEOUT",
-        shadowErrorCode: "SHADOW_TIMEOUT",
-      });
-      resolve();
-    }, SHADOW_PREFLIGHT_TIMEOUT_MS);
+    },
+    legacyStartTimestamp,
+    legacyModel,
+    legacyQuoteBreakdown,
+    legacyPayloadFingerprint,
+    timeoutMs: SHADOW_PREFLIGHT_TIMEOUT_MS,
   });
-
-  await Promise.race([shadowPromise, timeoutPromise]);
 }
 
 async function handlePreflight(req) {
