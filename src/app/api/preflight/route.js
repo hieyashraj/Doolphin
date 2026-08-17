@@ -216,9 +216,8 @@ async function handlePreflight(req) {
         fullyLoadedCostMicroUsd: Number(plan.workflowPricing.fullyLoadedCostMicroUsd),
         pricingRevisionId: plan.workflowPricing.pricingRevisionId,
         components: {
-          providerGeneration: Number(plan.workflowPricing.totalProviderCostMicroUsd),
-          infrastructure: Number(plan.workflowPricing.costComponents.infrastructureEstMicroUsd || 0),
-          margin: Number(plan.workflowPricing.costComponents.targetMarginMicroUsd || 0),
+          providerGeneration: Number(plan.workflowPricing.costComponents.providerGeneration || plan.workflowPricing.totalProviderCostMicroUsd),
+          variableInfra: Number(plan.workflowPricing.costComponents.variableInfra || 0),
         },
       };
 

@@ -12,20 +12,19 @@ export class CreditEscrowService {
     const cutover = await db.ledgerCutover?.findUnique({ where: { workspaceId } });
     if (cutover && ["FROZEN", "BLOCKED"].includes(cutover.status)) throw new AppError(ERROR_CODES.CREDIT_RESERVATION_FAILED, "Credit balances are temporarily reconciling; no charge was made.", { statusCode: 503 });
   }
-  static async releaseVariantReservations(creationVariantId, reason) {
-    const reservations = await prisma.creditReservation.findMany({ where: { creationVariantId } });
-    return Promise.all(reservations.map((reservation) => this.releaseCredits({ reservationId: reservation.id, reason })));
+
+  static async releaseVariantReservations(creationVariantId, reason, tx = null) {
+    const db = tx || prisma;
+    const reservations = await db.creditReservation.findMany({ where: { creationVariantId } });
+    return Promise.all(reservations.map((reservation) => this.releaseCredits({ reservationId: reservation.id, reason, tx: db })));
   }
 
-  static async settleVerifiedVariant(creationVariantId, passed) {
-    const reservations = await prisma.creditReservation.findMany({ where: { creationVariantId } });
+  static async settleVerifiedVariant(creationVariantId, passed, tx = null) {
+    const db = tx || prisma;
+    const reservations = await db.creditReservation.findMany({ where: { creationVariantId } });
     for (const reservation of reservations) {
-      // A customer is charged only after a usable final video is delivered.  In
-      // particular, analysis/verification are internal costs when Doolphin
-      // quarantines or cannot deliver the result; charging those reservations
-      // would leave a customer paying for an unusable generation.
-      if (passed) await this.commitCredits({ reservationId: reservation.id });
-      else await this.releaseCredits({ reservationId: reservation.id, reason: "NO_DELIVERABLE" });
+      if (passed) await this.commitCredits({ reservationId: reservation.id, tx: db });
+      else await this.releaseCredits({ reservationId: reservation.id, reason: "NO_DELIVERABLE", tx: db });
     }
   }
 
@@ -56,64 +55,56 @@ export class CreditEscrowService {
     });
   }
 
-  /**
-   * Ensures user has a default workspace and credit account.
-   */
   static async ensureUserWorkspace(userId) {
     const user = await prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new AppError(ERROR_CODES.NOT_FOUND, "Authenticated user record not found");
 
-      if (user.defaultWorkspaceId) {
-        const workspace = await prisma.workspace.findUnique({
-          where: { id: user.defaultWorkspaceId },
-          include: { creditAccount: true },
-        });
-        if (workspace) return workspace;
-      }
+    if (user.defaultWorkspaceId) {
+      const workspace = await prisma.workspace.findUnique({
+        where: { id: user.defaultWorkspaceId },
+        include: { creditAccount: true },
+      });
+      if (workspace) return workspace;
+    }
 
-      // Create workspace transactionally
     return await prisma.$transaction(async (tx) => {
-        const workspace = await tx.workspace.create({
-          data: {
-            name: `${user.name || "Default"}'s Workspace`,
-            ownerUserId: user.id,
-            billingPlan: "starter",
-          },
-        });
+      const workspace = await tx.workspace.create({
+        data: {
+          name: `${user.name || "Default"}'s Workspace`,
+          ownerUserId: user.id,
+          billingPlan: "starter",
+        },
+      });
 
-        await tx.workspaceMember.create({
-          data: {
-            workspaceId: workspace.id,
-            userId: user.id,
-            role: "OWNER",
-          },
-        });
+      await tx.workspaceMember.create({
+        data: {
+          workspaceId: workspace.id,
+          userId: user.id,
+          role: "OWNER",
+        },
+      });
 
-        const creditAccount = await tx.creditAccount.create({
-          data: {
-            workspaceId: workspace.id,
-            availableCredits: 100,
-            reservedCredits: 0,
-            lifetimeIssuedCredits: 100,
-          },
-        });
+      const creditAccount = await tx.creditAccount.create({
+        data: {
+          workspaceId: workspace.id,
+          availableCredits: 100,
+          reservedCredits: 0,
+          lifetimeIssuedCredits: 100,
+        },
+      });
 
-        await tx.user.update({
-          where: { id: user.id },
-          data: { defaultWorkspaceId: workspace.id },
-        });
+      await tx.user.update({
+        where: { id: user.id },
+        data: { defaultWorkspaceId: workspace.id },
+      });
 
-        return { ...workspace, creditAccount };
+      return { ...workspace, creditAccount };
     });
   }
 
-  /**
-   * Transactionally reserves credits for a creation variant.
-   */
   static async reserveCredits({ workspaceId, creationId, creationVariantId, amount, idempotencyKey, userId, tx = null }) {
     const execute = async (db) => {
       await this.assertLegacyMutationAllowed(workspaceId, db);
-      // Check existing reservation
       const existingRes = await db.creditReservation.findUnique({
         where: { idempotencyKey },
       });
@@ -130,7 +121,6 @@ export class CreditEscrowService {
         );
       }
 
-      // Update credit account
       const claimed = await db.creditAccount.updateMany({
         where: { id: account.id, version: account.version, availableCredits: { gte: amount } },
         data: {
@@ -142,19 +132,19 @@ export class CreditEscrowService {
       if (claimed.count !== 1) throw new AppError(ERROR_CODES.CREDIT_RESERVATION_FAILED, "Credit balance changed concurrently; retry preflight", { statusCode: 409 });
       const updatedAccount = await db.creditAccount.findUnique({ where: { id: account.id } });
 
-      // Create CreditReservation
       const reservation = await db.creditReservation.create({
         data: {
           workspaceId,
           creationId,
           creationVariantId,
           amount,
+          committedAmount: 0,
+          releasedAmount: 0,
           status: "RESERVED",
           idempotencyKey,
         },
       });
 
-      // Create CreditTransaction
       await db.creditTransaction.create({
         data: {
           workspaceId,
@@ -181,9 +171,6 @@ export class CreditEscrowService {
     return await prisma.$transaction(execute);
   }
 
-  /**
-   * Transactionally commits reserved credits upon successful deliverable validation.
-   */
   static async commitCredits({ reservationId, tx = null }) {
     const execute = async (db) => {
       const reservation = await db.creditReservation.findUnique({
@@ -211,8 +198,11 @@ export class CreditEscrowService {
       const updatedReservation = await db.creditReservation.update({
         where: { id: reservation.id },
         data: {
+          committedAmount: reservation.amount,
+          releasedAmount: 0,
           status: "COMMITTED",
           committedAt: new Date(),
+          settledAt: new Date(),
         },
       });
 
@@ -241,9 +231,6 @@ export class CreditEscrowService {
     return await prisma.$transaction(execute);
   }
 
-  /**
-   * Transactionally releases reserved credits when no final deliverable exists.
-   */
   static async releaseCredits({ reservationId, reason = "JOB_FAILED", tx = null }) {
     const execute = async (db) => {
       const reservation = await db.creditReservation.findUnique({
@@ -272,8 +259,11 @@ export class CreditEscrowService {
       const updatedReservation = await db.creditReservation.update({
         where: { id: reservation.id },
         data: {
+          committedAmount: 0,
+          releasedAmount: reservation.amount,
           status: "RELEASED",
           releasedAt: new Date(),
+          settledAt: new Date(),
           releaseReason: reason,
         },
       });
@@ -286,9 +276,6 @@ export class CreditEscrowService {
           creditReservationId: reservation.id,
           type: "RELEASE",
           amount: reservation.amount,
-          // A release is a one-way terminal settlement for this reservation.
-          // Keep its ledger key stable so a replay racing the status update
-          // cannot credit the same reservation twice.
           idempotencyKey: `tx_release_${reservation.id}`,
           balanceBefore: account.availableCredits,
           balanceAfter: updatedAccount.availableCredits,
@@ -307,127 +294,111 @@ export class CreditEscrowService {
   }
 
   /**
-   * Safely releases credits for a Creation (reserves returned to user's workspace credit account).
-   * Idempotent via CreditTransaction idempotencyKey.
+   * Phase 4D.1: Atomic split settlement primitive.
    */
-  static async releaseCreationCredits({ userId, workspaceId, creationId, amount, reason = "JOB_FAILED", idempotencyKey }) {
-    if (!amount || amount <= 0) return null;
-    try {
-      return await prisma.$transaction(async (tx) => {
-        const existingTx = await tx.creditTransaction.findUnique({
-          where: { idempotencyKey },
-        });
-        if (existingTx) return existingTx;
+  static async settleReservationSplit({
+    reservationId,
+    commitAmount,
+    releaseAmount,
+    reason = "WORKFLOW_SPLIT_SETTLEMENT",
+    tx = null,
+  }) {
+    const execute = async (db) => {
+      const reservation = await db.creditReservation.findUnique({
+        where: { id: reservationId },
+      });
+      if (!reservation) throw new AppError(ERROR_CODES.NOT_FOUND, "Credit reservation not found");
+      if (reservation.settledAt || ["COMMITTED", "RELEASED", "PARTIALLY_SETTLED"].includes(reservation.status)) {
+        return reservation;
+      }
 
-        let targetWorkspaceId = workspaceId;
-        if (!targetWorkspaceId && creationId) {
-          const creation = await tx.creation.findUnique({ where: { id: creationId } });
-          if (creation) targetWorkspaceId = creation.workspaceId;
-        }
-        if (!targetWorkspaceId && userId) {
-          const user = await tx.user.findUnique({ where: { id: userId } });
-          targetWorkspaceId = user?.defaultWorkspaceId;
-        }
+      if (commitAmount + releaseAmount !== reservation.amount) {
+        throw new AppError(
+          ERROR_CODES.CREDIT_RESERVATION_FAILED,
+          `Commit amount (${commitAmount}) + release amount (${releaseAmount}) must equal reservation amount (${reservation.amount}).`
+        );
+      }
 
-        if (!targetWorkspaceId) {
-          console.warn(`[CREDIT_RELEASE_WARN] Workspace not found for user ${userId}, creation ${creationId}`);
-          return null;
-        }
+      const account = await db.creditAccount.findUnique({
+        where: { workspaceId: reservation.workspaceId },
+      });
+      if (!account) throw new AppError(ERROR_CODES.NOT_FOUND, "Credit account not found");
 
-        const account = await tx.creditAccount.findUnique({
-          where: { workspaceId: targetWorkspaceId },
-        });
+      const updatedAccount = await db.creditAccount.update({
+        where: { id: account.id },
+        data: {
+          reservedCredits: Math.max(0, account.reservedCredits - reservation.amount),
+          availableCredits: account.availableCredits + releaseAmount,
+          lifetimeCommittedCredits: { increment: commitAmount },
+          lifetimeReleasedCredits: { increment: releaseAmount },
+          version: { increment: 1 },
+        },
+      });
 
-        if (!account) return null;
+      const targetStatus =
+        commitAmount > 0 && releaseAmount > 0
+          ? "PARTIALLY_SETTLED"
+          : commitAmount > 0
+          ? "COMMITTED"
+          : "RELEASED";
 
-        const updatedAccount = await tx.creditAccount.update({
-          where: { id: account.id },
+      const updatedReservation = await db.creditReservation.update({
+        where: { id: reservation.id },
+        data: {
+          committedAmount: commitAmount,
+          releasedAmount: releaseAmount,
+          status: targetStatus,
+          committedAt: commitAmount > 0 ? new Date() : null,
+          releasedAt: releaseAmount > 0 ? new Date() : null,
+          settledAt: new Date(),
+          releaseReason: reason,
+        },
+      });
+
+      if (commitAmount > 0) {
+        await db.creditTransaction.create({
           data: {
-            availableCredits: account.availableCredits + amount,
-            reservedCredits: Math.max(0, account.reservedCredits - amount),
-            lifetimeReleasedCredits: { increment: amount },
-            version: { increment: 1 },
-          },
-        });
-
-        return await tx.creditTransaction.create({
-          data: {
-            workspaceId: targetWorkspaceId,
-            creationId,
-            type: "RELEASE",
-            amount,
-            idempotencyKey,
+            workspaceId: reservation.workspaceId,
+            creationId: reservation.creationId,
+            creationVariantId: reservation.creationVariantId,
+            creditReservationId: reservation.id,
+            type: "COMMIT",
+            amount: commitAmount,
+            idempotencyKey: `tx_commit_split_${reservation.id}`,
             balanceBefore: account.availableCredits,
             balanceAfter: updatedAccount.availableCredits,
             reservedBefore: account.reservedCredits,
             reservedAfter: updatedAccount.reservedCredits,
             reasonCode: reason,
-            createdByUserId: userId,
             createdBySystemComponent: "CreditEscrowService",
           },
         });
-      });
-    } catch (err) {
-      console.error("[CREDIT_RELEASE_ERROR]", err.message);
-      return null;
-    }
-  }
+      }
 
-  /**
-   * Safely commits reserved credits for a Creation (transfers reserved to committed).
-   * Idempotent via CreditTransaction idempotencyKey.
-   */
-  static async commitCreationCredits({ userId, workspaceId, creationId, amount, idempotencyKey }) {
-    if (!amount || amount <= 0) return null;
-    try {
-      return await prisma.$transaction(async (tx) => {
-        const existingTx = await tx.creditTransaction.findUnique({
-          where: { idempotencyKey },
-        });
-        if (existingTx) return existingTx;
-
-        let targetWorkspaceId = workspaceId;
-        if (!targetWorkspaceId && creationId) {
-          const creation = await tx.creation.findUnique({ where: { id: creationId } });
-          if (creation) targetWorkspaceId = creation.workspaceId;
-        }
-        if (!targetWorkspaceId) return null;
-
-        const account = await tx.creditAccount.findUnique({
-          where: { workspaceId: targetWorkspaceId },
-        });
-
-        if (!account) return null;
-
-        const updatedAccount = await tx.creditAccount.update({
-          where: { id: account.id },
+      if (releaseAmount > 0) {
+        await db.creditTransaction.create({
           data: {
-            reservedCredits: Math.max(0, account.reservedCredits - amount),
-            lifetimeCommittedCredits: { increment: amount },
-            version: { increment: 1 },
-          },
-        });
-
-        return await tx.creditTransaction.create({
-          data: {
-            workspaceId: targetWorkspaceId,
-            creationId,
-            type: "COMMIT",
-            amount,
-            idempotencyKey,
+            workspaceId: reservation.workspaceId,
+            creationId: reservation.creationId,
+            creationVariantId: reservation.creationVariantId,
+            creditReservationId: reservation.id,
+            type: "RELEASE",
+            amount: releaseAmount,
+            idempotencyKey: `tx_release_split_${reservation.id}`,
             balanceBefore: account.availableCredits,
-            balanceAfter: account.availableCredits,
+            balanceAfter: updatedAccount.availableCredits,
             reservedBefore: account.reservedCredits,
             reservedAfter: updatedAccount.reservedCredits,
-            reasonCode: "COMMIT_CREATION_SUCCESS",
-            createdByUserId: userId,
+            reasonCode: reason,
             createdBySystemComponent: "CreditEscrowService",
           },
         });
-      });
-    } catch (err) {
-      console.error("[CREDIT_COMMIT_ERROR]", err.message);
-      return null;
-    }
+      }
+
+      return updatedReservation;
+    };
+
+    if (tx) return await execute(tx);
+    return await prisma.$transaction(execute);
   }
 }

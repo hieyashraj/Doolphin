@@ -92,6 +92,7 @@ enum CreditReservationStatus {
   RESERVED
   COMMITTED
   RELEASED
+  PARTIALLY_SETTLED
 }
 
 enum GenerationType {
@@ -602,12 +603,15 @@ model CreditReservation {
   creationId        String
   creationVariantId String
   amount            Int
+  committedAmount   Int                     @default(0)
+  releasedAmount    Int                     @default(0)
   status            CreditReservationStatus @default(RESERVED)
   idempotencyKey    String                  @unique
   version           Int                     @default(1)
   createdAt         DateTime                @default(now())
   committedAt       DateTime?
   releasedAt        DateTime?
+  settledAt         DateTime?
   releaseReason     String?
 
   workspace         Workspace               @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
@@ -639,6 +643,8 @@ model PreflightQuote {
   expiresAt                         DateTime
   consumedAt                        DateTime?
   createdAt                         DateTime       @default(now())
+
+  creations                         Creation[]
 }
 
 // 5.8 Creation
@@ -668,12 +674,16 @@ model Creation {
   timeoutAt              DateTime?
   cancelledAt            DateTime?
   completedAt            DateTime?
+  settledAt              DateTime?
+  settlementSummaryJson  String?        // JSON
   errorCode              String?
   safeError              String?        
   version                Int            @default(1)
   appVersion             String         @default("1.0.0")
   createdAt              DateTime       @default(now())
   updatedAt              DateTime       @updatedAt
+
+  quote                  PreflightQuote? @relation(fields: [quoteId], references: [id], onDelete: SetNull)
   modelId                String?
   provider               String?
   requestId              String?
@@ -1023,6 +1033,8 @@ model WebhookEvent {
   verifiedAt        DateTime?
   processedAt       DateTime?
   errorCode         String?
+
+  @@unique([provider, providerRequestId, payloadHash])
 }
 
 // 5.20 ModelRegistryRevision

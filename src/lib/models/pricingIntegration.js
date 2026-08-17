@@ -1,99 +1,49 @@
-import { calculateRequiredCredits, PRICING_REVISION } from "../entitlements/pricing.js";
-import { ERROR_CODES } from "./errors.js";
+import { parseUsdToMicroUsdConservatively } from "./execution/muapiExecutor.js";
+import { calculateRequiredCredits as calculateLegacyEntitlementCredits } from "../entitlements/pricing.js";
+
+export { parseUsdToMicroUsdConservatively };
 
 /**
- * Deterministic USD -> microUSD Conservative Conversion.
- * Converts string or numeric USD values to integer microUSD (BigInt) without binary floating-point undercharge.
- * Conservative Rounding Rule: If sub-microUSD digits exist (past 6 decimal places), rounds UP by +1 microUSD.
+ * Authoritative Commercial Cost Registry & MicroUSD / Credit Calculation.
+ * Section 11, 21 Compliance.
  */
-export function parseUsdToMicroUsdConservatively(usdInput) {
-  if (typeof usdInput === "bigint") return usdInput;
-  if (usdInput === null || usdInput === undefined) return 0n;
 
-  const strVal = typeof usdInput === "number" ? usdInput.toString() : String(usdInput).trim();
-  const numVal = Number(strVal);
-  if (isNaN(numVal) || numVal < 0) {
-    throw new Error(`Invalid USD cost '${usdInput}'`);
-  }
-
-  const parts = strVal.split(".");
-  const dollars = BigInt(parts[0] || "0");
-  let fractionStr = (parts[1] || "").substring(0, 6);
-
-  const remainingFraction = (parts[1] || "").substring(6);
-  const subMicroUsdRemainder = remainingFraction.replace(/0+$/, "").length > 0;
-
-  fractionStr = fractionStr.padEnd(6, "0");
-  let microUsd = dollars * 1_000_000n + BigInt(fractionStr);
-
-  if (subMicroUsdRemainder) {
-    microUsd += 1n;
-  }
-
-  return microUsd;
-}
+const BASE_SYSTEM_PRICING_REVISION = "MODEL_PLATFORM_PRICING_V1";
+const MINIMUM_CREATION_CREDIT_FLOOR = 1;
 
 /**
- * Bridges MU API provider cost estimates with Doolphin's commercial pricing engine (pricing.js).
+ * Delegates to Doolphin Commercial Pricing Engine (src/lib/entitlements/pricing.js).
  */
-export function calculateCommercialCreditQuote({
-  providerCostUsd,
-  providerCostMicroUsd,
-  variableInfraCostMicroUsd = 0n,
-  additionalComponentCosts = {},
-} = {}) {
-  let providerCost = 0n;
-  try {
-    if (typeof providerCostMicroUsd === "bigint") {
-      providerCost = providerCostMicroUsd;
-    } else if (providerCostMicroUsd !== undefined && providerCostMicroUsd !== null) {
-      providerCost = BigInt(providerCostMicroUsd.toString());
+export function calculateRequiredCredits(costComponents = {}) {
+  let totalCostMicroUsd = 0n;
+  const formattedComponents = {};
+
+  for (const [key, val] of Object.entries(costComponents)) {
+    let bVal = 0n;
+    if (typeof val === "bigint") {
+      bVal = val;
     } else {
-      providerCost = parseUsdToMicroUsdConservatively(providerCostUsd);
+      bVal = parseUsdToMicroUsdConservatively(val);
     }
-  } catch (err) {
-    return {
-      priced: false,
-      code: ERROR_CODES.PRICING_UNAVAILABLE,
-      reason: `Invalid provider cost supplied: ${err.message}`,
-    };
+    totalCostMicroUsd += bVal;
+    formattedComponents[key] = bVal.toString();
   }
 
-  const infraCost = typeof variableInfraCostMicroUsd === "bigint"
-    ? variableInfraCostMicroUsd
-    : parseUsdToMicroUsdConservatively(variableInfraCostMicroUsd);
-
-  const costComponents = {
-    providerGeneration: providerCost,
-    variableInfra: infraCost,
-    ...additionalComponentCosts,
-  };
-
-  const creditResult = calculateRequiredCredits(costComponents);
-
-  const conservativeNetRevenueMicroUsd = creditResult.quotedCredits * PRICING_REVISION.netRevenuePerCreditFloorMicroUsd;
-  const contributionMicroUsd = conservativeNetRevenueMicroUsd - creditResult.fullyLoadedCostMicroUsd;
-  const contributionMarginBps = conservativeNetRevenueMicroUsd === 0n
-    ? 0
-    : Number((contributionMicroUsd * 10_000n) / conservativeNetRevenueMicroUsd);
+  const legacyQuote = calculateLegacyEntitlementCredits({ total: totalCostMicroUsd });
 
   return {
-    priced: true,
-    providerCostMicroUsd: providerCost.toString(),
-    fullyLoadedCostMicroUsd: creditResult.fullyLoadedCostMicroUsd.toString(),
-    rawRequiredCredits: creditResult.rawCredits.toString(),
-    totalCredits: Number(creditResult.quotedCredits),
-    pricingRevisionId: creditResult.pricingRevisionId,
-    contributionMarginBps,
-    costComponents: Object.fromEntries(
-      Object.entries(costComponents).map(([key, val]) => [key, val.toString()])
-    ),
+    pricingRevisionId: legacyQuote.pricingRevisionId || BASE_SYSTEM_PRICING_REVISION,
+    fullyLoadedCostMicroUsd: totalCostMicroUsd,
+    quotedCredits: Number(legacyQuote.quotedCredits),
+    totalCredits: Number(legacyQuote.quotedCredits),
+    costComponents: formattedComponents,
   };
 }
 
 /**
  * Studio/Workflow-Level Multi-Output Pricing Layer.
  * Aggregates raw microUSD costs across multiple provider outputs (outputCount) BEFORE credit rounding.
+ * Generates an authoritative settlement schedule for partial success (0..N outputs).
  */
 export function calculateWorkflowCommercialQuote({
   preparedUnitPlan,
@@ -102,11 +52,20 @@ export function calculateWorkflowCommercialQuote({
   perCreationCosts = {},
 } = {}) {
   const count = Math.max(1, Math.floor(Number(outputCount) || 1));
-  const unitProviderCost = BigInt(preparedUnitPlan?.pricing?.providerCostMicroUsd || "0");
+  const unitProviderCost = BigInt(
+    preparedUnitPlan?.pricing?.providerCostMicroUsd ||
+    preparedUnitPlan?.unitPricing?.providerCostMicroUsd ||
+    preparedUnitPlan?.providerCostMicroUsd ||
+    preparedUnitPlan?.costComponents?.providerGeneration ||
+    "0"
+  );
 
   const totalProviderCost = unitProviderCost * BigInt(count);
 
   let totalVariablePerOutput = 0n;
+  if (preparedUnitPlan?.businessPolicy?.variableInfraCostMicroUsd) {
+    totalVariablePerOutput += BigInt(preparedUnitPlan.businessPolicy.variableInfraCostMicroUsd);
+  }
   for (const val of Object.values(perOutputCosts)) {
     totalVariablePerOutput += parseUsdToMicroUsdConservatively(val);
   }
@@ -123,16 +82,71 @@ export function calculateWorkflowCommercialQuote({
 
   const creditResult = calculateRequiredCredits(aggregatedCostComponents);
 
+  const settlementSchedule = { 0: 0 };
+  for (let k = 1; k <= count; k += 1) {
+    if (k === count) {
+      settlementSchedule[k] = Number(creditResult.quotedCredits);
+    } else {
+      const kComponents = {
+        providerGeneration: unitProviderCost * BigInt(k),
+        variableInfra: (totalVariablePerOutput * BigInt(k)) + totalVariablePerCreation,
+      };
+      const kResult = calculateRequiredCredits(kComponents);
+      settlementSchedule[k] = Math.min(Number(creditResult.quotedCredits), Number(kResult.quotedCredits));
+    }
+  }
+
   return {
     priced: true,
     outputCount: count,
+    providerCostMicroUsd: totalProviderCost.toString(),
     unitProviderCostMicroUsd: unitProviderCost.toString(),
     totalProviderCostMicroUsd: totalProviderCost.toString(),
     fullyLoadedCostMicroUsd: creditResult.fullyLoadedCostMicroUsd.toString(),
     quotedCredits: Number(creditResult.quotedCredits),
+    totalCredits: Number(creditResult.quotedCredits),
     pricingRevisionId: creditResult.pricingRevisionId,
     costComponents: Object.fromEntries(
       Object.entries(aggregatedCostComponents).map(([k, v]) => [k, v.toString()])
     ),
+    settlementSchedule,
   };
+}
+
+export function calculateCommercialCreditQuote(args = {}) {
+  if (args.preparedUnitPlan) {
+    return calculateWorkflowCommercialQuote(args);
+  }
+  if (
+    args.providerCostUsd !== undefined ||
+    args.providerCostMicroUsd !== undefined ||
+    args.providerGeneration !== undefined ||
+    args.variableInfraCostMicroUsd !== undefined ||
+    args.variableInfra !== undefined
+  ) {
+    const providerGen =
+      args.providerGeneration ??
+      (args.providerCostMicroUsd !== undefined
+        ? BigInt(args.providerCostMicroUsd)
+        : parseUsdToMicroUsdConservatively(args.providerCostUsd || 0));
+    const varInfra =
+      args.variableInfra ??
+      (args.variableInfraCostMicroUsd !== undefined
+        ? BigInt(args.variableInfraCostMicroUsd)
+        : 0n);
+    const req = calculateRequiredCredits({
+      providerGeneration: providerGen,
+      variableInfra: varInfra,
+    });
+    return {
+      priced: true,
+      providerCostMicroUsd: providerGen.toString(),
+      fullyLoadedCostMicroUsd: req.fullyLoadedCostMicroUsd.toString(),
+      quotedCredits: Number(req.quotedCredits),
+      totalCredits: Number(req.quotedCredits),
+      pricingRevisionId: req.pricingRevisionId,
+      costComponents: req.costComponents,
+    };
+  }
+  return calculateRequiredCredits(args);
 }

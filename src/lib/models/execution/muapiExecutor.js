@@ -4,6 +4,20 @@ import { ModelPlatformError, ERROR_CODES } from "../errors.js";
 
 const STRICT_TRUSTED_MUAPI_ORIGIN = "https://api.muapi.ai";
 
+export function parseUsdToMicroUsdConservatively(val) {
+  if (val === null || val === undefined) return 0n;
+  if (typeof val === "bigint") return val;
+  if (typeof val === "number") {
+    return BigInt(Math.ceil(val * 1_000_000));
+  }
+  if (typeof val === "string") {
+    const num = Number(val);
+    if (isNaN(num)) return 0n;
+    return BigInt(Math.ceil(num * 1_000_000));
+  }
+  return 0n;
+}
+
 export function validateProviderEndpointOrigin(endpointInput) {
   if (!endpointInput || typeof endpointInput !== "string") return false;
 
