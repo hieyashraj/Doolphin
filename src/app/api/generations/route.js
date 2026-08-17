@@ -80,6 +80,15 @@ async function handleGenerationSubmission(req) {
   try { routingSnapshotObj = JSON.parse(quote.routingSnapshot || "{}"); } catch {}
   const isModelPlatformQuote = routingSnapshotObj.authority === "MODEL_PLATFORM_V1";
 
+  // Emergency Cutover Kill-Switch (Phase 4D): If quote was issued under MODEL_PLATFORM_V1 but flag is turned OFF before dispatch
+  if (isModelPlatformQuote && process.env.MODEL_PLATFORM_SEEDANCE_CUTOVER_ENABLED !== "true") {
+    return NextResponse.json({
+      success: false,
+      code: "CUTOVER_DISABLED_EMERGENCY_KILL",
+      error: "Model Platform cutover is currently disabled via emergency kill switch; generation cannot proceed under MODEL_PLATFORM_V1 quote",
+    }, { status: 503 });
+  }
+
   let providerPayloadJson = null;
   let payloadFingerprint = null;
   let executionEndpoint = null;
