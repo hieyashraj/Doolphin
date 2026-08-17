@@ -44,8 +44,8 @@ export async function getModel(modelId, { fetchImpl, env = process.env, forceRef
 
   const isCutoverEnabled = env.MODEL_PLATFORM_SEEDANCE_CUTOVER_ENABLED === "true";
 
-  // Cutover fail-closed guard: Cutover mode refuses LOCAL_FALLBACK for authoritative model cutover
-  if (isCutoverEnabled && localDef && providerResolution.provenance.source === "LOCAL_FALLBACK") {
+  // Cutover fail-closed guard: Cutover mode requires source === "LIVE_PROVIDER" and stale === false
+  if (isCutoverEnabled && localDef && (providerResolution.provenance.source !== "LIVE_PROVIDER" || providerResolution.provenance.stale === true)) {
     throw new ModelPlatformError(
       ERROR_CODES.PROVIDER_SPEC_UNAVAILABLE,
       `Authoritative Provider Authority spec unavailable for cutover model '${modelId}'`

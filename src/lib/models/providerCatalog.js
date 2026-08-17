@@ -23,26 +23,31 @@ export function computeCatalogHash(catalogData) {
 export function validateProviderModelEntry(entry) {
   if (!entry || typeof entry !== "object") return false;
 
-  const providerModelId = entry.providerModelId || entry.id;
-  if (typeof providerModelId !== "string" || !providerModelId) return false;
-  if (typeof entry.endpoint !== "string" || !entry.endpoint) return false;
+  const providerModelId = entry.providerModelId || entry.id || entry.name;
+  if (typeof providerModelId !== "string" || !providerModelId.trim()) return false;
+
+  const rawEndpoint = entry.endpoint;
+  if (typeof rawEndpoint !== "string" || !rawEndpoint.trim()) return false;
+
+  const inputSchema = entry.inputSchema || entry.input_schema;
+  if (!inputSchema || typeof inputSchema !== "object" || Object.keys(inputSchema).length === 0) return false;
 
   const isDynamic = Boolean(entry.dynamic_pricing ?? entry.dynamicPricing);
 
-  if (entry.cost !== undefined && entry.cost !== null) {
-    if (typeof entry.cost === "object") {
-      const amount = Number(entry.cost.amount ?? entry.cost.cost ?? entry.cost.price);
-      if (!isDynamic && (isNaN(amount) || amount < 0)) {
-        return false;
-      }
-    } else if (typeof entry.cost === "number" && entry.cost < 0) {
-      return false;
-    }
-  } else if (!isDynamic) {
-    return false;
+  if (isDynamic) {
+    const estEndpoint = entry.estimateEndpoint || entry.estimate_endpoint;
+    if (typeof estEndpoint !== "string" || !estEndpoint.trim()) return false;
+  } else {
+    const rawCost = entry.cost;
+    if (rawCost === undefined || rawCost === null) return false;
+    if (typeof rawCost === "object") {
+      const amount = Number(rawCost.amount ?? rawCost.cost ?? rawCost.price);
+      if (isNaN(amount) || amount < 0) return false;
+    } else if (typeof rawCost === "number") {
+      if (isNaN(rawCost) || rawCost < 0) return false;
+    } else return false;
   }
 
-  if (!entry.inputSchema && !entry.input_schema) return false;
   return true;
 }
 
@@ -167,17 +172,41 @@ export async function fetchLiveSingleMuapiModel(providerModelId, {
     if (response.ok) {
       const payload = await response.json();
       const rawEntry = payload.model || payload.data || payload;
-      const normalizedEntry = {
-        providerModelId: rawEntry.providerModelId || rawEntry.id || providerModelId,
-        endpoint: rawEntry.endpoint || `https://api.muapi.ai/api/v1/${providerModelId}`,
-        cost: rawEntry.cost,
-        dynamic_pricing: Boolean(rawEntry.dynamic_pricing ?? rawEntry.dynamicPricing),
-        estimateEndpoint: rawEntry.estimateEndpoint || rawEntry.estimate_endpoint || `https://api.muapi.ai/api/v1/models/${providerModelId}/estimate-cost`,
-        inputSchema: rawEntry.inputSchema || rawEntry.input_schema || { type: "object", properties: { prompt: { type: "string" } } },
-      };
 
-      if (validateProviderModelEntry(normalizedEntry)) {
-        return { success: true, spec: normalizedEntry };
+      if (rawEntry && typeof rawEntry === "object") {
+        const id = rawEntry.providerModelId || rawEntry.id || rawEntry.name || providerModelId;
+        const rawEndpoint = rawEntry.endpoint;
+        let normalizedEndpoint = null;
+        if (typeof rawEndpoint === "string" && rawEndpoint.trim()) {
+          normalizedEndpoint = rawEndpoint.startsWith("http")
+            ? rawEndpoint
+            : `https://api.muapi.ai${rawEndpoint.startsWith("/") ? "" : "/"}${rawEndpoint}`;
+        }
+
+        const rawEstEndpoint = rawEntry.estimateEndpoint || rawEntry.estimate_endpoint;
+        let normalizedEstEndpoint = null;
+        if (typeof rawEstEndpoint === "string" && rawEstEndpoint.trim()) {
+          normalizedEstEndpoint = rawEstEndpoint.startsWith("http")
+            ? rawEstEndpoint
+            : `https://api.muapi.ai${rawEstEndpoint.startsWith("/") ? "" : "/"}${rawEstEndpoint}`;
+        }
+
+        const normalizedEntry = {
+          providerModelId: id,
+          endpoint: normalizedEndpoint,
+          cost: rawEntry.cost,
+          dynamicPricing: Boolean(rawEntry.dynamic_pricing ?? rawEntry.dynamicPricing),
+          estimateEndpoint: normalizedEstEndpoint,
+          inputSchema: rawEntry.inputSchema || rawEntry.input_schema,
+          outputSchema: rawEntry.outputSchema || rawEntry.output_schema,
+          description: rawEntry.description,
+          category: rawEntry.category,
+          family: rawEntry.family,
+        };
+
+        if (validateProviderModelEntry(normalizedEntry)) {
+          return { success: true, spec: normalizedEntry };
+        }
       }
     }
   } catch {

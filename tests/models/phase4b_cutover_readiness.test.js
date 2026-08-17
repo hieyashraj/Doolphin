@@ -37,6 +37,172 @@ const mockEstimateFetch = async (url) => {
   };
 };
 
+test("Phase 4B.3b Strict Validation: Complete live spec -> LIVE_PROVIDER accepted", async () => {
+  clearExactModelMemoryCache();
+  const mockFetch = async (url) => {
+    if (url.includes("/api/v1/models")) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          providerModelId: "seedance-2-omni-reference-no-video-fast",
+          endpoint: "/api/v1/seedance-2-omni-reference-no-video-fast",
+          cost: { amount: 0.04838, currency: "USD" },
+          dynamic_pricing: true,
+          estimate_endpoint: "/api/v1/models/seedance-2-omni-reference-no-video-fast/estimate-cost",
+          input_schema: { type: "object", properties: { prompt: { type: "string" } } },
+        }),
+      };
+    }
+    return mockEstimateFetch(url);
+  };
+
+  const model = await getModel("muapi.seedance2.omni-reference-fast", {
+    fetchImpl: mockFetch,
+    env: TEST_ENV_CUTOVER,
+    forceRefresh: true,
+  });
+
+  assert.ok(model);
+  assert.equal(model.providerSpec.provenance.source, "LIVE_PROVIDER");
+  assert.equal(model.providerSpec.provenance.stale, false);
+  assert.equal(model.providerSpec.endpoint, "https://api.muapi.ai/api/v1/seedance-2-omni-reference-no-video-fast");
+});
+
+test("Phase 4B.3b Strict Validation: Live 200 response missing input schema -> must NOT be promoted to LIVE_PROVIDER", async () => {
+  clearExactModelMemoryCache();
+  const mockIncompleteFetch = async (url) => {
+    if (url.includes("/api/v1/models")) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          providerModelId: "seedance-2-omni-reference-no-video-fast",
+          endpoint: "https://api.muapi.ai/api/v1/seedance-2-omni-reference-no-video-fast",
+          dynamic_pricing: true,
+          estimate_endpoint: "https://api.muapi.ai/api/v1/models/seedance-2/estimate-cost",
+          // missing input_schema!
+        }),
+      };
+    }
+    return mockEstimateFetch(url);
+  };
+
+  await assert.rejects(
+    () => getModel("muapi.seedance2.omni-reference-fast", {
+      fetchImpl: mockIncompleteFetch,
+      env: TEST_ENV_CUTOVER,
+      forceRefresh: true,
+    }),
+    (err) => err instanceof ModelPlatformError && err.code === ERROR_CODES.PROVIDER_SPEC_UNAVAILABLE
+  );
+});
+
+test("Phase 4B.3b Strict Validation: Live 200 response missing endpoint -> must NOT invent endpoint", async () => {
+  clearExactModelMemoryCache();
+  const mockMissingEndpointFetch = async (url) => {
+    if (url.includes("/api/v1/models")) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          providerModelId: "seedance-2-omni-reference-no-video-fast",
+          // missing endpoint!
+          dynamic_pricing: true,
+          estimate_endpoint: "https://api.muapi.ai/api/v1/models/seedance-2/estimate-cost",
+          input_schema: { type: "object", properties: { prompt: { type: "string" } } },
+        }),
+      };
+    }
+    return mockEstimateFetch(url);
+  };
+
+  await assert.rejects(
+    () => getModel("muapi.seedance2.omni-reference-fast", {
+      fetchImpl: mockMissingEndpointFetch,
+      env: TEST_ENV_CUTOVER,
+      forceRefresh: true,
+    }),
+    (err) => err instanceof ModelPlatformError && err.code === ERROR_CODES.PROVIDER_SPEC_UNAVAILABLE
+  );
+});
+
+test("Phase 4B.3b Strict Validation: Live dynamic-pricing response missing estimate endpoint -> invalid authoritative spec", async () => {
+  clearExactModelMemoryCache();
+  const mockMissingEstFetch = async (url) => {
+    if (url.includes("/api/v1/models")) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          providerModelId: "seedance-2-omni-reference-no-video-fast",
+          endpoint: "https://api.muapi.ai/api/v1/seedance-2-omni-reference-no-video-fast",
+          dynamic_pricing: true,
+          // missing estimate_endpoint!
+          input_schema: { type: "object", properties: { prompt: { type: "string" } } },
+        }),
+      };
+    }
+    return mockEstimateFetch(url);
+  };
+
+  await assert.rejects(
+    () => getModel("muapi.seedance2.omni-reference-fast", {
+      fetchImpl: mockMissingEstFetch,
+      env: TEST_ENV_CUTOVER,
+      forceRefresh: true,
+    }),
+    (err) => err instanceof ModelPlatformError && err.code === ERROR_CODES.PROVIDER_SPEC_UNAVAILABLE
+  );
+});
+
+test("Phase 4B.3b Cutover Fail-Closed: Cutover enabled + only BOOTSTRAP available -> PROVIDER_SPEC_UNAVAILABLE", async () => {
+  clearExactModelMemoryCache();
+  const mockFailingFetch = async () => {
+    return { ok: false, status: 503, json: async () => ({ error: "Provider network down" }) };
+  };
+
+  await assert.rejects(
+    () => getModel("muapi.seedance2.omni-reference-fast", {
+      fetchImpl: mockFailingFetch,
+      env: TEST_ENV_CUTOVER,
+      forceRefresh: true,
+    }),
+    (err) => err instanceof ModelPlatformError && err.code === ERROR_CODES.PROVIDER_SPEC_UNAVAILABLE
+  );
+});
+
+test("Phase 4B.3b Cutover Success: Cutover enabled + valid LIVE_PROVIDER -> succeeds", async () => {
+  clearExactModelMemoryCache();
+  const mockValidFetch = async (url) => {
+    if (url.includes("/api/v1/models")) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          providerModelId: "seedance-2-omni-reference-no-video-fast",
+          endpoint: "/api/v1/seedance-2-omni-reference-no-video-fast",
+          cost: { amount: 0.04838, currency: "USD" },
+          dynamic_pricing: true,
+          estimate_endpoint: "/api/v1/models/seedance-2-omni-reference-no-video-fast/estimate-cost",
+          input_schema: { type: "object", properties: { prompt: { type: "string" } } },
+        }),
+      };
+    }
+    return mockEstimateFetch(url);
+  };
+
+  const model = await getModel("muapi.seedance2.omni-reference-fast", {
+    fetchImpl: mockValidFetch,
+    env: TEST_ENV_CUTOVER,
+    forceRefresh: true,
+  });
+
+  assert.ok(model);
+  assert.equal(model.providerSpec.provenance.source, "LIVE_PROVIDER");
+  assert.equal(model.providerSpec.provenance.stale, false);
+});
+
 test("Phase 4B.3a Cold-Start Auto-Fetch: Cold start automatically fetches live Provider Authority spec and caches result", async () => {
   clearExactModelMemoryCache();
   let liveFetchCallCount = 0;
@@ -60,7 +226,6 @@ test("Phase 4B.3a Cold-Start Auto-Fetch: Cold start automatically fetches live P
     return mockEstimateFetch(url);
   };
 
-  // Lookup 1: Cold start cache miss -> triggers automatic live fetch
   const model1 = await getModel("muapi.seedance2.omni-reference-fast", {
     fetchImpl: mockLiveFetch,
     env: TEST_ENV_CUTOVER,
@@ -71,7 +236,6 @@ test("Phase 4B.3a Cold-Start Auto-Fetch: Cold start automatically fetches live P
   assert.equal(model1.providerSpec.endpoint, "https://api.muapi.ai/api/v1/seedance-2-omni-reference-no-video-fast");
   assert.equal(liveFetchCallCount, 1);
 
-  // Lookup 2: Second call within TTL -> reuses exact cached spec with ZERO network calls
   const model2 = await getModel("muapi.seedance2.omni-reference-fast", {
     fetchImpl: mockLiveFetch,
     env: TEST_ENV_CUTOVER,
@@ -79,23 +243,7 @@ test("Phase 4B.3a Cold-Start Auto-Fetch: Cold start automatically fetches live P
 
   assert.ok(model2);
   assert.equal(model2.providerSpec.provenance.source, "LIVE_PROVIDER");
-  assert.equal(liveFetchCallCount, 1); // Proves no second network request occurred!
-});
-
-test("Phase 4B.3a Cold-Start Failure: Live request failure in cutover mode fails closed with PROVIDER_SPEC_UNAVAILABLE", async () => {
-  clearExactModelMemoryCache();
-
-  const mockFailingFetch = async () => {
-    return { ok: false, status: 503, json: async () => ({ error: "Provider catalog down" }) };
-  };
-
-  await assert.rejects(
-    () => getModel("muapi.seedance2.omni-reference-fast", {
-      fetchImpl: mockFailingFetch,
-      env: TEST_ENV_CUTOVER,
-    }),
-    (err) => err instanceof ModelPlatformError && err.code === ERROR_CODES.PROVIDER_SPEC_UNAVAILABLE
-  );
+  assert.equal(liveFetchCallCount, 1);
 });
 
 test("Phase 4B.3 Provider Authority Injection: Live schema/endpoint overrides local spec without altering local product/business policy", async () => {
@@ -133,7 +281,6 @@ test("Phase 4B.3 Provider Authority Injection: Live schema/endpoint overrides lo
   assert.equal(model.providerSpec.cost.amount, 0.0999);
   assert.equal(model.providerSpec.provenance.source, "LIVE_PROVIDER");
 
-  // Local Doolphin policies preserved unchanged
   assert.equal(model.productPolicy.id, "muapi.seedance2.omni-reference-fast");
   assert.equal(model.productPolicy.displayName, "Seedance 2 Omni Reference Fast");
   assert.equal(model.businessPolicy.targetContributionMarginBps, 3000);
