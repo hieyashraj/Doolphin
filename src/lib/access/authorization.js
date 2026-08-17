@@ -48,21 +48,21 @@ export async function requireAuthenticatedUser(reqId) {
   let appUser = await prisma.user.findUnique({ where: { supabaseUserId: user.id } });
   logPerf(reqId, "auth:user.findUnique", t1);
 
-  // RETURNING LINKED USER: If application User exists, return immediately without extra network calls
-  if (appUser) {
-    return { authUser: user, appUser };
-  }
-
-  // FIRST-TIME USER ONLY: Call getUser() once for authoritative email verification & metadata
+  // Authoritative email verification & metadata check via full getUser() call
   const { data: { user: fullAuthUser }, error: fullAuthError } = await supabase.auth.getUser();
   if (fullAuthError || !fullAuthUser || !fullAuthUser.email) {
     throw new AuthorizationError("UNAUTHENTICATED", 401);
   }
 
-  // Check email verification state for first-time email sign-ups
+  // Check email verification state for all users (first-time or returning)
   const isGoogle = fullAuthUser.app_metadata?.provider === "google";
   if (!fullAuthUser.email_confirmed_at && !isGoogle) {
     throw new AuthorizationError("EMAIL_VERIFICATION_REQUIRED", 403);
+  }
+
+  // RETURNING LINKED USER: If application User exists, return immediately without extra network calls
+  if (appUser) {
+    return { authUser: user, appUser };
   }
 
   try {
@@ -70,6 +70,7 @@ export async function requireAuthenticatedUser(reqId) {
       supabaseUserId: fullAuthUser.id,
       email: fullAuthUser.email,
       name: fullAuthUser.user_metadata?.full_name || fullAuthUser.user_metadata?.name,
+      isConfirmed: true,
     });
   } catch (err) {
     if (err?.message === "IDENTITY_LINK_CONFLICT") {

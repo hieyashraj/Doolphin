@@ -1,3 +1,19 @@
 import { prisma } from "../prisma.js";
 export const normalizeEmail = (email) => String(email || "").trim().toLowerCase();
-export async function linkSupabaseIdentity({ supabaseUserId, email, name }) { const normalizedEmail = normalizeEmail(email); if (!normalizedEmail) throw new Error("A verified email address is required"); return prisma.$transaction(async (tx) => { const existing = await tx.user.findUnique({ where: { supabaseUserId } }); if (existing) return existing; const legacy = await tx.user.findUnique({ where: { email: normalizedEmail } }); if (legacy?.supabaseUserId) throw new Error("IDENTITY_LINK_CONFLICT"); if (legacy) return tx.user.update({ where: { id: legacy.id }, data: { supabaseUserId, normalizedEmail, activationStatus: "VERIFIED_PAYWALLED", name: legacy.name || name || null } }); const user = await tx.user.create({ data: { email: normalizedEmail, normalizedEmail, supabaseUserId, name: name || null, activationStatus: "VERIFIED_PAYWALLED" } }); const workspace = await tx.workspace.create({ data: { name: `${name || "Doolphin"}'s Workspace`, ownerUserId: user.id, billingPlan: "unactivated" } }); await tx.workspaceMember.create({ data: { workspaceId: workspace.id, userId: user.id, role: "OWNER" } }); await tx.creditAccount.create({ data: { workspaceId: workspace.id, availableCredits: 0, reservedCredits: 0, lifetimeIssuedCredits: 0 } }); return tx.user.update({ where: { id: user.id }, data: { defaultWorkspaceId: workspace.id } }); }); }
+export async function linkSupabaseIdentity({ supabaseUserId, email, name, isConfirmed = false }) {
+  const normalizedEmail = normalizeEmail(email);
+  if (!normalizedEmail) throw new Error("A verified email address is required");
+  if (!isConfirmed) throw new Error("EMAIL_VERIFICATION_REQUIRED");
+  return prisma.$transaction(async (tx) => {
+    const existing = await tx.user.findUnique({ where: { supabaseUserId } });
+    if (existing) return existing;
+    const legacy = await tx.user.findUnique({ where: { email: normalizedEmail } });
+    if (legacy?.supabaseUserId) throw new Error("IDENTITY_LINK_CONFLICT");
+    if (legacy) return tx.user.update({ where: { id: legacy.id }, data: { supabaseUserId, normalizedEmail, activationStatus: "VERIFIED_PAYWALLED", name: legacy.name || name || null } });
+    const user = await tx.user.create({ data: { email: normalizedEmail, normalizedEmail, supabaseUserId, name: name || null, activationStatus: "VERIFIED_PAYWALLED" } });
+    const workspace = await tx.workspace.create({ data: { name: `${name || "Doolphin"}'s Workspace`, ownerUserId: user.id, billingPlan: "unactivated" } });
+    await tx.workspaceMember.create({ data: { workspaceId: workspace.id, userId: user.id, role: "OWNER" } });
+    await tx.creditAccount.create({ data: { workspaceId: workspace.id, availableCredits: 0, reservedCredits: 0, lifetimeIssuedCredits: 0 } });
+    return tx.user.update({ where: { id: user.id }, data: { defaultWorkspaceId: workspace.id } });
+  });
+}

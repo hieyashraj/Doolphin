@@ -47,6 +47,14 @@ export default function SignInPage() {
         return;
       }
 
+      const user = res.data?.user;
+      const isGoogle = user?.app_metadata?.provider === "google";
+      if (user && !user.email_confirmed_at && !isGoogle) {
+        setSubmitting(false);
+        window.location.replace(`/verify-email?email=${encodeURIComponent(user.email || email.trim())}`);
+        return;
+      }
+
       sessionStorage.setItem("doolphin-auth-notice", "welcome-back");
       window.location.replace("/app");
     } catch (err) {

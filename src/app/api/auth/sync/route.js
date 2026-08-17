@@ -22,12 +22,20 @@ export async function POST(request) {
 
     if (!user?.email) return NextResponse.json({ error: "Authentication required" }, { status: 401 });
 
+    const isGoogle = user.app_metadata?.provider === "google";
+    const isConfirmed = !!user.email_confirmed_at || isGoogle;
+
+    if (!isConfirmed) {
+      return NextResponse.json({ error: "Email verification required" }, { status: 403 });
+    }
+
     // [PERF] linkSupabaseIdentity (user/identity DB lookup + workspace provisioning)
     const appUser = await timed(reqId, "sync:linkSupabaseIdentity", () =>
       linkSupabaseIdentity({
         supabaseUserId: user.id,
         email: user.email,
         name: user.user_metadata?.full_name || user.user_metadata?.name,
+        isConfirmed: true,
       })
     );
 
