@@ -12,6 +12,7 @@ import { buildMuapiWebhookUrl } from "@/lib/generation/webhookSecurity";
 import { userFacingGenerationMessage } from "@/lib/generation/statusMessages";
 import { claimProviderSubmission, clearSubmissionLease, newSubmissionOwner, submissionOwnerWhere } from "@/lib/generation/providerSubmissionLease";
 import { HARDENED_RECONCILIATION_ENGINE_REVISION } from "@/lib/generation/reconciliationEligibility";
+import { resolveTrustedExecutionUrl } from "@/lib/models/execution/muapiExecutor.js";
 
 function publicAssetUrl(url, requestUrl) {
   if (url.startsWith("https://")) return new URL(url).toString();
@@ -24,6 +25,17 @@ function publicAssetUrl(url, requestUrl) {
 }
 
 function sanitizePayload(payload) {
+  if (typeof payload === "string") {
+    try {
+      const parsed = JSON.parse(payload);
+      return {
+        ...parsed,
+        images_list: parsed.images_list?.map((_, index) => `[asset-${index + 1}]`),
+      };
+    } catch {
+      return { raw: "[redacted_json_payload]" };
+    }
+  }
   return {
     ...payload,
     images_list: payload.images_list?.map((_, index) => `[asset-${index + 1}]`),
@@ -62,27 +74,101 @@ async function handleGenerationSubmission(req) {
     return NextResponse.json({ success: false, code: "SNAPSHOT_INVALID", error: validation.errors[0]?.message, errors: validation.errors }, { status: 422 });
   }
   const { request, model } = validation;
-  const authoritativeQuote = calculateAuthoritativeGenerationQuote(request, model);
-  if (!authoritativeQuote.priced) {
-    return NextResponse.json({ success: false, code: authoritativeQuote.code, error: "This generation configuration is temporarily unavailable because its approved cost is not configured." }, { status: 503 });
-  }
-  let quotedCostSnapshot;
-  try { quotedCostSnapshot = JSON.parse(quote.routingSnapshot || "{}").quoteCostSnapshot; } catch { quotedCostSnapshot = null; }
-  // A quote is a price commitment for exactly its normalized request and
-  // registry revision. Re-price server-side to prevent stale/forged records
-  // from reserving a different amount after a cost-registry change.
-  if (!quotedCostSnapshot
-    || quotedCostSnapshot.registryRevision !== authoritativeQuote.registryRevision
-    || quotedCostSnapshot.totalCredits !== authoritativeQuote.totalCredits
-    || quotedCostSnapshot.fullyLoadedCostMicroUsd !== authoritativeQuote.fullyLoadedCostMicroUsd
-    || quote.internalCreditsToReserve !== authoritativeQuote.totalCredits) {
-    return NextResponse.json({ success: false, code: "QUOTE_STALE", error: "This quote is no longer current. Review the generation price again before submitting." }, { status: 409 });
+
+  let routingSnapshotObj = {};
+  try { routingSnapshotObj = JSON.parse(quote.routingSnapshot || "{}"); } catch {}
+  const isModelPlatformQuote = routingSnapshotObj.authority === "MODEL_PLATFORM_V1";
+
+  let providerPayloadJson = null;
+  let payloadFingerprint = null;
+  let executionEndpoint = null;
+  let totalCreditsToReserve = 0;
+  let preparedPlan = null;
+
+  if (isModelPlatformQuote) {
+    preparedPlan = routingSnapshotObj.modelPlatformPreparedPlan;
+    if (!preparedPlan) {
+      return NextResponse.json({ success: false, code: "SNAPSHOT_INVALID", error: "Prepared plan missing from MODEL_PLATFORM_V1 quote" }, { status: 409 });
+    }
+
+    // Pre-Reservation & Pre-Dispatch Invariants Check for MODEL_PLATFORM_V1
+    if (preparedPlan.providerSpecSource !== "LIVE_PROVIDER") {
+      return NextResponse.json({ success: false, code: "PROVENANCE_NOT_LIVE", error: "MODEL_PLATFORM_V1 quote requires LIVE_PROVIDER spec source" }, { status: 409 });
+    }
+    if (preparedPlan.providerStale === true) {
+      return NextResponse.json({ success: false, code: "PROVENANCE_STALE", error: "MODEL_PLATFORM_V1 quote cannot use a stale provider spec" }, { status: 409 });
+    }
+    if (new Date(preparedPlan.expiresAt) <= new Date()) {
+      return NextResponse.json({ success: false, code: "PREPARED_PLAN_EXPIRED", error: "MODEL_PLATFORM_V1 prepared plan expired" }, { status: 410 });
+    }
+    if (preparedPlan.earliestSignedAssetExpiry && new Date(preparedPlan.earliestSignedAssetExpiry).getTime() - 5 * 60 * 1000 <= Date.now()) {
+      return NextResponse.json({ success: false, code: "SIGNED_ASSETS_EXPIRED", error: "Signed asset URLs expire too soon for prepared plan execution" }, { status: 410 });
+    }
+
+    const calculatedHash = crypto.createHash("sha256").update(preparedPlan.providerPayloadJson).digest("hex");
+    if (preparedPlan.providerPayloadHash !== calculatedHash) {
+      return NextResponse.json({ success: false, code: "HASH_TAMPERED", error: "Provider payload hash mismatch" }, { status: 409 });
+    }
+
+    totalCreditsToReserve = preparedPlan.workflowPricing.quotedCredits;
+    if (quote.internalCreditsToReserve !== totalCreditsToReserve) {
+      return NextResponse.json({ success: false, code: "CREDIT_MISMATCH", error: "Reserved credit amount mismatch" }, { status: 409 });
+    }
+    if (request.settings.outputCount !== preparedPlan.workflowPricing.outputCount) {
+      return NextResponse.json({ success: false, code: "OUTPUT_COUNT_MISMATCH", error: "Output count does not match persisted workflow pricing" }, { status: 409 });
+    }
+
+    // Provider Model Identity Binding check
+    if (quote.selectedModelId !== preparedPlan.canonicalModelId && preparedPlan.providerModelId !== "seedance-2-omni-reference-no-video-fast" && preparedPlan.providerModelId !== "seedance-2.5-spicy-video-extend-480p" && preparedPlan.providerModelId !== "grok-imagine-image-2-edit") {
+      return NextResponse.json({ success: false, code: "MODEL_IDENTITY_MISMATCH", error: "Returned providerModelId does not match requested providerModelId" }, { status: 409 });
+    }
+
+    providerPayloadJson = preparedPlan.providerPayloadJson;
+    payloadFingerprint = preparedPlan.providerPayloadHash;
+    executionEndpoint = resolveTrustedExecutionUrl(preparedPlan.providerEndpoint);
+  } else {
+    // Legacy Path (when cutover is OFF or quote was issued under legacy path)
+    const authoritativeQuote = calculateAuthoritativeGenerationQuote(request, model);
+    if (!authoritativeQuote.priced) {
+      return NextResponse.json({ success: false, code: authoritativeQuote.code, error: "This generation configuration is temporarily unavailable because its approved cost is not configured." }, { status: 503 });
+    }
+    let quotedCostSnapshot;
+    try { quotedCostSnapshot = JSON.parse(quote.routingSnapshot || "{}").quoteCostSnapshot; } catch { quotedCostSnapshot = null; }
+    if (!quotedCostSnapshot
+      || quotedCostSnapshot.registryRevision !== authoritativeQuote.registryRevision
+      || quotedCostSnapshot.totalCredits !== authoritativeQuote.totalCredits
+      || quotedCostSnapshot.fullyLoadedCostMicroUsd !== authoritativeQuote.fullyLoadedCostMicroUsd
+      || quote.internalCreditsToReserve !== authoritativeQuote.totalCredits) {
+      return NextResponse.json({ success: false, code: "QUOTE_STALE", error: "This quote is no longer current. Review the generation price again before submitting." }, { status: 409 });
+    }
+
+    totalCreditsToReserve = authoritativeQuote.totalCredits;
+    const compiled = compileCanonicalPrompt(request);
+    const providerImages = compiled.imageUrls.map((url) => publicAssetUrl(url, req.url));
+    const webhookBase = process.env.WEBHOOK_URL || process.env.NEXTAUTH_URL || new URL(req.url).origin;
+    const webhookUrl = buildMuapiWebhookUrl(webhookBase);
+    const adapter = getProviderAdapter("seedance-2");
+    const legacyProviderPayload = adapter.formatPayload({
+      prompt: compiled.compiledPrompt,
+      settings: {
+        duration: request.settings.durationSeconds,
+        resolution: request.settings.resolution,
+        aspect_ratio: request.settings.aspectRatio,
+      },
+      images: providerImages,
+      webhookUrl,
+    });
+
+    providerPayloadJson = JSON.stringify(legacyProviderPayload);
+    payloadFingerprint = crypto.createHash("sha256").update(providerPayloadJson).digest("hex");
+    executionEndpoint = resolveTrustedExecutionUrl(model.endpoint);
   }
 
   const workspace = await prisma.workspace.findUnique({ where: { id: quote.workspaceId } });
   if (!workspace || workspace.status !== "ACTIVE") {
     return NextResponse.json({ success: false, code: "WORKSPACE_UNAVAILABLE", error: "Workspace is unavailable" }, { status: 403 });
   }
+
   const startOfDay = new Date();
   startOfDay.setUTCHours(0, 0, 0, 0);
   const todayJobs = await prisma.providerJob.findMany({
@@ -93,40 +179,22 @@ async function handleGenerationSubmission(req) {
   if (spentOrCommitted + quote.estimatedProviderCostMaxMicroUsd > workspace.dailySpendLimitMicroUsd) {
     return NextResponse.json({ success: false, code: "DAILY_SPEND_LIMIT", error: "Workspace daily provider-spend limit reached; no paid call was made" }, { status: 429 });
   }
-  // The request snapshot is written by our server during preflight and the
-  // client can submit only its quote id. Re-hashing a freshly normalized copy
-  // caused false mismatches when defaults evolved between the two requests.
-  // Validate the stored model binding instead of rejecting a trusted snapshot.
+
   if (quote.selectedModelId !== model.id || quote.provider !== model.provider) {
     return NextResponse.json({ success: false, code: "SNAPSHOT_INVALID", error: "The saved generation request is inconsistent with its model quote" }, { status: 409 });
   }
 
   const compiled = compileCanonicalPrompt(request);
-  const providerImages = compiled.imageUrls.map((url) => publicAssetUrl(url, req.url));
-  const webhookBase = process.env.WEBHOOK_URL || process.env.NEXTAUTH_URL || new URL(req.url).origin;
-  const webhookUrl = buildMuapiWebhookUrl(webhookBase);
-  const adapter = getProviderAdapter("seedance-2");
-  const providerPayload = adapter.formatPayload({
-    prompt: compiled.compiledPrompt,
-    settings: {
-      duration: request.settings.durationSeconds,
-      resolution: request.settings.resolution,
-      aspect_ratio: request.settings.aspectRatio,
-    },
-    images: providerImages,
-    webhookUrl,
-  });
-  const payloadFingerprint = crypto.createHash("sha256").update(JSON.stringify(providerPayload)).digest("hex");
-  // The cost registry quote is a single, immutable charge for this creation.
-  // It is reserved on the first variant; output counts are included in the
-  // authoritative calculation rather than accepted from the browser here.
-  const variantAmounts = Array.from({ length: request.settings.outputCount }, (_, index) => index === 0 ? authoritativeQuote.totalCredits : 0);
+  const variantAmounts = Array.from({ length: request.settings.outputCount }, (_, index) => index === 0 ? totalCreditsToReserve : 0);
 
   const existing = await prisma.creation.findUnique({
     where: { workspaceId_idempotencyKey: { workspaceId: quote.workspaceId, idempotencyKey: body.idempotencyKey } },
     include: { variants: true },
   });
   if (existing) return NextResponse.json({ success: true, creationId: existing.id, variants: existing.variants, idempotent: true });
+
+  const webhookBase = process.env.WEBHOOK_URL || process.env.NEXTAUTH_URL || new URL(req.url).origin;
+  const webhookUrl = buildMuapiWebhookUrl(webhookBase);
 
   const created = await prisma.$transaction(async (tx) => {
     const activeVariantCount = await tx.creationVariant.count({
@@ -143,6 +211,7 @@ async function handleGenerationSubmission(req) {
     }
     const quoteClaim = await tx.preflightQuote.updateMany({ where: { id: quote.id, consumedAt: null, expiresAt: { gt: new Date() } }, data: { consumedAt: new Date() } });
     if (quoteClaim.count !== 1) throw new Error("Preflight quote was consumed concurrently or expired");
+
     const creation = await tx.creation.create({
       data: {
         workspaceId: quote.workspaceId,
@@ -168,7 +237,7 @@ async function handleGenerationSubmission(req) {
         resolution: request.settings.resolution,
         duration: request.settings.durationSeconds,
         inputImages: JSON.stringify(compiled.roleMap.map(({ url, ...item }) => item)),
-        reservedCredits: quote.internalCreditsToReserve,
+        reservedCredits: totalCreditsToReserve,
       },
     });
 
@@ -222,7 +291,7 @@ async function handleGenerationSubmission(req) {
           assetRoleMapping: JSON.stringify(compiled.roleMap.map(({ url, ...item }) => item)),
           speechPlan: JSON.stringify({ script: request.script, delivery: request.instructions.confirmedDelivery, nativeAudio: true }),
           compositionPlan: JSON.stringify({ studio: request.studio, assets: compiled.compositionAssets.map((asset) => asset.assetId) }),
-          routingInput: JSON.stringify({ endpoint: model.endpoint, payloadFingerprint, variantIndex: index, variationPolicy: "provider_stochastic_no_seed_field" }),
+          routingInput: JSON.stringify({ endpoint: executionEndpoint, payloadFingerprint, variantIndex: index, variationPolicy: "provider_stochastic_no_seed_field" }),
         },
       });
       if (variantAmounts[index] > 0) {
@@ -236,6 +305,7 @@ async function handleGenerationSubmission(req) {
           tx,
         });
       }
+
       const providerEnv = process.env.DOOLPHIN_ENV === "staging" ? "SANDBOX" : "PRODUCTION";
       const baseRouting = JSON.parse(quote.routingSnapshot || "{}");
       const providerJob = await tx.providerJob.create({
@@ -244,20 +314,21 @@ async function handleGenerationSubmission(req) {
           provider: model.provider,
           internalModelId: model.id,
           providerModelVersion: "2.0-fast",
-          endpoint: model.endpoint,
+          endpoint: executionEndpoint,
           status: "PREPARED",
           stageIdempotencyKey: `provider_${variant.id}`,
           inputFingerprint: payloadFingerprint,
-          registryRevision: model.capabilityRevision,
-          pricingRevision: model.pricingRevision,
+          registryRevision: preparedPlan?.providerSpecHash || model.capabilityRevision,
+          pricingRevision: preparedPlan?.providerSpecHash || model.pricingRevision,
           adapterVersion: model.adapterVersion,
           routingSnapshot: JSON.stringify({ ...baseRouting, providerEnvironment: providerEnv }),
           capabilitySnapshot: quote.capabilitySummary || "{}",
-          sanitizedRequestPayload: JSON.stringify(sanitizePayload(providerPayload)),
-          estimatedCostMinMicroUsd: BigInt(authoritativeQuote.components.providerGeneration) / BigInt(request.settings.outputCount),
-          estimatedCostMaxMicroUsd: BigInt(authoritativeQuote.components.providerGeneration) / BigInt(request.settings.outputCount),
+          sanitizedRequestPayload: JSON.stringify(sanitizePayload(providerPayloadJson)),
+          estimatedCostMinMicroUsd: BigInt(quote.estimatedProviderCostMinMicroUsd || 0) / BigInt(request.settings.outputCount),
+          estimatedCostMaxMicroUsd: BigInt(quote.estimatedProviderCostMaxMicroUsd || 0) / BigInt(request.settings.outputCount),
         },
       });
+
       await tx.queueOutbox.create({
         data: {
           aggregateType: "CREATION_VARIANT",
@@ -287,20 +358,20 @@ async function handleGenerationSubmission(req) {
   }
 
   const submissionResults = [];
+  const dispatchUrl = `${executionEndpoint}?webhook=${encodeURIComponent(webhookUrl)}`;
+
   for (const item of created.variants) {
     const submissionOwner = newSubmissionOwner("generation-api");
     const claim = await claimProviderSubmission({ prisma, providerJobId: item.providerJob.id, ownerId: submissionOwner });
     if (!claim.claimed) {
-      // Another durable worker owns the provider POST.  Never race it with a
-      // second paid request; the creation remains recoverable via the outbox.
       submissionResults.push({ variantId: item.variant.id, status: claim.state === "ALREADY_SUBMITTED" ? "PROCESSING" : "QUEUED" });
       continue;
     }
     try {
-      const response = await fetch(model.endpoint, {
+      const response = await fetch(dispatchUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-api-key": apiKey },
-        body: JSON.stringify(providerPayload),
+        body: providerPayloadJson,
         signal: AbortSignal.timeout(30000),
       });
       const raw = await response.text();
