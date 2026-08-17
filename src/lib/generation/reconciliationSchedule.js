@@ -1,14 +1,22 @@
 /**
- * Scheduler configuration is intentionally a pure plan until staging supplies
- * an authenticated cron secret and an explicit staging deployment marker.
- * Production is never eligible through this mechanism.
+ * Scheduler configuration is a pure plan describing whether reconciliation
+ * can safely run. Reconciliation is the ONLY mechanism that recovers a
+ * generation when a MuAPI webhook is lost/delayed/rejected, and the only
+ * mechanism that releases a credit reservation on timeout — it must be
+ * eligible in PRODUCTION, not staging-only. Eligibility is gated purely by
+ * having a secret bearer token and a public HTTPS callback base configured;
+ * it never depends on environment name. `getMuapiApiKey()` (called by the
+ * route itself, not here) is what guarantees a staging invocation can never
+ * reach a production provider credential and vice versa.
  */
-import { isStagingEnvironment } from "../generation-models/types.js";
-
 export function reconciliationSchedulePlan(env = process.env) {
-  const isStaging = isStagingEnvironment(env);
-  if (!isStaging) return { enabled: false, reason: "STAGING_ENVIRONMENT_REQUIRED" };
   if (!env.CRON_SECRET) return { enabled: false, reason: "CRON_SECRET_REQUIRED" };
   if (!env.WEBHOOK_URL?.startsWith("https://")) return { enabled: false, reason: "WEBHOOK_URL_HTTPS_REQUIRED" };
-  return { enabled: true, method: "POST", path: "/api/internal/reconcile", authorization: "Bearer <CRON_SECRET>", cadence: "*/1 * * * *", dryRunSupported: true };
+  // Vercel Cron's minimum supported granularity is once per minute on paid
+  // plans; Hobby is limited to once per day. "*/1 * * * *" documents the
+  // ideal cadence for a paid plan — if still on Hobby, invoke this route
+  // from an external scheduler (e.g. cron-job.org, GitHub Actions schedule)
+  // hitting it every 1-2 minutes with the same Bearer CRON_SECRET header
+  // until upgrading past Hobby.
+  return { enabled: true, method: "GET", path: "/api/internal/reconcile", authorization: "Bearer <CRON_SECRET>", cadence: "*/1 * * * *", dryRunSupported: true };
 }

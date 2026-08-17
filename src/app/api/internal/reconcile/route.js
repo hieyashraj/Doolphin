@@ -9,7 +9,6 @@ import { CreditEscrowService } from "@/lib/billing/CreditEscrowService";
 import { userFacingGenerationMessage } from "@/lib/generation/statusMessages";
 import { claimProviderSubmission, clearSubmissionLease, newSubmissionOwner, submissionOwnerWhere } from "@/lib/generation/providerSubmissionLease";
 import { replayFinalization } from "@/lib/generation/qualityPipeline";
-import { isStagingEnvironment } from "@/lib/generation-models/types";
 import { isReconciliationEligibleVariant, reconciliationEligibleVariantWhere } from "@/lib/generation/reconciliationEligibility";
 import { getImageModel } from "@/lib/generation-models/imageRegistry";
 import { fetchAuthenticatedMuapiResult } from "@/lib/generation/muapiResult";
@@ -18,9 +17,22 @@ import { getMuapiApiKey } from "@/lib/generation/muapiCredentials";
 
 export const maxDuration = 300;
 
+// Reconciliation must be safely callable from PRODUCTION. It is the only
+// mechanism that recovers a generation when a MuAPI webhook is lost, delayed,
+// or rejected, and the only mechanism that releases a credit reservation on
+// timeout. It is gated exclusively by a secret bearer token (CRON_SECRET),
+// never by environment name — an environment-name gate would (and, before
+// this fix, did) make this unreachable in production regardless of how it
+// was invoked. CRON_SECRET must be set as a real secret in every environment
+// (staging AND production) before this route is relied upon.
 function authorized(req) {
   const expected = process.env.CRON_SECRET;
-  return Boolean(expected && req.headers.get("authorization") === `Bearer ${expected}`);
+  if (!expected) return false;
+  // Vercel's native Cron Jobs feature issues a GET request and automatically
+  // attaches `Authorization: Bearer $CRON_SECRET` for routes protected by an
+  // env var of that exact name. Manual/staging callers may also POST with an
+  // explicit Authorization header. Both are accepted identically.
+  return req.headers.get("authorization") === `Bearer ${expected}`;
 }
 
 function providerUrl(asset, baseUrl) {
@@ -172,17 +184,16 @@ async function pollImageJob(job) {
   return processAuthenticatedImageResult(job, payload);
 }
 
-export async function GET() {
-  return NextResponse.json({ error: "Method not allowed" }, { status: 405, headers: { Allow: "POST" } });
-}
-
-export async function POST(req) {
-  // Reconciliation may reserve/release/settle durable state. It is staging
-  // only, server-to-server only, and never trusts caller-controlled input to
-  // choose its environment.
-  if (!isStagingEnvironment()) return NextResponse.json({ error: "Unavailable" }, { status: 404 });
+// Reconciliation may reserve/release/settle durable state. It is
+// server-to-server only, gated exclusively by a secret bearer token
+// (never by environment name or any caller-controlled input), and it is
+// safe to run in every environment: `getMuapiApiKey()` below resolves the
+// correct sandbox-vs-production MuAPI credential for whichever environment
+// this process is actually running in, so a staging invocation can never
+// reach a production credential and vice versa.
+async function runReconciliation(req) {
   if (!authorized(req)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  try { getMuapiApiKey(); } catch { return NextResponse.json({ error: "Sandbox provider credential required" }, { status: 503 }); }
+  try { getMuapiApiKey(); } catch { return NextResponse.json({ error: "Provider credential unavailable for this environment" }, { status: 503 }); }
   // WEBHOOK_URL is the explicit provider/reconciliation callback base. Do not
   // couple new staging infrastructure to legacy NextAuth compatibility URLs.
   const baseUrl = process.env.WEBHOOK_URL;
@@ -236,4 +247,18 @@ export async function POST(req) {
     actions.push({ variantId: variant.id, result: "TIMED_OUT" });
   }
   return NextResponse.json({ success: true, actions });
+}
+
+// Vercel's native Cron Jobs feature issues a GET request. Support GET so a
+// `crons` entry in vercel.json actually reaches this handler in production —
+// previously GET was hard-rejected with 405, which combined with the removed
+// staging-only gate above meant NOTHING could ever trigger recovery outside
+// a manual staging POST. POST remains supported for manual/staging invocation
+// and for any external scheduler that prefers POST.
+export async function GET(req) {
+  return runReconciliation(req);
+}
+
+export async function POST(req) {
+  return runReconciliation(req);
 }
