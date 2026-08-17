@@ -1,12 +1,13 @@
 import { prisma } from "../../prisma.js";
 
 /**
- * Authoritative Model Platform V1 Workflow & Multi-Output Settlement Engine (Phase 4D.2).
+ * Authoritative Model Platform V1 Workflow & Multi-Output Settlement Engine (Phase 4D.3).
  *
  * Implements a strictly transactional, Serializable creation-level commercial settlement policy:
  * - All outputs succeed (S = N): Charge full quotedCredits, release 0.
  * - All outputs fail (S = 0): Charge 0, release full quotedCredits.
  * - Partial success (0 < S < N): Charge exact preflight settlementSchedule, release unearned remainder.
+ * - Fails closed if workflow reservation is missing or inconsistent.
  * - Idempotent, race-safe, transactional.
  */
 
@@ -115,6 +116,38 @@ export async function settleModelPlatformWorkflow({
       };
     }
 
+    const isModelPlatform = await isModelPlatformV1Creation(creationId, { tx: db });
+    const totalReservedCredits = creation.reservedCredits || creation.quote?.internalCreditsToReserve || 0;
+
+    let primaryReservation = null;
+    if (isModelPlatform && totalReservedCredits > 0) {
+      const reservations = await db.creditReservation.findMany({
+        where: { creationId: creation.id },
+      });
+
+      if (reservations.length !== 1) {
+        throw new Error(`INCONSISTENT_SETTLEMENT_RESERVATION: Expected exactly 1 workflow reservation for Creation '${creationId}', found ${reservations.length}`);
+      }
+
+      primaryReservation = reservations[0];
+
+      if (primaryReservation.creationId !== creation.id) {
+        throw new Error(`INCONSISTENT_SETTLEMENT_RESERVATION: Reservation creationId '${primaryReservation.creationId}' does not match Creation '${creation.id}'`);
+      }
+
+      if (primaryReservation.amount !== totalReservedCredits) {
+        throw new Error(`INCONSISTENT_SETTLEMENT_RESERVATION: Reservation amount ${primaryReservation.amount} does not match expected workflow reserved credits ${totalReservedCredits}`);
+      }
+
+      if (primaryReservation.status !== "RESERVED" && !primaryReservation.settledAt) {
+        throw new Error(`INCONSISTENT_SETTLEMENT_RESERVATION: Reservation status '${primaryReservation.status}' is invalid for settlement`);
+      }
+    } else {
+      primaryReservation = await db.creditReservation.findFirst({
+        where: { creationId: creation.id },
+      });
+    }
+
     // Single-writer claim inside Serializable transaction
     const claim = await db.creation.updateMany({
       where: { id: creationId, settledAt: null },
@@ -141,18 +174,12 @@ export async function settleModelPlatformWorkflow({
       } catch {}
     }
 
-    const totalReservedCredits = creation.reservedCredits || creation.quote?.internalCreditsToReserve || 0;
-
     const settlement = calculateWorkflowSettlement({
       outputCount: totalOutputs,
       quotedCredits: totalReservedCredits,
       successfulVariantCount: successfulVariants.length,
       failedVariantCount: failedVariants.length,
       settlementSchedule,
-    });
-
-    const primaryReservation = await db.creditReservation.findFirst({
-      where: { creationId: creation.id },
     });
 
     if (primaryReservation && !primaryReservation.settledAt) {

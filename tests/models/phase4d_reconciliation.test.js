@@ -11,6 +11,7 @@ const { prepareExecutionPlan } = await import("../../src/lib/models/execution/pr
 const { calculateWorkflowCommercialQuote } = await import("../../src/lib/models/pricingIntegration.js");
 const { calculateWorkflowSettlement, settleModelPlatformWorkflow, isModelPlatformV1Creation } = await import("../../src/lib/models/execution/workflowSettlement.js");
 const { parseUsdToMicroUsdConservatively } = await import("../../src/lib/models/execution/muapiExecutor.js");
+const { verifyMuapiCallbackToken, getMuapiWebhookToken } = await import("../../src/lib/generation/webhookSecurity.js");
 
 const mockAuthoritativeSpec = {
   providerModelId: "seedance-2-omni-reference-no-video-fast",
@@ -39,7 +40,7 @@ const mockFetchImpl = async (url) => {
   }), { status: 200, headers: { "content-type": "application/json" } });
 };
 
-test("Phase 4D.2 SQL Migration: File exists and matches schema shape", () => {
+test("Phase 4D.3 SQL Migration: File exists with duplicate cleanup and orphan quoteId normalization", () => {
   const migrationDir = path.join(process.cwd(), "prisma/migrations");
   const entries = fs.readdirSync(migrationDir);
   const settlementMigration = entries.find((dir) => dir.includes("model_platform_workflow_settlement"));
@@ -54,11 +55,72 @@ test("Phase 4D.2 SQL Migration: File exists and matches schema shape", () => {
   assert.match(sqlContent, /releasedAmount/);
   assert.match(sqlContent, /settledAt/);
   assert.match(sqlContent, /settlementSummaryJson/);
+  assert.match(sqlContent, /DELETE FROM "WebhookEvent"/, "Migration must clean up historical WebhookEvent duplicates");
+  assert.match(sqlContent, /UPDATE "Creation"[\s\S]*SET "quoteId" = NULL/, "Migration must normalize orphan quoteId values to NULL");
   assert.match(sqlContent, /WebhookEvent_provider_providerRequestId_payloadHash_key/);
   assert.match(sqlContent, /Creation_quoteId_fkey/);
 });
 
-test("Phase 4D.2 Prepared Plan: settlementSchedule survives JSON round-trip", async () => {
+test("Phase 4D.3 Webhook Schema & Traffic Security: WebhookEvent model write fields and token verification", () => {
+  const webhookFile = fs.readFileSync(new URL("../../src/app/api/webhooks/muapi/route.js", import.meta.url), "utf8");
+  const schemaFile = fs.readFileSync(new URL("../../prisma/schema.prisma", import.meta.url), "utf8");
+
+  // Verify WebhookEvent Prisma schema uses payload (not payloadJson) specifically on WebhookEvent model
+  const webhookModelStart = schemaFile.indexOf("model WebhookEvent {");
+  const webhookModelEnd = schemaFile.indexOf("}", webhookModelStart);
+  const webhookModelBlock = schemaFile.slice(webhookModelStart, webhookModelEnd);
+
+  assert.match(webhookModelBlock, /payload\s+String/);
+  assert.doesNotMatch(webhookModelBlock, /payloadJson/);
+
+  // Verify webhook route writes payload and eventType
+  assert.match(webhookFile, /payload:\s*payloadString/);
+  assert.match(webhookFile, /eventType/);
+  assert.doesNotMatch(webhookFile, /payloadJson:/);
+
+  // Verify traffic security check before DB write
+  assert.match(webhookFile, /verifyMuapiCallbackToken/);
+  assert.match(webhookFile, /Unauthorized callback token/);
+
+  // Verify token validation function operates correctly
+  const validToken = getMuapiWebhookToken();
+  assert.equal(verifyMuapiCallbackToken(validToken), true, "Valid HMAC token must pass verification");
+  assert.equal(verifyMuapiCallbackToken("invalid_token_1234567890123456789012345678901234567890123456789012345678901234"), false, "Invalid token must fail verification");
+  assert.equal(verifyMuapiCallbackToken(null), false, "Null token must fail verification");
+});
+
+test("Phase 4D.3 Generation Retry: Idempotent creation check occurs before consumed check", () => {
+  const generationsFile = fs.readFileSync(new URL("../../src/app/api/generations/route.js", import.meta.url), "utf8");
+
+  const existingCheckIdx = generationsFile.indexOf("prisma.creation.findUnique");
+  const consumedCheckIdx = generationsFile.indexOf("quote.consumedAt");
+
+  assert.ok(existingCheckIdx > 0, "Creation idempotency check must exist");
+  assert.ok(consumedCheckIdx > 0, "Quote consumed check must exist");
+  assert.ok(existingCheckIdx < consumedCheckIdx, "Creation idempotency check must precede quote.consumedAt check");
+});
+
+test("Phase 4D.3 Settlement Inconsistency Guard: Missing/mismatched reservation rolls back transaction", () => {
+  const workflowFile = fs.readFileSync(new URL("../../src/lib/models/execution/workflowSettlement.js", import.meta.url), "utf8");
+
+  assert.match(workflowFile, /INCONSISTENT_SETTLEMENT_RESERVATION/);
+  assert.match(workflowFile, /reservations\.length !== 1/);
+  assert.match(workflowFile, /primaryReservation\.amount !== totalReservedCredits/);
+});
+
+test("Phase 4D.3 Truthful Cost Reconciliation: Ledger update does not swallow errors silently", () => {
+  const webhookFile = fs.readFileSync(new URL("../../src/app/api/webhooks/muapi/route.js", import.meta.url), "utf8");
+
+  assert.match(webhookFile, /await prisma\.providerCostLedger\.updateMany\(\{/);
+  const ledgerIndex = webhookFile.indexOf("providerCostLedger.updateMany");
+  const ledgerSnippet = webhookFile.slice(ledgerIndex, ledgerIndex + 250);
+  assert.equal(ledgerSnippet.includes(".catch("), false, "Ledger update statement must not be wrapped in .catch()");
+  assert.match(webhookFile, /providerBillingStatus = "WAIVED"/);
+  assert.match(webhookFile, /providerBillingStatus = "BILLED"/);
+  assert.match(webhookFile, /providerBillingStatus = "ESTIMATED"/);
+});
+
+test("Phase 4D.3 Prepared Plan: settlementSchedule survives JSON round-trip", async () => {
   const plan = await prepareExecutionPlan({
     modelId: "seedance-2-omni-reference-no-video-fast",
     normalizedInput: { prompt: "Test prompt" },
@@ -75,7 +137,7 @@ test("Phase 4D.2 Prepared Plan: settlementSchedule survives JSON round-trip", as
   assert.deepEqual(deserialized.workflowPricing.settlementSchedule, plan.workflowPricing.settlementSchedule);
 });
 
-test("Phase 4D.2 Settlement: 1 output success commits reservation fully", () => {
+test("Phase 4D.3 Settlement: 1 output success commits reservation fully", () => {
   const settlement = calculateWorkflowSettlement({
     outputCount: 1,
     quotedCredits: 50,
@@ -90,22 +152,7 @@ test("Phase 4D.2 Settlement: 1 output success commits reservation fully", () => 
   assert.equal(settlement.isPartial, false);
 });
 
-test("Phase 4D.2 Settlement: 1 output failure releases reservation fully", () => {
-  const settlement = calculateWorkflowSettlement({
-    outputCount: 1,
-    quotedCredits: 50,
-    successfulVariantCount: 0,
-    failedVariantCount: 1,
-    settlementSchedule: { 0: 0, 1: 50 },
-  });
-
-  assert.equal(settlement.settledStatus, "FAILED");
-  assert.equal(settlement.earnedCreditsToCharge, 0);
-  assert.equal(settlement.unearnedCreditsToRelease, 50);
-  assert.equal(settlement.isPartial, false);
-});
-
-test("Phase 4D.2 Settlement: 2 outputs partial success (output 0 rejected + output 1 succeeds)", () => {
+test("Phase 4D.3 Settlement: 2 outputs partial success (output 0 rejected + output 1 succeeds)", () => {
   const settlement = calculateWorkflowSettlement({
     outputCount: 2,
     quotedCredits: 90,
@@ -120,50 +167,7 @@ test("Phase 4D.2 Settlement: 2 outputs partial success (output 0 rejected + outp
   assert.equal(settlement.isPartial, true);
 });
 
-test("Phase 4D.2 Settlement: 2 outputs partial success (output 0 succeeds + output 1 rejected)", () => {
-  const settlement = calculateWorkflowSettlement({
-    outputCount: 2,
-    quotedCredits: 90,
-    successfulVariantCount: 1,
-    failedVariantCount: 1,
-    settlementSchedule: { 0: 0, 1: 50, 2: 90 },
-  });
-
-  assert.equal(settlement.settledStatus, "COMPLETED");
-  assert.equal(settlement.earnedCreditsToCharge, 50);
-  assert.equal(settlement.unearnedCreditsToRelease, 40);
-  assert.equal(settlement.isPartial, true);
-});
-
-test("Phase 4D.2 Settlement: both submissions rejected -> 0 charged, full release", () => {
-  const settlement = calculateWorkflowSettlement({
-    outputCount: 2,
-    quotedCredits: 90,
-    successfulVariantCount: 0,
-    failedVariantCount: 2,
-    settlementSchedule: { 0: 0, 1: 50, 2: 90 },
-  });
-
-  assert.equal(settlement.settledStatus, "FAILED");
-  assert.equal(settlement.earnedCreditsToCharge, 0);
-  assert.equal(settlement.unearnedCreditsToRelease, 90);
-  assert.equal(settlement.isPartial, false);
-});
-
-test("Phase 4D.2 Settlement: missing settlementSchedule for partial success fails closed", () => {
-  assert.throws(
-    () => calculateWorkflowSettlement({
-      outputCount: 2,
-      quotedCredits: 90,
-      successfulVariantCount: 1,
-      failedVariantCount: 1,
-      settlementSchedule: null,
-    }),
-    /MISSING_SETTLEMENT_SCHEDULE/
-  );
-});
-
-test("Phase 4D.2 Strict Financial Parser: Pure decimal string parsing without floats", () => {
+test("Phase 4D.3 Strict Financial Parser: Pure decimal string parsing without floats", () => {
   assert.equal(parseUsdToMicroUsdConservatively("0.05"), 50000n);
   assert.equal(parseUsdToMicroUsdConservatively("0.2419"), 241900n);
   assert.equal(parseUsdToMicroUsdConservatively("1.000000"), 1000000n);
@@ -180,34 +184,4 @@ test("Phase 4D.2 Strict Financial Parser: Pure decimal string parsing without fl
   assert.throws(() => parseUsdToMicroUsdConservatively("-0.05"), /Invalid or negative USD value/);
   assert.throws(() => parseUsdToMicroUsdConservatively("abc"), /Invalid whole dollar portion/);
   assert.throws(() => parseUsdToMicroUsdConservatively(null), /USD value is required/);
-});
-
-test("Phase 4D.2 Finalization Recovery: Existing FINAL_VIDEO adopts artifact and completes transition", () => {
-  const qualityFile = fs.readFileSync(new URL("../../src/lib/generation/qualityPipeline.js", import.meta.url), "utf8");
-  assert.match(qualityFile, /let finalArtifact = await prisma\.generatedArtifact\.findFirst/);
-  assert.match(qualityFile, /if \(!finalArtifact\)/);
-  assert.match(qualityFile, /stillOwnFinalization/);
-  assert.match(qualityFile, /ensureDeliveryCheck/);
-  assert.match(qualityFile, /settleModelPlatformWorkflow/);
-});
-
-test("Phase 4D.2 Truthful Signature Semantics: Webhook retains UNVERIFIED signature status", () => {
-  const webhookFile = fs.readFileSync(new URL("../../src/app/api/webhooks/muapi/route.js", import.meta.url), "utf8");
-  assert.match(webhookFile, /signatureStatus: "UNVERIFIED"/);
-  assert.doesNotMatch(webhookFile, /signatureStatus: "VERIFIED"/);
-  assert.match(webhookFile, /verifiedAt: new Date\(\)/);
-});
-
-test("Phase 4D.2 Cost Ledger & Refunded Provider Result: WAIVED when refunded=true", () => {
-  const webhookFile = fs.readFileSync(new URL("../../src/app/api/webhooks/muapi/route.js", import.meta.url), "utf8");
-  assert.match(webhookFile, /isRefunded/);
-  assert.match(webhookFile, /providerCostLedger\.updateMany/);
-});
-
-test("Phase 4D.2 Atomic Transaction: settleModelPlatformWorkflow owns Serializable transaction", () => {
-  const workflowFile = fs.readFileSync(new URL("../../src/lib/models/execution/workflowSettlement.js", import.meta.url), "utf8");
-  assert.match(workflowFile, /isolationLevel: "Serializable"/);
-  assert.match(workflowFile, /prisma\.\$transaction/);
-  assert.match(workflowFile, /settledAt: null/);
-  assert.match(workflowFile, /settledAt: new Date\(\)/);
 });

@@ -11,6 +11,7 @@ import { downloadMediaBufferSsrfSafe } from "@/lib/downloader";
 import { handleVerificationResult, startQualityVerification } from "@/lib/generation/qualityPipeline";
 import { fetchAuthenticatedMuapiResult } from "@/lib/generation/muapiResult";
 import { isReconciliationEligibleVariant } from "@/lib/generation/reconciliationEligibility";
+import { verifyMuapiCallbackToken } from "@/lib/generation/webhookSecurity";
 import { parseUsdToMicroUsdConservatively } from "@/lib/models/execution/muapiExecutor.js";
 import { isModelPlatformV1Creation, settleModelPlatformWorkflow } from "@/lib/models/execution/workflowSettlement.js";
 
@@ -66,8 +67,13 @@ async function updateCreationAggregate(creationId) {
 }
 
 export async function POST(req) {
-  const authHeader = req.headers.get("x-doolphin-webhook-token") || req.headers.get("authorization") || "";
-  const callbackToken = authHeader.replace(/^Bearer\s+/i, "").trim();
+  // Requirement 2: Traffic Authentication - Token validation before DB write
+  const url = new URL(req.url);
+  const token = url.searchParams.get("token") || url.searchParams.get("webhook_token") || req.headers.get("x-doolphin-webhook-token");
+
+  if (!verifyMuapiCallbackToken(token)) {
+    return NextResponse.json({ error: "Unauthorized callback token" }, { status: 401 });
+  }
 
   let body;
   try {
@@ -81,18 +87,23 @@ export async function POST(req) {
     return NextResponse.json({ error: "Missing provider request_id" }, { status: 400 });
   }
 
-  const payloadHash = crypto.createHash("sha256").update(JSON.stringify(body)).digest("hex");
+  const payloadString = JSON.stringify(body);
+  const payloadHash = crypto.createHash("sha256").update(payloadString).digest("hex");
+  const eventType = String(body.event || body.type || body.status || "muapi.webhook");
 
+  // Requirement 1: WebhookEvent Prisma Write Schema Fix (payload, eventType, providerRequestId)
   let event;
   try {
     event = await prisma.webhookEvent.create({
       data: {
         provider: "MUAPI",
         providerRequestId,
+        providerEventId: body.event_id || body.eventId || null,
+        eventType,
         payloadHash,
         signatureStatus: "UNVERIFIED",
-        payloadJson: JSON.stringify(body),
         processingStatus: "RECEIVED",
+        payload: payloadString,
       },
     });
   } catch (error) {
@@ -143,28 +154,31 @@ export async function POST(req) {
   const isModelPlatform = await isModelPlatformV1Creation(job.variant.creationId);
   const providerStatus = String(providerPayload.status || "").toLowerCase();
 
-  // Strict conservative microUSD cost parsing
+  // Requirement 5: Truthful Provider Cost Reconciliation (BILLED, WAIVED, or ESTIMATED)
   const rawCostUsd = providerPayload?.cost?.amount_usd ?? providerPayload?.cost?.amount;
   const isRefunded = Boolean(providerPayload?.cost?.refunded);
-  let actualCostMicroUsd = 0n;
-  if (!isRefunded && rawCostUsd !== undefined && rawCostUsd !== null) {
+
+  let actualCostMicroUsd = null;
+  let providerBillingStatus = "ESTIMATED";
+
+  if (isRefunded) {
+    actualCostMicroUsd = 0n;
+    providerBillingStatus = "WAIVED";
+  } else if (rawCostUsd !== undefined && rawCostUsd !== null) {
     actualCostMicroUsd = parseUsdToMicroUsdConservatively(rawCostUsd);
-  } else if (!isRefunded) {
-    actualCostMicroUsd = job.estimatedCostMinMicroUsd || 0n;
+    providerBillingStatus = "BILLED";
   }
 
-  const providerBillingStatus = isRefunded ? "WAIVED" : "BILLED";
-  const finalCostMicroUsd = isRefunded ? 0n : actualCostMicroUsd;
-
+  // Truthfully update ProviderCostLedger matching ProviderJob
   await prisma.providerCostLedger.updateMany({
     where: { providerJobId: job.id },
     data: {
-      actualCostMicroUsd: finalCostMicroUsd,
+      actualCostMicroUsd: actualCostMicroUsd ?? undefined,
       providerBillingStatus,
       providerRequestId,
       reconciledAt: new Date(),
     },
-  }).catch(() => {});
+  });
 
   if (["failed", "error", "cancelled", "canceled"].includes(providerStatus) || providerPayload.error) {
     if (!isModelPlatform) {
@@ -176,7 +190,7 @@ export async function POST(req) {
         data: {
           status: "FAILED",
           completedAt: new Date(),
-          actualCostMicroUsd: finalCostMicroUsd,
+          actualCostMicroUsd: actualCostMicroUsd ?? job.estimatedCostMinMicroUsd,
           providerBillingStatus,
           errorCode: "PROVIDER_GENERATION_FAILED",
           safeError: String(providerPayload.error || "Provider generation failed"),
@@ -235,7 +249,7 @@ export async function POST(req) {
         data: {
           status: "SUCCEEDED",
           completedAt: new Date(),
-          actualCostMicroUsd: finalCostMicroUsd,
+          actualCostMicroUsd: actualCostMicroUsd ?? job.estimatedCostMinMicroUsd,
           providerBillingStatus,
           sanitizedResultPayload: JSON.stringify({ status: providerStatus, output: "[REDACTED_URL]" })
         }

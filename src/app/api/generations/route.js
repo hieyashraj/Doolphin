@@ -55,6 +55,14 @@ async function handleGenerationSubmission(req) {
   if (!quote) {
     return NextResponse.json({ success: false, code: "QUOTE_NOT_FOUND", error: "Preflight quote not found or not owned by user" }, { status: 404 });
   }
+
+  // Idempotency check FIRST: If an existing Creation already exists for this idempotency key, return it idempotently!
+  const existing = await prisma.creation.findUnique({
+    where: { workspaceId_idempotencyKey: { workspaceId: quote.workspaceId, idempotencyKey: body.idempotencyKey } },
+    include: { variants: true },
+  });
+  if (existing) return NextResponse.json({ success: true, creationId: existing.id, variants: existing.variants, idempotent: true });
+
   if (quote.consumedAt) {
     return NextResponse.json({ success: false, code: "QUOTE_ALREADY_CONSUMED", error: "This preflight quote has already been consumed" }, { status: 409 });
   }
@@ -161,12 +169,6 @@ async function handleGenerationSubmission(req) {
 
   const compiled = compileCanonicalPrompt(request);
   const variantAmounts = Array.from({ length: request.settings.outputCount }, (_, index) => index === 0 ? totalCreditsToReserve : 0);
-
-  const existing = await prisma.creation.findUnique({
-    where: { workspaceId_idempotencyKey: { workspaceId: quote.workspaceId, idempotencyKey: body.idempotencyKey } },
-    include: { variants: true },
-  });
-  if (existing) return NextResponse.json({ success: true, creationId: existing.id, variants: existing.variants, idempotent: true });
 
   const webhookBase = process.env.WEBHOOK_URL || process.env.NEXTAUTH_URL || new URL(req.url).origin;
   const webhookUrl = buildMuapiWebhookUrl(webhookBase);
