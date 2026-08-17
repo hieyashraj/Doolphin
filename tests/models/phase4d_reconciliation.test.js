@@ -212,13 +212,13 @@ test("Phase 4D.3 Defect 4: classifyMuapiProviderStatus returns correct classific
 });
 
 test("Phase 4D.3 SQL Migration: File exists with duplicate cleanup and orphan quoteId normalization", () => {
-  const migrationDir = path.join(process.cwd(), "prisma/migrations");
+  const migrationDir = path.join(process.cwd(), "prisma/canonical_migrations");
   const entries = fs.readdirSync(migrationDir);
-  const settlementMigration = entries.find((dir) => dir.includes("model_platform_workflow_settlement"));
-  assert.ok(settlementMigration, "SQL migration directory for model_platform_workflow_settlement must exist");
+  const settlementMigration = entries.find((dir) => dir.includes("model_platform"));
+  assert.ok(settlementMigration, "SQL migration directory for model_platform must exist in canonical_migrations");
 
   const sqlPath = path.join(migrationDir, settlementMigration, "migration.sql");
-  assert.ok(fs.existsSync(sqlPath), "migration.sql must exist inside migration directory");
+  assert.ok(fs.existsSync(sqlPath), "migration.sql must exist inside canonical migration directory");
 
   const sqlContent = fs.readFileSync(sqlPath, "utf8");
   assert.match(sqlContent, /PARTIALLY_SETTLED/);
