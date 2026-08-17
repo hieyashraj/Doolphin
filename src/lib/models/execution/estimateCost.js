@@ -1,12 +1,9 @@
 import { getMuapiApiKey } from "../../generation/muapiCredentials.js";
-import { calculateCommercialCreditQuote } from "../pricingIntegration.js";
+import { calculateCommercialCreditQuote, parseUsdToMicroUsdConservatively } from "../pricingIntegration.js";
 import { canonicalJsonSerialize } from "./prepareExecutionPlan.js";
 import { ERROR_CODES } from "../errors.js";
 
-/**
- * Dynamic Provider Cost Estimator Core.
- * Calls MU API POST /api/v1/models/{model}/estimate-cost using exact canonical bytes.
- */
+const DEFAULT_ESTIMATE_TIMEOUT_MS = 3000;
 
 export async function estimateAuthoritativeModelCost({
   modelDefinition,
@@ -15,6 +12,7 @@ export async function estimateAuthoritativeModelCost({
   alreadyPreparedPayloadJson,
   fetchImpl = fetch,
   env = process.env,
+  timeoutMs = DEFAULT_ESTIMATE_TIMEOUT_MS,
 } = {}) {
   if (!modelDefinition) {
     return {
@@ -41,8 +39,11 @@ export async function estimateAuthoritativeModelCost({
       };
     }
 
-    const providerCostUsd = Number(rawAmount);
-    if (isNaN(providerCostUsd) || providerCostUsd < 0) {
+    let providerCostUsd;
+    try {
+      providerCostUsd = Number(rawAmount);
+      if (isNaN(providerCostUsd) || providerCostUsd < 0) throw new Error();
+    } catch {
       return {
         priced: false,
         code: ERROR_CODES.PRICING_UNAVAILABLE,
@@ -101,19 +102,23 @@ export async function estimateAuthoritativeModelCost({
     const apiKey = getMuapiApiKey(env);
     if (apiKey && !apiKey.includes("placeholder")) {
       headers["x-api-key"] = apiKey;
-      headers.Authorization = `Bearer ${apiKey}`;
     }
   } catch {
     // Credentials optional for public cost estimation endpoints
   }
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     const response = await fetchImpl(estimateEndpoint, {
       method: "POST",
       headers,
       body: requestBodyString,
+      signal: controller.signal,
       redirect: "error",
     });
+    clearTimeout(timer);
 
     if (!response.ok) {
       const errorBody = await response.json().catch(() => ({}));
@@ -125,18 +130,21 @@ export async function estimateAuthoritativeModelCost({
     }
 
     const payload = await response.json();
-    const providerCostUsd = Number(payload.cost ?? payload.estimated_cost ?? payload.amount ?? payload.amount_usd);
+    const rawCost = payload.cost ?? payload.estimated_cost ?? payload.amount ?? payload.amount_usd;
 
-    if (isNaN(providerCostUsd) || providerCostUsd < 0) {
+    if (rawCost === undefined || rawCost === null) {
       return {
         priced: false,
         code: ERROR_CODES.PRICING_UNAVAILABLE,
-        reason: `MU API estimate-cost returned invalid cost '${payload.cost}'`,
+        reason: "MU API estimate-cost returned missing cost property",
       };
     }
 
+    const providerCostMicroUsd = parseUsdToMicroUsdConservatively(rawCost);
+    const providerCostUsd = Number(providerCostMicroUsd) / 1_000_000;
+
     const quote = calculateCommercialCreditQuote({
-      providerCostUsd,
+      providerCostMicroUsd,
       variableInfraCostMicroUsd: businessPolicy?.variableInfraCostMicroUsd || 0n,
     });
 
@@ -149,10 +157,11 @@ export async function estimateAuthoritativeModelCost({
       estimatedAt: new Date().toISOString(),
     };
   } catch (error) {
+    clearTimeout(timer);
     return {
       priced: false,
       code: ERROR_CODES.PRICING_UNAVAILABLE,
-      reason: `Network or estimation exception: ${error.message}`,
+      reason: error.name === "AbortError" ? `MU API cost estimation timed out after ${timeoutMs}ms` : `Network or estimation exception: ${error.message}`,
     };
   }
 }

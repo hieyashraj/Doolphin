@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import { getModel } from "../registry.js";
 import { validateAndTransformInvocationInput } from "../contracts/invocationContract.js";
 import { estimateAuthoritativeModelCost } from "./estimateCost.js";
+import { calculateWorkflowCommercialQuote } from "../pricingIntegration.js";
 import { computeCatalogHash } from "../providerCatalog.js";
 import { ModelPlatformError, ERROR_CODES } from "../errors.js";
 
@@ -113,18 +114,18 @@ export function validateSignedAssetExpiry({
 }
 
 /**
- * Server-Only Prepared Execution Plan Core (Phase 4A.2).
+ * Server-Only Prepared Execution Plan Core (Phase 4B.2).
  */
-
 export async function prepareExecutionPlan({
   modelId,
   normalizedInput,
+  outputCount = 1,
   fetchImpl = fetch,
   env = process.env,
   planTtlMs = 15 * 60 * 1000,
   safetyMarginMs = DEFAULT_SAFETY_MARGIN_MS,
 } = {}) {
-  // 1. Resolve Model
+  // 1. Resolve Model with Authoritative Provider Authority spec
   const modelDefinition = await getModel(modelId);
   if (!modelDefinition) {
     throw new ModelPlatformError(
@@ -181,8 +182,8 @@ export async function prepareExecutionPlan({
 
   const providerSpecHash = computeCatalogHash(modelDefinition.providerSpec);
 
-  // 7. Obtain Authoritative Cost using ALREADY PREPARED CANONICAL PAYLOAD JSON BYTES
-  const pricingQuote = await estimateAuthoritativeModelCost({
+  // 7. Obtain Authoritative Unit Cost using ALREADY PREPARED CANONICAL PAYLOAD JSON BYTES
+  const unitPricingQuote = await estimateAuthoritativeModelCost({
     modelDefinition,
     alreadyPreparedPayload: providerPayload,
     alreadyPreparedPayloadJson: providerPayloadJson,
@@ -190,36 +191,75 @@ export async function prepareExecutionPlan({
     env,
   });
 
-  if (!pricingQuote.priced) {
+  if (!unitPricingQuote.priced) {
     throw new ModelPlatformError(
       ERROR_CODES.PRICING_UNAVAILABLE,
-      `Authoritative pricing unavailable for model '${modelDefinition.productPolicy.id}': ${pricingQuote.reason}`,
-      { reason: pricingQuote.reason, code: pricingQuote.code }
+      `Authoritative pricing unavailable for model '${modelDefinition.productPolicy.id}': ${unitPricingQuote.reason}`,
+      { reason: unitPricingQuote.reason, code: unitPricingQuote.code }
     );
   }
 
-  // 8. Construct Secret-Free Prepared Execution Plan
+  // 8. Calculate Studio Multi-Output Commercial Pricing (outputCount)
+  const workflowQuote = calculateWorkflowCommercialQuote({
+    preparedUnitPlan: { pricing: unitPricingQuote },
+    outputCount,
+    perOutputCosts: {
+      infra: modelDefinition.businessPolicy?.variableInfraCostMicroUsd || 0n,
+    },
+  });
+
+  const provenance = modelDefinition.providerSpec?.provenance || {
+    source: "BOOTSTRAP",
+    loadedAt: new Date(nowMs).toISOString(),
+    providerFetchedAt: null,
+    stale: true,
+  };
+
+  // 9. Construct Secret-Free Prepared Execution Plan with Full Commercial Provenance
   const plan = {
     canonicalModelId: modelDefinition.productPolicy.id,
     providerModelId: modelDefinition.providerSpec.providerModelId,
     providerEndpoint: modelDefinition.providerSpec.endpoint,
     providerSpecHash,
+    provenance,
     providerPayload,
     providerPayloadJson,
     providerPayloadHash,
+    earliestSignedAssetExpiry: normalizedInput?.earliestSignedAssetExpiryMs
+      ? new Date(Number(normalizedInput.earliestSignedAssetExpiryMs)).toISOString()
+      : null,
     transport: Object.freeze({
       webhookStrategy: "DOOLPHIN_MUAPI_V1",
     }),
-    pricing: Object.freeze({
-      source: pricingQuote.isDynamic ? "ESTIMATE_COST_DYNAMIC" : "CATALOG_FIXED",
-      providerCostMicroUsd: pricingQuote.providerCostMicroUsd,
-      fullyLoadedCostMicroUsd: pricingQuote.fullyLoadedCostMicroUsd,
-      quotedCredits: pricingQuote.totalCredits,
-      pricingRevisionId: pricingQuote.pricingRevisionId,
-      contributionMarginBps: pricingQuote.contributionMarginBps,
-      costComponents: pricingQuote.costComponents,
-      estimatedAt: pricingQuote.estimatedAt || new Date(nowMs).toISOString(),
+    unitPricing: Object.freeze({
+      pricingSource: unitPricingQuote.isDynamic ? "ESTIMATE_COST_DYNAMIC" : "CATALOG_FIXED",
+      providerCostMicroUsd: unitPricingQuote.providerCostMicroUsd,
+      fullyLoadedCostMicroUsd: unitPricingQuote.fullyLoadedCostMicroUsd,
+      quotedCredits: unitPricingQuote.totalCredits,
+      pricingRevisionId: unitPricingQuote.pricingRevisionId,
+      contributionMarginBps: unitPricingQuote.contributionMarginBps,
+      costComponents: unitPricingQuote.costComponents,
+      estimatedAt: unitPricingQuote.estimatedAt || new Date(nowMs).toISOString(),
     }),
+    workflowPricing: Object.freeze({
+      outputCount: workflowQuote.outputCount,
+      totalProviderCostMicroUsd: workflowQuote.totalProviderCostMicroUsd,
+      fullyLoadedCostMicroUsd: workflowQuote.fullyLoadedCostMicroUsd,
+      quotedCredits: workflowQuote.quotedCredits,
+      pricingRevisionId: workflowQuote.pricingRevisionId,
+      costComponents: workflowQuote.costComponents,
+    }),
+
+    // Legacy Compatibility Proxy Properties
+    pricing: Object.freeze({
+      source: unitPricingQuote.isDynamic ? "ESTIMATE_COST_DYNAMIC" : "CATALOG_FIXED",
+      providerCostMicroUsd: unitPricingQuote.providerCostMicroUsd,
+      fullyLoadedCostMicroUsd: workflowQuote.fullyLoadedCostMicroUsd,
+      quotedCredits: workflowQuote.quotedCredits,
+      pricingRevisionId: workflowQuote.pricingRevisionId,
+      estimatedAt: unitPricingQuote.estimatedAt || new Date(nowMs).toISOString(),
+    }),
+
     preparedAt: new Date(nowMs).toISOString(),
     expiresAt: new Date(preparedPlanExpiresAtMs).toISOString(),
   };

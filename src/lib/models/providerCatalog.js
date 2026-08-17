@@ -2,14 +2,7 @@ import crypto from "node:crypto";
 import { getMuapiApiKey } from "../generation/muapiCredentials.js";
 import { getProviderCatalog, clearCatalogMemoryCache } from "./catalogStore.js";
 
-/**
- * Server-only MU API Catalog Client & Provider Authority Engine.
- *
- * Provenance Semantics:
- * - LIVE_PROVIDER: Freshly fetched from MU API within process/store TTL (stale: false).
- * - DURABLE_LKG: Resolved from durable storage layer (stale: depends on TTL).
- * - BOOTSTRAP: Immutable bundled snapshot fallback (stale: true, providerFetchedAt: null).
- */
+const DEFAULT_NETWORK_TIMEOUT_MS = 3000;
 
 export function computeCatalogHash(catalogData) {
   const serialized = JSON.stringify(catalogData || {});
@@ -62,27 +55,33 @@ export async function fetchLiveMuapiCatalog({
   fetchImpl = fetch,
   env = process.env,
   endpoint = "https://api.muapi.ai/api/v1/models",
+  timeoutMs = DEFAULT_NETWORK_TIMEOUT_MS,
 } = {}) {
   let headers = { Accept: "application/json" };
   try {
     const apiKey = getMuapiApiKey(env);
     if (apiKey && !apiKey.includes("placeholder")) {
-      headers.Authorization = `Bearer ${apiKey}`;
+      headers["x-api-key"] = apiKey;
     }
   } catch {
     // Credentials optional for public catalog endpoints
   }
 
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
   try {
     const response = await fetchImpl(endpoint, {
       method: "GET",
       headers,
+      signal: controller.signal,
     });
+    clearTimeout(timer);
 
     if (!response.ok) {
       return {
         success: false,
-        code: "MUAPI_CATALOG_HTTP_ERROR",
+        code: "PROVIDER_SPEC_UNAVAILABLE",
         status: response.status,
         error: `HTTP ${response.status} when fetching MU API model catalog`,
       };
@@ -94,7 +93,7 @@ export async function fetchLiveMuapiCatalog({
     if (!validation.valid) {
       return {
         success: false,
-        code: "MALFORMED_PROVIDER_CATALOG",
+        code: "PROVIDER_SPEC_UNAVAILABLE",
         error: validation.reason,
       };
     }
@@ -116,10 +115,11 @@ export async function fetchLiveMuapiCatalog({
 
     return { success: true, catalog: catalogData };
   } catch (error) {
+    clearTimeout(timer);
     return {
       success: false,
-      code: "MUAPI_CATALOG_NETWORK_ERROR",
-      error: error.message,
+      code: "PROVIDER_SPEC_UNAVAILABLE",
+      error: error.name === "AbortError" ? `MU API catalog fetch timed out after ${timeoutMs}ms` : error.message,
     };
   }
 }
@@ -129,13 +129,14 @@ export async function syncAndGetProviderCatalog({
   env = process.env,
   forceRefresh = false,
   ttlMs = 60 * 60 * 1000,
+  timeoutMs = DEFAULT_NETWORK_TIMEOUT_MS,
 } = {}) {
   if (forceRefresh) {
     clearCatalogMemoryCache();
   }
 
   if (forceRefresh) {
-    const liveResult = await fetchLiveMuapiCatalog({ fetchImpl, env });
+    const liveResult = await fetchLiveMuapiCatalog({ fetchImpl, env, timeoutMs });
     if (liveResult.success) {
       return { catalog: liveResult.catalog, source: "LIVE_PROVIDER" };
     }

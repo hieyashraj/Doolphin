@@ -4,7 +4,7 @@ import crypto from "node:crypto";
 
 import { prepareExecutionPlan } from "../../src/lib/models/execution/prepareExecutionPlan.js";
 import { executeMuapiGenerationPlan } from "../../src/lib/models/execution/muapiExecutor.js";
-import { estimateAuthoritativeModelCost } from "../../src/lib/models/execution/estimateCost.js";
+import { parseUsdToMicroUsdConservatively, calculateWorkflowCommercialQuote } from "../../src/lib/models/pricingIntegration.js";
 import { getModel } from "../../src/lib/models/registry.js";
 import { mapValidatedStudioWorkflowToNormalizedInvocation } from "../../src/lib/models/bridges/studioWorkflowBridge.js";
 import { ModelPlatformError, ERROR_CODES } from "../../src/lib/models/errors.js";
@@ -29,6 +29,82 @@ const mockEstimateFetch = async (url) => {
     json: async () => ({ request_id: "req_muapi_mock_123", status: "queued" }),
   };
 };
+
+test("Phase 4B.2 Resolution: Fresh provider facts override local provider spec while product/business policy stays local", async () => {
+  const model = await getModel("muapi.seedance2.omni-reference-fast");
+  assert.ok(model);
+
+  // Local product & business policy preserved
+  assert.equal(model.productPolicy.id, "muapi.seedance2.omni-reference-fast");
+  assert.equal(model.productPolicy.displayName, "Seedance 2 Omni Reference Fast");
+  assert.equal(model.businessPolicy.targetContributionMarginBps, 3000);
+
+  // Authoritative Provider Spec facts present
+  assert.equal(model.providerSpec.providerModelId, "seedance-2-omni-reference-no-video-fast");
+  assert.equal(model.providerSpec.endpoint, "https://api.muapi.ai/api/v1/seedance-2-omni-reference-no-video-fast");
+  assert.ok(model.providerSpec.provenance);
+});
+
+test("Phase 4B.2 Multi-Output Pricing: outputCount=2 aggregates microUSD costs before credit rounding", async () => {
+  const planUnit = await prepareExecutionPlan({
+    modelId: "muapi.seedance2.omni-reference-fast",
+    normalizedInput: { prompt: "Single output video prompt" },
+    outputCount: 1,
+    fetchImpl: mockEstimateFetch,
+    env: TEST_ENV,
+  });
+
+  const planMulti = await prepareExecutionPlan({
+    modelId: "muapi.seedance2.omni-reference-fast",
+    normalizedInput: { prompt: "Dual output video prompt" },
+    outputCount: 2,
+    fetchImpl: mockEstimateFetch,
+    env: TEST_ENV,
+  });
+
+  assert.equal(planUnit.workflowPricing.outputCount, 1);
+  assert.equal(planMulti.workflowPricing.outputCount, 2);
+
+  const unitProviderMicroUsd = BigInt(planUnit.unitPricing.providerCostMicroUsd);
+  const totalProviderMicroUsd = BigInt(planMulti.workflowPricing.totalProviderCostMicroUsd);
+  assert.equal(totalProviderMicroUsd, unitProviderMicroUsd * 2n);
+
+  // Quoted credits double appropriately at aggregate level
+  assert.ok(planMulti.workflowPricing.quotedCredits >= planUnit.workflowPricing.quotedCredits * 2 - 5);
+});
+
+test("Phase 4B.2 USD Conversion: Conservative conversion never rounds costs downward", () => {
+  // Exact 6 decimal places
+  assert.equal(parseUsdToMicroUsdConservatively("0.048380"), 48380n);
+  assert.equal(parseUsdToMicroUsdConservatively("1.250000"), 1250000n);
+
+  // Sub-microUSD digit (7th decimal place) rounds UP by +1 microUSD
+  assert.equal(parseUsdToMicroUsdConservatively("0.0000001"), 1n);
+  assert.equal(parseUsdToMicroUsdConservatively("0.0483801"), 48381n);
+
+  // Binary floating point string representation (0.1 + 0.2 = 0.30000000000000004 -> safely rounds UP to 300001n)
+  assert.equal(parseUsdToMicroUsdConservatively(0.1 + 0.2), 300001n);
+});
+
+test("Phase 4B.2 Persisted Provenance: Unit + Workflow pricing provenance survives DB serialization byte-for-byte", async () => {
+  const plan = await prepareExecutionPlan({
+    modelId: "muapi.seedance2.omni-reference-fast",
+    normalizedInput: { prompt: "Provenance persistence test prompt" },
+    outputCount: 2,
+    fetchImpl: mockEstimateFetch,
+    env: TEST_ENV,
+  });
+
+  const dbString = JSON.stringify(plan);
+  const reloadedPlan = JSON.parse(dbString);
+
+  assert.equal(reloadedPlan.canonicalModelId, "muapi.seedance2.omni-reference-fast");
+  assert.equal(reloadedPlan.provenance.source, "BOOTSTRAP");
+  assert.equal(reloadedPlan.unitPricing.providerCostMicroUsd, plan.unitPricing.providerCostMicroUsd);
+  assert.equal(reloadedPlan.workflowPricing.outputCount, 2);
+  assert.equal(reloadedPlan.workflowPricing.totalProviderCostMicroUsd, plan.workflowPricing.totalProviderCostMicroUsd);
+  assert.equal(reloadedPlan.providerPayloadJson, plan.providerPayloadJson);
+});
 
 test("Phase 4B.1 Webhook Transport: Query parameter is ?webhook= and NOT ?webhook_url=", async () => {
   const plan = await prepareExecutionPlan({

@@ -2,12 +2,15 @@ import { grokImagineImage2EditDefinition } from "./definitions/grok-imagine-imag
 import { seedanceSpicyVideoExtendDefinition } from "./definitions/seedance-2.5-spicy-video-extend-480p.js";
 import { seedance2OmniReferenceFastDefinition } from "./definitions/seedance-2-omni-reference-fast.js";
 import { getProviderCatalog } from "./catalogStore.js";
+import { computeCatalogHash } from "./providerCatalog.js";
 
 /**
  * 3-Layer Model Registry Architecture:
- * - Layer 1: In-memory static catalog & golden definitions (bootstrap)
- * - Layer 2: Provider Authority specs (from catalogStore resolution)
- * - Layer 3: Application product policies & legacy alias mappings
+ * Local Doolphin Policy (productPolicy + businessPolicy + toProviderPayload)
+ *                       +
+ * Authoritative Provider Spec (from catalogStore resolution)
+ *                       ↓
+ * Resolved Model Definition
  */
 
 const LOCAL_MODEL_DEFINITIONS = Object.freeze({
@@ -19,44 +22,82 @@ const LOCAL_MODEL_DEFINITIONS = Object.freeze({
 export async function getModel(modelId) {
   if (!modelId || typeof modelId !== "string") return null;
 
-  // 1. Direct match on local definitions
-  if (LOCAL_MODEL_DEFINITIONS[modelId]) {
-    return LOCAL_MODEL_DEFINITIONS[modelId];
-  }
-
-  // 2. Check legacy alias resolution
-  for (const def of Object.values(LOCAL_MODEL_DEFINITIONS)) {
-    if (def.productPolicy.legacyAliases.includes(modelId)) {
-      return def;
+  // 1. Resolve local Doolphin base definition by ID or legacy alias
+  let localDef = LOCAL_MODEL_DEFINITIONS[modelId] || null;
+  if (!localDef) {
+    for (const def of Object.values(LOCAL_MODEL_DEFINITIONS)) {
+      if (def.productPolicy.legacyAliases.includes(modelId)) {
+        localDef = def;
+        break;
+      }
     }
   }
 
-  // 3. Dynamic lookup from 3-level catalogStore
-  const catalog = await getProviderCatalog();
-  if (catalog && Array.isArray(catalog.models)) {
-    const entry = catalog.models.find(
-      (m) => m.providerModelId === modelId || m.id === modelId
-    );
-    if (entry) {
-      return {
-        providerSpec: entry,
-        productPolicy: {
-          id: entry.providerModelId,
-          displayName: entry.providerModelId,
-          studios: ["explore"],
-          enabled: true,
-          legacyAliases: [],
-        },
-        businessPolicy: {
-          targetContributionMarginBps: 3000,
-          variableInfraCostMicroUsd: 10000n,
-          minimumCredits: 5,
-        },
-        toProviderPayload(input) {
-          return { prompt: input.prompt };
-        },
-      };
-    }
+  // 2. Fetch authoritative provider catalog
+  const catalogRes = await getProviderCatalog();
+  const catalogData = catalogRes?.catalog;
+  const catalogModels = Array.isArray(catalogData?.models) ? catalogData.models : [];
+
+  const targetProviderModelId = localDef?.providerSpec?.providerModelId || modelId;
+  const catalogEntry = catalogModels.find(
+    (m) => m.providerModelId === targetProviderModelId || m.id === targetProviderModelId
+  );
+
+  const catalogProvenance = catalogData?.provenance || {
+    source: catalogRes?.source || "BOOTSTRAP",
+    loadedAt: new Date().toISOString(),
+    providerFetchedAt: null,
+    validationStatus: "VALID",
+    stale: true,
+  };
+
+  // 3. If local definition exists, merge authoritative Provider Authority spec over local spec
+  if (localDef) {
+    const authoritativeSpec = catalogEntry ? {
+      providerModelId: catalogEntry.providerModelId || catalogEntry.id || localDef.providerSpec.providerModelId,
+      endpoint: catalogEntry.endpoint || localDef.providerSpec.endpoint,
+      category: catalogEntry.category || localDef.providerSpec.category,
+      description: catalogEntry.description || localDef.providerSpec.description,
+      cost: catalogEntry.cost !== undefined ? catalogEntry.cost : localDef.providerSpec.cost,
+      dynamicPricing: Boolean(catalogEntry.dynamic_pricing ?? catalogEntry.dynamicPricing ?? localDef.providerSpec.dynamicPricing),
+      estimateEndpoint: catalogEntry.estimateEndpoint || catalogEntry.estimate_endpoint || localDef.providerSpec.estimateEndpoint,
+      inputSchema: catalogEntry.inputSchema || catalogEntry.input_schema || localDef.providerSpec.inputSchema,
+      outputSchema: catalogEntry.outputSchema || catalogEntry.output_schema || localDef.providerSpec.outputSchema,
+      provenance: catalogProvenance,
+    } : {
+      ...localDef.providerSpec,
+      provenance: catalogProvenance,
+    };
+
+    return {
+      ...localDef,
+      providerSpec: authoritativeSpec,
+    };
+  }
+
+  // 4. Fallback: Dynamic lookup from catalog for unregistered models
+  if (catalogEntry) {
+    return {
+      providerSpec: {
+        ...catalogEntry,
+        provenance: catalogProvenance,
+      },
+      productPolicy: {
+        id: catalogEntry.providerModelId || catalogEntry.id,
+        displayName: catalogEntry.providerModelId || catalogEntry.id,
+        studios: ["explore"],
+        enabled: true,
+        legacyAliases: [],
+      },
+      businessPolicy: {
+        targetContributionMarginBps: 3000,
+        variableInfraCostMicroUsd: 10000n,
+        minimumCredits: 5,
+      },
+      toProviderPayload(input) {
+        return { prompt: input.prompt };
+      },
+    };
   }
 
   return null;
