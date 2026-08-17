@@ -6,19 +6,16 @@ import { prepareExecutionPlan } from "../../src/lib/models/execution/prepareExec
 import { getModel } from "../../src/lib/models/registry.js";
 import { clearExactModelMemoryCache } from "../../src/lib/models/providerCatalog.js";
 import { mapValidatedStudioWorkflowToNormalizedInvocation } from "../../src/lib/models/bridges/studioWorkflowBridge.js";
-import { isSeedanceModelPlatformCutoverEligible, validateProviderModelIdentityBinding } from "../../src/lib/models/cutoverEligibility.js";
+import { validateProviderModelIdentityBinding } from "../../src/lib/models/cutoverEligibility.js";
 import { ModelPlatformError, ERROR_CODES } from "../../src/lib/models/errors.js";
 
-const TEST_ENV_OFF = {
-  DOOLPHIN_ENV: "staging",
-  MUAPI_API_KEY_SANDBOX: "sandbox_test_key_phase4c1",
-  MODEL_PLATFORM_SEEDANCE_CUTOVER_ENABLED: "false",
-};
-
+// Model Platform V1 is now the sole authoritative dispatch path (the
+// feature-flagged Seedance cutover has been fully retired), so these tests
+// no longer parameterize on a flag — they exercise the plan/validation
+// pipeline directly.
 const TEST_ENV_ON = {
   DOOLPHIN_ENV: "staging",
   MUAPI_API_KEY_SANDBOX: "sandbox_test_key_phase4c1",
-  MODEL_PLATFORM_SEEDANCE_CUTOVER_ENABLED: "true",
 };
 
 const mockLiveFetch = async (url, options) => {
@@ -50,32 +47,7 @@ const mockLiveFetch = async (url, options) => {
   };
 };
 
-test("Phase 4C.1 Hardening: Flag OFF executes legacy authority only", () => {
-  assert.equal(
-    isSeedanceModelPlatformCutoverEligible({ modelId: "muapi.seedance2.omni-reference-fast", env: TEST_ENV_OFF }),
-    false
-  );
-});
-
-test("Phase 4C.1 Hardening: Flag ON + non-Seedance request does NOT enter Seedance cutover", () => {
-  assert.equal(
-    isSeedanceModelPlatformCutoverEligible({ modelId: "muapi.grok-imagine-image-2-edit", env: TEST_ENV_ON }),
-    false
-  );
-});
-
-test("Phase 4C.1 Hardening: Flag ON + qualifying Seedance creates MODEL_PLATFORM_V1 quote eligibility", () => {
-  assert.equal(
-    isSeedanceModelPlatformCutoverEligible({ modelId: "muapi.seedance2.omni-reference-fast", env: TEST_ENV_ON }),
-    true
-  );
-  assert.equal(
-    isSeedanceModelPlatformCutoverEligible({ modelId: "seedance-2-omni-reference-no-video-fast", env: TEST_ENV_ON }),
-    true
-  );
-});
-
-test("Phase 4C.1 Hardening: Legacy adapter failure cannot block MODEL_PLATFORM_V1 preflight execution plan", async () => {
+test("Phase 4C.1 Hardening: MODEL_PLATFORM_V1 preflight execution plan prepares successfully", async () => {
   clearExactModelMemoryCache();
   const normalizedInput = mapValidatedStudioWorkflowToNormalizedInvocation({
     request: { settings: { durationSeconds: 5, aspectRatio: "9:16" } },

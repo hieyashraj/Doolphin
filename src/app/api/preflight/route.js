@@ -1,12 +1,9 @@
-import crypto from "crypto";
 import { NextResponse } from "next/server";
 import { requireActivatedAccount } from "@/lib/access/authorization";
 import { prisma } from "@/lib/prisma";
 import { CreditEscrowService } from "@/lib/billing/CreditEscrowService";
 import { fingerprintGenerationRequest, normalizeAndValidateGenerationRequest } from "@/lib/generation/contract";
-import { calculateAuthoritativeGenerationQuote } from "@/lib/generation/modelCostRegistry";
 import { compileCanonicalPrompt } from "@/lib/generation/promptCompiler";
-import { getProviderAdapter } from "@/lib/adapters";
 import { buildMuapiWebhookUrl } from "@/lib/generation/webhookSecurity";
 import { resolvePlatformAvatar } from "@/lib/generation/avatarRegistry";
 import { R2StorageService } from "@/lib/storage/r2StorageService";
@@ -14,8 +11,6 @@ import { R2StorageService } from "@/lib/storage/r2StorageService";
 import { mapValidatedStudioWorkflowToNormalizedInvocation } from "@/lib/models/bridges/studioWorkflowBridge.js";
 import { resolveTrustedApplicationOrigin } from "@/lib/models/bridges/applicationOrigin.js";
 import { prepareExecutionPlan } from "@/lib/models/execution/prepareExecutionPlan.js";
-import { recordShadowPreflightTelemetry, runShadowWithSingleTelemetry } from "@/lib/models/telemetry/shadowTelemetry.js";
-import { isSeedanceModelPlatformCutoverEligible } from "@/lib/models/cutoverEligibility.js";
 
 function safeModelSnapshot(model) {
   return {
@@ -34,43 +29,7 @@ function safeModelSnapshot(model) {
   };
 }
 
-const SHADOW_PREFLIGHT_TIMEOUT_MS = 250;
-
-async function executeShadowPreflight({ legacyBody, legacyModel, legacyQuoteBreakdown, legacyPayloadFingerprint, legacyStartTimestamp, compiledPrompt, providerImageUrls }) {
-  if (process.env.MODEL_PLATFORM_PREFLIGHT_SHADOW_ENABLED !== "true") {
-    return;
-  }
-
-  const sampleRate = Number(process.env.MODEL_PLATFORM_PREFLIGHT_SHADOW_SAMPLE_RATE || 1.0);
-  if (sampleRate < 1.0 && Math.random() > sampleRate) {
-    return;
-  }
-
-  await runShadowWithSingleTelemetry({
-    shadowFn: async () => {
-      const normalizedInput = mapValidatedStudioWorkflowToNormalizedInvocation({
-        request: legacyBody,
-        compiledPrompt,
-        providerImageUrls,
-      });
-      const modelId = legacyBody.modelId || legacyModel.id || "seedance-2";
-      return prepareExecutionPlan({
-        modelId,
-        normalizedInput,
-        outputCount: Math.max(1, Math.floor(Number(legacyBody.settings?.outputCount || legacyBody.outputCount) || 1)),
-        env: process.env,
-      });
-    },
-    legacyStartTimestamp,
-    legacyModel,
-    legacyQuoteBreakdown,
-    legacyPayloadFingerprint,
-    timeoutMs: SHADOW_PREFLIGHT_TIMEOUT_MS,
-  });
-}
-
 async function handlePreflight(req) {
-  const legacyStartTimestamp = Date.now();
   let session; try { const { appUser } = await requireActivatedAccount(); session = { user: { id: appUser.id } }; } catch (error) { return NextResponse.json({ success: false, code: error.code || "UNAUTHORIZED", error: "Activation required" }, { status: error.status || 401 }); }
 
   let body;
@@ -163,18 +122,15 @@ async function handlePreflight(req) {
     return NextResponse.json({ success: false, code: "DATABASE_UNAVAILABLE", error: "Preflight cannot continue without durable workspace storage" }, { status: 503 });
   }
 
-  const isCutoverEligible = isSeedanceModelPlatformCutoverEligible({
-    modelId: body.modelId || model.id,
-    env: process.env,
-  });
-
   const requestFingerprint = fingerprintGenerationRequest(request);
   const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
   const roleMap = compiled.roleMap.map(({ url, ...entry }) => entry);
 
-  if (isCutoverEligible) {
-    // Model Platform V1 Authoritative Cutover Path (No Legacy Adapter / No Legacy Pricing)
-    try {
+  // Model Platform V1 is the sole authoritative pricing/dispatch path. The
+  // legacy Seedance adapter/pricing branch and its feature-flagged cutover
+  // have been fully retired — this route no longer conditionally selects
+  // between two systems.
+  try {
       const outputCount = Math.max(
         1,
         Math.floor(
@@ -293,151 +249,13 @@ async function handlePreflight(req) {
           },
         },
       });
-    } catch (planError) {
-      return NextResponse.json({
-        success: false,
-        code: planError.code || "PREFLIGHT_FAILED",
-        error: planError.message || "Model Platform preflight execution plan generation failed",
-      }, { status: 503 });
-    }
-  }
-
-  // Legacy Preflight Path (Cutover OFF or non-qualifying model)
-  const adapter = getProviderAdapter("seedance-2");
-  let providerPayload;
-  try {
-    providerPayload = adapter.formatPayload({
-      prompt: compiled.compiledPrompt,
-      settings: {
-        duration: request.settings.durationSeconds,
-        resolution: request.settings.resolution,
-        aspect_ratio: request.settings.aspectRatio,
-      },
-      images: compiled.imageUrls,
-      webhookUrl,
-    });
-  } catch (error) {
-    return NextResponse.json({ success: false, code: "ADAPTER_VALIDATION_FAILED", error: error.message }, { status: 422 });
-  }
-
-  const legacyQuoteBreakdown = calculateAuthoritativeGenerationQuote(request, model);
-  if (!legacyQuoteBreakdown.priced) {
+  } catch (planError) {
     return NextResponse.json({
       success: false,
-      code: legacyQuoteBreakdown.code,
-      error: "This generation configuration is temporarily unavailable because its approved cost is not configured. No credits were reserved and no provider call was made.",
-      reason: legacyQuoteBreakdown.reason,
+      code: planError.code || "PREFLIGHT_FAILED",
+      error: planError.message || "Model Platform preflight execution plan generation failed",
     }, { status: 503 });
   }
-
-  const providerPayloadFingerprint = crypto.createHash("sha256").update(JSON.stringify(providerPayload)).digest("hex");
-
-  let modelPlatformPreparedPlan = null;
-  if (process.env.MODEL_PLATFORM_PREPARED_SNAPSHOT_ENABLED === "true") {
-    try {
-      const outputCount = Math.max(1, Math.floor(Number(request.settings?.outputCount || body.outputCount) || 1));
-      const normalizedInput = mapValidatedStudioWorkflowToNormalizedInvocation({
-        request,
-        compiledPrompt: compiled.compiledPrompt,
-        providerImageUrls: compiled.imageUrls,
-        earliestSignedAssetExpiryMs,
-      });
-      const modelId = body.modelId || model.id || "seedance-2";
-      const plan = await prepareExecutionPlan({
-        modelId,
-        normalizedInput,
-        outputCount,
-        env: process.env,
-      });
-      modelPlatformPreparedPlan = {
-        authorityVersion: "MODEL_PLATFORM_PREPARED_V1",
-        canonicalModelId: plan.canonicalModelId,
-        providerModelId: plan.providerModelId,
-        providerEndpoint: plan.providerEndpoint,
-        providerSpecHash: plan.providerSpecHash,
-        providerSpecSource: plan.provenance?.source || "BOOTSTRAP",
-        providerFetchedAt: plan.provenance?.providerFetchedAt || null,
-        providerStale: Boolean(plan.provenance?.stale),
-        providerPayloadJson: plan.providerPayloadJson,
-        providerPayloadHash: plan.providerPayloadHash,
-        unitPricing: plan.unitPricing,
-        workflowPricing: plan.workflowPricing,
-        pricingRevisionId: plan.workflowPricing.pricingRevisionId,
-        outputCount: plan.workflowPricing.outputCount,
-        preparedAt: plan.preparedAt,
-        expiresAt: plan.expiresAt,
-        earliestSignedAssetExpiry: earliestSignedAssetExpiryMs ? new Date(earliestSignedAssetExpiryMs).toISOString() : null,
-        webhookStrategy: plan.transport.webhookStrategy,
-      };
-    } catch (planError) {
-      console.warn("[Preflight] Prepared plan snapshot generation warning:", planError.message);
-    }
-  }
-
-  const routingSnapshot = {
-    model: safeModelSnapshot(model),
-    webhookUrl,
-    requestFingerprint,
-    quoteCostSnapshot: legacyQuoteBreakdown,
-    providerPayloadFingerprint,
-    modelPlatformPreparedPlan,
-  };
-
-  const quote = await prisma.preflightQuote.create({
-    data: {
-      workspaceId: workspace.id,
-      userId: session.user.id,
-      generationType: request.studio,
-      requestSnapshot: JSON.stringify(request),
-      normalizedAssetSummary: JSON.stringify(roleMap),
-      routingSnapshot: JSON.stringify(routingSnapshot),
-      selectedModelId: model.id,
-      provider: model.provider,
-      providerEndpoint: model.endpoint,
-      registryRevision: model.capabilityRevision,
-      pricingRevision: legacyQuoteBreakdown.pricingRevisionId,
-      adapterVersion: model.adapterVersion,
-      estimatedProviderCostMinMicroUsd: BigInt(legacyQuoteBreakdown.components.providerGeneration),
-      estimatedProviderCostMaxMicroUsd: BigInt(legacyQuoteBreakdown.components.providerGeneration),
-      infrastructureCostEstimateMicroUsd: BigInt(legacyQuoteBreakdown.fullyLoadedCostMicroUsd) - BigInt(legacyQuoteBreakdown.components.providerGeneration),
-      expectedFailureLossMicroUsd: BigInt(0),
-      internalCreditsToReserve: legacyQuoteBreakdown.totalCredits,
-      warnings: JSON.stringify([]),
-      capabilitySummary: JSON.stringify(safeModelSnapshot(model)),
-      expiresAt,
-    },
-  });
-
-  // Isolated Shadow Telemetry Path
-  executeShadowPreflight({
-    legacyBody: body,
-    legacyModel: model,
-    legacyQuoteBreakdown,
-    legacyPayloadFingerprint: providerPayloadFingerprint,
-    legacyStartTimestamp,
-    compiledPrompt: compiled.compiledPrompt,
-    providerImageUrls: compiled.imageUrls,
-  }).catch((err) => console.warn("[ShadowPreflight] Unhandled shadow error:", err));
-
-  return NextResponse.json({
-    success: true,
-    quote: {
-      id: quote.id,
-      expiresAt,
-      requestFingerprint,
-      model: safeModelSnapshot(model),
-      settings: request.settings,
-      estimatedSpeechSeconds,
-      delivery: request.instructions.confirmedDelivery,
-      roleMap,
-      scenePlan: compiled.compiledPrompt,
-      costs: legacyQuoteBreakdown,
-      providerPreview: {
-        endpoint: model.endpoint,
-        payload: { ...providerPayload, images_list: providerPayload.images_list.map((_, index) => `[signed-asset-${index + 1}]`) },
-      },
-    },
-  });
 }
 
 export async function POST(req) {

@@ -6,28 +6,15 @@ import { CreditEscrowService } from "@/lib/billing/CreditEscrowService";
 import { normalizeAndValidateGenerationRequest } from "@/lib/generation/contract";
 import { compileCanonicalPrompt } from "@/lib/generation/promptCompiler";
 import { getMuapiApiKey } from "@/lib/generation/muapiCredentials";
-import { getProviderAdapter } from "@/lib/adapters";
 import { buildMuapiWebhookUrl } from "@/lib/generation/webhookSecurity";
 import { userFacingGenerationMessage } from "@/lib/generation/statusMessages";
 import { claimProviderSubmission, clearSubmissionLease, newSubmissionOwner, submissionOwnerWhere } from "@/lib/generation/providerSubmissionLease";
 import { HARDENED_RECONCILIATION_ENGINE_REVISION } from "@/lib/generation/reconciliationEligibility";
-import { resolveTrustedExecutionUrl } from "@/lib/models/execution/muapiExecutor.js";
 
 import { validateModelPlatformPreparedQuoteForDispatch } from "@/lib/models/execution/validateDispatch.js";
-import { validateLegacyGenerationQuoteForDispatch } from "@/lib/models/execution/validateLegacyDispatch.js";
 import { isModelPlatformV1Creation, settleModelPlatformWorkflow } from "@/lib/models/execution/workflowSettlement.js";
 
 export const maxDuration = 300;
-
-function publicAssetUrl(url, requestUrl) {
-  if (url.startsWith("https://")) return new URL(url).toString();
-  if (!url.startsWith("/")) throw new Error(`Asset URL '${url}' is not provider-fetchable`);
-  const configuredBase = process.env.WEBHOOK_URL || process.env.NEXTAUTH_URL || new URL(requestUrl).origin;
-  if (process.env.NODE_ENV === "production" && !configuredBase.startsWith("https://")) {
-    throw new Error("Public HTTPS asset URLs are required in production");
-  }
-  return new URL(url, `${configuredBase.replace(/\/$/, "")}/`).toString();
-}
 
 function mediaTypeFor(asset) {
   if (asset.role === "ACTOR_REFERENCE") return "IMAGE";
@@ -96,80 +83,40 @@ async function handleGenerationSubmission(req) {
   let pricingRevisionId;
 
   const parsedRouting = JSON.parse(quote.routingSnapshot || "{}");
-  const isModelPlatformCutover = parsedRouting.authority === "MODEL_PLATFORM_V1";
 
-  if (isModelPlatformCutover) {
-    if (process.env.MODEL_PLATFORM_SEEDANCE_CUTOVER_ENABLED !== "true") {
-      return NextResponse.json({
-        success: false,
-        code: "CUTOVER_DISABLED_EMERGENCY_KILL",
-        error: "MODEL_PLATFORM_V1 generation is disabled by emergency kill-switch; no paid call was made",
-      }, { status: 503 });
-    }
+  // Model Platform V1 is the sole authoritative dispatch path. The legacy
+  // Seedance adapter/pricing branch, its feature-flagged cutover, and the
+  // emergency kill-switch response it needed have all been fully retired.
+  // Any quote not carrying a MODEL_PLATFORM_V1 routing authority predates
+  // this cutover and can no longer be dispatched — it fails closed rather
+  // than silently falling back to retired pricing/adapter logic.
+  if (parsedRouting.authority !== "MODEL_PLATFORM_V1") {
+    return NextResponse.json({
+      success: false,
+      code: "QUOTE_STALE",
+      error: "This preflight quote predates the current generation engine. Run preflight again before submitting.",
+    }, { status: 409 });
+  }
 
-    try {
-      const validatedPlan = validateModelPlatformPreparedQuoteForDispatch({
-        quote,
-        request,
-        routingSnapshot: parsedRouting,
-      });
-
-      providerPayloadJson = validatedPlan.providerPayloadJson;
-      payloadFingerprint = validatedPlan.providerPayloadHash;
-      executionEndpoint = validatedPlan.providerEndpoint;
-      totalCreditsToReserve = validatedPlan.workflowPricing.quotedCredits;
-      registryRevisionId = validatedPlan.providerSpecHash;
-      pricingRevisionId = validatedPlan.pricingRevisionId;
-    } catch (error) {
-      return NextResponse.json({
-        success: false,
-        code: error.code || "PREPARED_PLAN_INVALID",
-        error: error.message,
-      }, { status: 409 });
-    }
-  } else {
-    // Defect 1 & 2 & 5: Restored 7133908 legacy dispatch behavior via pure helper
-    let legacyResult;
-    try {
-      legacyResult = validateLegacyGenerationQuoteForDispatch({
-        quote,
-        request,
-        model,
-        routingSnapshot: parsedRouting,
-      });
-    } catch (error) {
-      return NextResponse.json({
-        success: false,
-        code: error.code || "QUOTE_STALE",
-        error: error.message,
-      }, { status: error.code === "PRICING_UNAVAILABLE" ? 503 : 409 });
-    }
-
-    totalCreditsToReserve = legacyResult.totalCreditsToReserve;
-    registryRevisionId = legacyResult.registryRevisionId;
-    pricingRevisionId = legacyResult.pricingRevisionId;
-
-    const compiledPrompt = compileCanonicalPrompt(request);
-    const providerImages = compiledPrompt.imageUrls.map((url) => publicAssetUrl(url, req.url));
-
-    const webhookBase = process.env.WEBHOOK_URL || process.env.NEXTAUTH_URL || new URL(req.url).origin;
-    const webhookUrl = buildMuapiWebhookUrl(webhookBase);
-
-    const adapter = getProviderAdapter("seedance-2");
-    const legacyProviderPayload = adapter.formatPayload({
-      prompt: compiledPrompt.compiledPrompt,
-      settings: {
-        duration: request.settings.durationSeconds,
-        resolution: request.settings.resolution,
-        aspect_ratio: request.settings.aspectRatio,
-      },
-      images: providerImages,
-      webhookUrl,
+  try {
+    const validatedPlan = validateModelPlatformPreparedQuoteForDispatch({
+      quote,
+      request,
+      routingSnapshot: parsedRouting,
     });
 
-    providerPayloadJson = JSON.stringify(legacyProviderPayload);
-    payloadFingerprint = crypto.createHash("sha256").update(providerPayloadJson).digest("hex");
-    executionEndpoint = resolveTrustedExecutionUrl(model.endpoint);
+    providerPayloadJson = validatedPlan.providerPayloadJson;
+    payloadFingerprint = validatedPlan.providerPayloadHash;
+    executionEndpoint = validatedPlan.providerEndpoint;
+    totalCreditsToReserve = validatedPlan.workflowPricing.quotedCredits;
+    registryRevisionId = validatedPlan.providerSpecHash;
+    pricingRevisionId = validatedPlan.pricingRevisionId;
+  } catch (error) {
+    return NextResponse.json({
+      success: false,
+      code: error.code || "PREPARED_PLAN_INVALID",
+      error: error.message,
+    }, { status: 409 });
   }
 
   const workspace = await prisma.workspace.findUnique({ where: { id: quote.workspaceId } });

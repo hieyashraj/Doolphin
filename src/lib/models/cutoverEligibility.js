@@ -1,24 +1,14 @@
 /**
- * Explicit Seedance Model Platform Cutover Eligibility Helper (Phase 4C.1).
- */
-const APPROVED_SEEDANCE_MODEL_IDS = new Set([
-  "muapi.seedance2.omni-reference-fast",
-  "seedance-2-omni-reference-no-video-fast",
-  "seedance-2",
-]);
-
-export function isSeedanceModelPlatformCutoverEligible({ modelId, env = process.env } = {}) {
-  if (env.MODEL_PLATFORM_SEEDANCE_CUTOVER_ENABLED !== "true") {
-    return false;
-  }
-  if (!modelId || typeof modelId !== "string") {
-    return false;
-  }
-  return APPROVED_SEEDANCE_MODEL_IDS.has(modelId);
-}
-
-/**
  * Server-controlled Model Identity Binding Alias Map.
+ *
+ * Note: the feature-flagged Seedance Model Platform cutover
+ * (isSeedanceModelPlatformCutoverEligible, gated by
+ * MODEL_PLATFORM_SEEDANCE_CUTOVER_ENABLED) has been fully retired.
+ * MODEL_PLATFORM_V1 is now the sole authoritative dispatch path
+ * unconditionally (see src/app/api/preflight/route.js and
+ * src/app/api/generations/route.js). validateProviderModelIdentityBinding
+ * below remains load-bearing production security logic (Phase 4B.3
+ * dispatch-time identity verification) and is unrelated to that retired flag.
  */
 const SERVER_CONTROLLED_MODEL_ALIAS_MAP = new Map([
   ["muapi.seedance2.omni-reference-fast", "seedance-2-omni-reference-no-video-fast"],

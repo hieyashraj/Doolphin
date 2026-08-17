@@ -45,6 +45,20 @@ export async function getModel(modelId, { fetchImpl, env = process.env, forceRef
   const isCutoverEnabled = env.MODEL_PLATFORM_SEEDANCE_CUTOVER_ENABLED === "true";
 
   // Cutover fail-closed guard: Cutover mode requires source === "LIVE_PROVIDER" and stale === false
+  //
+  // NOTE: MODEL_PLATFORM_V1 is now the sole authoritative dispatch path at
+  // the route level (src/app/api/preflight/route.js, generations/route.js
+  // no longer have a legacy fallback) — but this specific guard is
+  // deliberately left flag-scoped rather than made unconditional here.
+  // Making it unconditional would also newly reject the bootstrap-catalog
+  // fallback path for image-studio models (see
+  // tests/models/phase1_infrastructure.test.js, "3-Layer Model Registry
+  // studio filtering and lookups", which calls getModel() with no live
+  // fetchImpl and asserts a successful BOOTSTRAP-sourced resolution) without
+  // an accompanying decision about whether image models should also require
+  // a live provider spec. That is a real, separate follow-up decision, not
+  // a side effect of retiring the Seedance cutover flag — flagged for a
+  // deliberate follow-up rather than bundled into this change.
   if (isCutoverEnabled && localDef && (providerResolution.provenance.source !== "LIVE_PROVIDER" || providerResolution.provenance.stale === true)) {
     throw new ModelPlatformError(
       ERROR_CODES.PROVIDER_SPEC_UNAVAILABLE,
