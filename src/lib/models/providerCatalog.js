@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import { getMuapiApiKey } from "../generation/muapiCredentials.js";
 import { getProviderCatalog, clearCatalogMemoryCache } from "./catalogStore.js";
+import { validateProviderEndpointOrigin, resolveTrustedExecutionUrl } from "./execution/muapiExecutor.js";
 
 const DEFAULT_NETWORK_TIMEOUT_MS = 3000;
 const DEFAULT_SPEC_TTL_MS = 60 * 60 * 1000; // 1 hour memory TTL
@@ -27,16 +28,17 @@ export function validateProviderModelEntry(entry) {
   if (typeof providerModelId !== "string" || !providerModelId.trim()) return false;
 
   const rawEndpoint = entry.endpoint;
-  if (typeof rawEndpoint !== "string" || !rawEndpoint.trim()) return false;
+  if (!validateProviderEndpointOrigin(rawEndpoint)) return false;
 
   const inputSchema = entry.inputSchema || entry.input_schema;
   if (!inputSchema || typeof inputSchema !== "object" || Object.keys(inputSchema).length === 0) return false;
 
-  const isDynamic = Boolean(entry.dynamic_pricing ?? entry.dynamicPricing);
+  const rawDynamic = entry.dynamic_pricing !== undefined ? entry.dynamic_pricing : entry.dynamicPricing;
+  if (typeof rawDynamic !== "boolean") return false;
 
-  if (isDynamic) {
+  if (rawDynamic === true) {
     const estEndpoint = entry.estimateEndpoint || entry.estimate_endpoint;
-    if (typeof estEndpoint !== "string" || !estEndpoint.trim()) return false;
+    if (!validateProviderEndpointOrigin(estEndpoint)) return false;
   } else {
     const rawCost = entry.cost;
     if (rawCost === undefined || rawCost === null) return false;
@@ -175,37 +177,38 @@ export async function fetchLiveSingleMuapiModel(providerModelId, {
 
       if (rawEntry && typeof rawEntry === "object") {
         const id = rawEntry.providerModelId || rawEntry.id || rawEntry.name || providerModelId;
-        const rawEndpoint = rawEntry.endpoint;
-        let normalizedEndpoint = null;
-        if (typeof rawEndpoint === "string" && rawEndpoint.trim()) {
-          normalizedEndpoint = rawEndpoint.startsWith("http")
-            ? rawEndpoint
-            : `https://api.muapi.ai${rawEndpoint.startsWith("/") ? "" : "/"}${rawEndpoint}`;
-        }
+        const rawDynamic = rawEntry.dynamic_pricing !== undefined ? rawEntry.dynamic_pricing : rawEntry.dynamicPricing;
 
-        const rawEstEndpoint = rawEntry.estimateEndpoint || rawEntry.estimate_endpoint;
-        let normalizedEstEndpoint = null;
-        if (typeof rawEstEndpoint === "string" && rawEstEndpoint.trim()) {
-          normalizedEstEndpoint = rawEstEndpoint.startsWith("http")
-            ? rawEstEndpoint
-            : `https://api.muapi.ai${rawEstEndpoint.startsWith("/") ? "" : "/"}${rawEstEndpoint}`;
-        }
+        if (typeof rawDynamic === "boolean") {
+          const rawEndpoint = rawEntry.endpoint;
+          const rawEstEndpoint = rawEntry.estimateEndpoint || rawEntry.estimate_endpoint;
 
-        const normalizedEntry = {
-          providerModelId: id,
-          endpoint: normalizedEndpoint,
-          cost: rawEntry.cost,
-          dynamicPricing: Boolean(rawEntry.dynamic_pricing ?? rawEntry.dynamicPricing),
-          estimateEndpoint: normalizedEstEndpoint,
-          inputSchema: rawEntry.inputSchema || rawEntry.input_schema,
-          outputSchema: rawEntry.outputSchema || rawEntry.output_schema,
-          description: rawEntry.description,
-          category: rawEntry.category,
-          family: rawEntry.family,
-        };
+          let normalizedEndpoint = null;
+          if (validateProviderEndpointOrigin(rawEndpoint)) {
+            normalizedEndpoint = resolveTrustedExecutionUrl(rawEndpoint);
+          }
 
-        if (validateProviderModelEntry(normalizedEntry)) {
-          return { success: true, spec: normalizedEntry };
+          let normalizedEstEndpoint = null;
+          if (rawDynamic && validateProviderEndpointOrigin(rawEstEndpoint)) {
+            normalizedEstEndpoint = resolveTrustedExecutionUrl(rawEstEndpoint);
+          }
+
+          const normalizedEntry = {
+            providerModelId: id,
+            endpoint: normalizedEndpoint,
+            cost: rawEntry.cost,
+            dynamicPricing: rawDynamic,
+            estimateEndpoint: normalizedEstEndpoint,
+            inputSchema: rawEntry.inputSchema || rawEntry.input_schema,
+            outputSchema: rawEntry.outputSchema || rawEntry.output_schema,
+            description: rawEntry.description,
+            category: rawEntry.category,
+            family: rawEntry.family,
+          };
+
+          if (validateProviderModelEntry(normalizedEntry)) {
+            return { success: true, spec: normalizedEntry };
+          }
         }
       }
     }

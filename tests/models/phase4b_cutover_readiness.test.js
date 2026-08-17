@@ -37,6 +37,181 @@ const mockEstimateFetch = async (url) => {
   };
 };
 
+test("Phase 4B Pre-Cutover Correctness: Live spec missing dynamic_pricing but containing cost -> must NOT be accepted as a fixed LIVE_PROVIDER spec", async () => {
+  clearExactModelMemoryCache();
+  const mockMissingDynamicFetch = async (url) => {
+    if (url.includes("/api/v1/models")) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          providerModelId: "seedance-2-omni-reference-no-video-fast",
+          endpoint: "/api/v1/seedance-2-omni-reference-no-video-fast",
+          cost: { amount: 0.04838, currency: "USD" },
+          // dynamic_pricing / dynamicPricing is completely omitted!
+          input_schema: { type: "object", properties: { prompt: { type: "string" } } },
+        }),
+      };
+    }
+    return mockEstimateFetch(url);
+  };
+
+  await assert.rejects(
+    () => getModel("muapi.seedance2.omni-reference-fast", {
+      fetchImpl: mockMissingDynamicFetch,
+      env: TEST_ENV_CUTOVER,
+      forceRefresh: true,
+    }),
+    (err) => err instanceof ModelPlatformError && err.code === ERROR_CODES.PROVIDER_SPEC_UNAVAILABLE
+  );
+});
+
+test("Phase 4B Pre-Cutover Correctness: dynamic_pricing=false + valid fixed cost -> accepted", async () => {
+  clearExactModelMemoryCache();
+  const mockFixedPricingFetch = async (url) => {
+    if (url.includes("/api/v1/models")) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          providerModelId: "seedance-2-omni-reference-no-video-fast",
+          endpoint: "/api/v1/seedance-2-omni-reference-no-video-fast",
+          cost: { amount: 0.05, currency: "USD" },
+          dynamic_pricing: false,
+          input_schema: { type: "object", properties: { prompt: { type: "string" } } },
+        }),
+      };
+    }
+    return mockEstimateFetch(url);
+  };
+
+  const model = await getModel("muapi.seedance2.omni-reference-fast", {
+    fetchImpl: mockFixedPricingFetch,
+    env: TEST_ENV_CUTOVER,
+    forceRefresh: true,
+  });
+
+  assert.ok(model);
+  assert.equal(model.providerSpec.dynamicPricing, false);
+  assert.equal(model.providerSpec.cost.amount, 0.05);
+  assert.equal(model.providerSpec.provenance.source, "LIVE_PROVIDER");
+});
+
+test("Phase 4B Pre-Cutover Correctness: dynamic_pricing=true + valid estimate endpoint -> accepted", async () => {
+  clearExactModelMemoryCache();
+  const mockDynamicPricingFetch = async (url) => {
+    if (url.includes("/api/v1/models")) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          providerModelId: "seedance-2-omni-reference-no-video-fast",
+          endpoint: "/api/v1/seedance-2-omni-reference-no-video-fast",
+          dynamic_pricing: true,
+          estimate_endpoint: "/api/v1/models/seedance-2-omni-reference-no-video-fast/estimate-cost",
+          input_schema: { type: "object", properties: { prompt: { type: "string" } } },
+        }),
+      };
+    }
+    return mockEstimateFetch(url);
+  };
+
+  const model = await getModel("muapi.seedance2.omni-reference-fast", {
+    fetchImpl: mockDynamicPricingFetch,
+    env: TEST_ENV_CUTOVER,
+    forceRefresh: true,
+  });
+
+  assert.ok(model);
+  assert.equal(model.providerSpec.dynamicPricing, true);
+  assert.equal(model.providerSpec.estimateEndpoint, "https://api.muapi.ai/api/v1/models/seedance-2-omni-reference-no-video-fast/estimate-cost");
+  assert.equal(model.providerSpec.provenance.source, "LIVE_PROVIDER");
+});
+
+test("Phase 4B Pre-Cutover Boundary Propagation: Injected fetchImpl controls both live Provider Authority lookup AND estimate-cost lookup", async () => {
+  clearExactModelMemoryCache();
+  const calledUrls = [];
+
+  const mockBoundaryFetch = async (url, options) => {
+    calledUrls.push(url);
+    if (url.includes("/api/v1/models/seedance-2-omni-reference-no-video-fast/estimate-cost")) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ cost: 0.1234, currency: "USD" }),
+      };
+    }
+    if (url.includes("/api/v1/models")) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          providerModelId: "seedance-2-omni-reference-no-video-fast",
+          endpoint: "https://api.muapi.ai/api/v1/seedance-2-omni-reference-no-video-fast",
+          dynamic_pricing: true,
+          estimate_endpoint: "https://api.muapi.ai/api/v1/models/seedance-2-omni-reference-no-video-fast/estimate-cost",
+          input_schema: { type: "object", properties: { prompt: { type: "string" } } },
+        }),
+      };
+    }
+    throw new Error(`Unexpected URL in test: ${url}`);
+  };
+
+  const plan = await prepareExecutionPlan({
+    modelId: "muapi.seedance2.omni-reference-fast",
+    normalizedInput: { prompt: "Boundary propagation test" },
+    fetchImpl: mockBoundaryFetch,
+    env: TEST_ENV_CUTOVER,
+  });
+
+  assert.ok(plan);
+  assert.equal(calledUrls.length, 2);
+  assert.ok(calledUrls[0].includes("/api/v1/models/seedance-2-omni-reference-no-video-fast"));
+  assert.ok(calledUrls[1].includes("/estimate-cost"));
+});
+
+test("Phase 4B Pre-Cutover Security: Untrusted origins, non-HTTPS URLs, directory traversal, and redirects are rejected", async () => {
+  clearExactModelMemoryCache();
+
+  const invalidUrls = [
+    "https://muapi.ai/api/v1/endpoint",
+    "http://api.muapi.ai/api/v1/endpoint",
+    "https://malicious-domain.com/api/v1/endpoint",
+    "https://api.muapi.ai/api/v2/endpoint",
+    "https://api.muapi.ai/api/v1/../admin",
+    "//api.muapi.ai/api/v1/endpoint",
+  ];
+
+  for (const badUrl of invalidUrls) {
+    const mockBadFetch = async (url) => {
+      if (url.includes("/api/v1/models")) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            providerModelId: "seedance-2-omni-reference-no-video-fast",
+            endpoint: badUrl,
+            dynamic_pricing: true,
+            estimate_endpoint: "https://api.muapi.ai/api/v1/models/estimate-cost",
+            input_schema: { type: "object", properties: { prompt: { type: "string" } } },
+          }),
+        };
+      }
+      return mockEstimateFetch(url);
+    };
+
+    await assert.rejects(
+      () => getModel("muapi.seedance2.omni-reference-fast", {
+        fetchImpl: mockBadFetch,
+        env: TEST_ENV_CUTOVER,
+        forceRefresh: true,
+      }),
+      (err) => err instanceof ModelPlatformError && err.code === ERROR_CODES.PROVIDER_SPEC_UNAVAILABLE,
+      `Should reject bad endpoint URL: ${badUrl}`
+    );
+  }
+});
+
 test("Phase 4B.3b Strict Validation: Complete live spec -> LIVE_PROVIDER accepted", async () => {
   clearExactModelMemoryCache();
   const mockFetch = async (url) => {
@@ -81,7 +256,6 @@ test("Phase 4B.3b Strict Validation: Live 200 response missing input schema -> m
           endpoint: "https://api.muapi.ai/api/v1/seedance-2-omni-reference-no-video-fast",
           dynamic_pricing: true,
           estimate_endpoint: "https://api.muapi.ai/api/v1/models/seedance-2/estimate-cost",
-          // missing input_schema!
         }),
       };
     }
@@ -107,7 +281,6 @@ test("Phase 4B.3b Strict Validation: Live 200 response missing endpoint -> must 
         status: 200,
         json: async () => ({
           providerModelId: "seedance-2-omni-reference-no-video-fast",
-          // missing endpoint!
           dynamic_pricing: true,
           estimate_endpoint: "https://api.muapi.ai/api/v1/models/seedance-2/estimate-cost",
           input_schema: { type: "object", properties: { prompt: { type: "string" } } },
@@ -138,7 +311,6 @@ test("Phase 4B.3b Strict Validation: Live dynamic-pricing response missing estim
           providerModelId: "seedance-2-omni-reference-no-video-fast",
           endpoint: "https://api.muapi.ai/api/v1/seedance-2-omni-reference-no-video-fast",
           dynamic_pricing: true,
-          // missing estimate_endpoint!
           input_schema: { type: "object", properties: { prompt: { type: "string" } } },
         }),
       };

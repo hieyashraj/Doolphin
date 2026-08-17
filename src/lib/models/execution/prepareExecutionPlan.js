@@ -126,7 +126,7 @@ export async function prepareExecutionPlan({
   safetyMarginMs = DEFAULT_SAFETY_MARGIN_MS,
 } = {}) {
   // 1. Resolve Model with Authoritative Provider Authority spec
-  const modelDefinition = await getModel(modelId);
+  const modelDefinition = await getModel(modelId, { fetchImpl, env });
   if (!modelDefinition) {
     throw new ModelPlatformError(
       ERROR_CODES.MODEL_NOT_FOUND,
