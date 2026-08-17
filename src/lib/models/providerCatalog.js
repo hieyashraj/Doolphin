@@ -5,7 +5,9 @@ import { getProviderCatalog, clearCatalogMemoryCache } from "./catalogStore.js";
 const DEFAULT_NETWORK_TIMEOUT_MS = 3000;
 
 export function computeCatalogHash(catalogData) {
-  const serialized = JSON.stringify(catalogData || {});
+  if (!catalogData || typeof catalogData !== "object") return "";
+  const { provenance, ...specOnly } = catalogData;
+  const serialized = JSON.stringify(specOnly);
   return crypto.createHash("sha256").update(serialized).digest("hex");
 }
 
@@ -122,6 +124,77 @@ export async function fetchLiveMuapiCatalog({
       error: error.name === "AbortError" ? `MU API catalog fetch timed out after ${timeoutMs}ms` : error.message,
     };
   }
+}
+
+export async function resolveAuthoritativeProviderSpec(providerModelId, {
+  fetchImpl = fetch,
+  env = process.env,
+  forceRefresh = false,
+  timeoutMs = DEFAULT_NETWORK_TIMEOUT_MS,
+} = {}) {
+  const nowIso = new Date().toISOString();
+
+  // 1. Attempt Live Refresh if forced or missing
+  if (forceRefresh) {
+    const liveRes = await fetchLiveMuapiCatalog({ fetchImpl, env, timeoutMs });
+    if (liveRes.success) {
+      const match = liveRes.catalog.models.find(
+        (m) => m.providerModelId === providerModelId || m.id === providerModelId
+      );
+      if (match) {
+        return {
+          success: true,
+          spec: match,
+          provenance: {
+            source: "LIVE_PROVIDER",
+            loadedAt: nowIso,
+            providerFetchedAt: nowIso,
+            providerSpecHash: computeCatalogHash(match),
+            stale: false,
+          },
+        };
+      }
+    }
+  }
+
+  // 2. Check Store / Memory / Bootstrap Cache (via getProviderCatalog)
+  const storeRes = await getProviderCatalog({ forceRefresh: false });
+  const storeModels = Array.isArray(storeRes?.catalog?.models) ? storeRes.catalog.models : [];
+  const storeMatch = storeModels.find(
+    (m) => m.providerModelId === providerModelId || m.id === providerModelId
+  );
+
+  if (storeMatch) {
+    const source = storeRes.source === "LIVE_PROVIDER"
+      ? "LIVE_PROVIDER"
+      : storeRes.source === "DURABLE_LKG"
+      ? "DURABLE_LKG"
+      : "BOOTSTRAP";
+
+    return {
+      success: true,
+      spec: storeMatch,
+      provenance: {
+        source,
+        loadedAt: nowIso,
+        providerFetchedAt: storeRes?.catalog?.fetchedAt || null,
+        providerSpecHash: computeCatalogHash(storeMatch),
+        stale: source === "BOOTSTRAP",
+      },
+    };
+  }
+
+  // 3. Local Fallback provenance
+  return {
+    success: false,
+    code: "PROVIDER_SPEC_UNAVAILABLE",
+    provenance: {
+      source: "LOCAL_FALLBACK",
+      loadedAt: nowIso,
+      providerFetchedAt: null,
+      stale: true,
+    },
+  };
 }
 
 export async function syncAndGetProviderCatalog({

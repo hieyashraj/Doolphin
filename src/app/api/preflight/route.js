@@ -55,6 +55,7 @@ async function executeShadowPreflight({ legacyBody, legacyModel, legacyQuoteBrea
       return prepareExecutionPlan({
         modelId,
         normalizedInput,
+        outputCount: Math.max(1, Math.floor(Number(legacyBody.settings?.outputCount || legacyBody.outputCount) || 1)),
         env: process.env,
       });
     },
@@ -190,10 +191,11 @@ async function handlePreflight(req) {
   const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
   const roleMap = compiled.roleMap.map(({ url, ...entry }) => entry);
 
-  // Phase 4B.1 Cutover Readiness Snapshot (Gated behind MODEL_PLATFORM_PREPARED_SNAPSHOT_ENABLED, default OFF)
+  // Phase 4B.3 Cutover Readiness Snapshot (Gated behind MODEL_PLATFORM_PREPARED_SNAPSHOT_ENABLED, default OFF)
   let modelPlatformPreparedPlan = null;
   if (process.env.MODEL_PLATFORM_PREPARED_SNAPSHOT_ENABLED === "true") {
     try {
+      const outputCount = Math.max(1, Math.floor(Number(request.settings?.outputCount || body.outputCount) || 1));
       const normalizedInput = mapValidatedStudioWorkflowToNormalizedInvocation({
         request,
         compiledPrompt: compiled.compiledPrompt,
@@ -204,6 +206,7 @@ async function handlePreflight(req) {
       const plan = await prepareExecutionPlan({
         modelId,
         normalizedInput,
+        outputCount,
         env: process.env,
       });
       modelPlatformPreparedPlan = {
@@ -212,11 +215,13 @@ async function handlePreflight(req) {
         providerModelId: plan.providerModelId,
         providerEndpoint: plan.providerEndpoint,
         providerSpecHash: plan.providerSpecHash,
+        providerSpecSource: plan.provenance?.source || "BOOTSTRAP",
+        providerFetchedAt: plan.provenance?.providerFetchedAt || null,
+        providerStale: Boolean(plan.provenance?.stale),
         providerPayloadJson: plan.providerPayloadJson,
         providerPayloadHash: plan.providerPayloadHash,
-        providerEstimatedCostMicroUsd: plan.pricing.providerCostMicroUsd,
-        newQuotedCredits: plan.pricing.quotedCredits,
-        pricingRevisionId: plan.pricing.pricingRevisionId,
+        unitPricing: plan.unitPricing,
+        workflowPricing: plan.workflowPricing,
         preparedAt: plan.preparedAt,
         expiresAt: plan.expiresAt,
         earliestSignedAssetExpiry: earliestSignedAssetExpiryMs ? new Date(earliestSignedAssetExpiryMs).toISOString() : null,

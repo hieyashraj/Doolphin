@@ -1,14 +1,14 @@
 import { grokImagineImage2EditDefinition } from "./definitions/grok-imagine-image-2-edit.js";
 import { seedanceSpicyVideoExtendDefinition } from "./definitions/seedance-2.5-spicy-video-extend-480p.js";
 import { seedance2OmniReferenceFastDefinition } from "./definitions/seedance-2-omni-reference-fast.js";
-import { getProviderCatalog } from "./catalogStore.js";
-import { computeCatalogHash } from "./providerCatalog.js";
+import { resolveAuthoritativeProviderSpec } from "./providerCatalog.js";
+import { ModelPlatformError, ERROR_CODES } from "./errors.js";
 
 /**
  * 3-Layer Model Registry Architecture:
  * Local Doolphin Policy (productPolicy + businessPolicy + toProviderPayload)
  *                       +
- * Authoritative Provider Spec (from catalogStore resolution)
+ * Authoritative Provider Spec (from resolveAuthoritativeProviderSpec)
  *                       ↓
  * Resolved Model Definition
  */
@@ -19,7 +19,7 @@ const LOCAL_MODEL_DEFINITIONS = Object.freeze({
   [seedance2OmniReferenceFastDefinition.productPolicy.id]: seedance2OmniReferenceFastDefinition,
 });
 
-export async function getModel(modelId) {
+export async function getModel(modelId, { fetchImpl, env = process.env, forceRefresh = false } = {}) {
   if (!modelId || typeof modelId !== "string") return null;
 
   // 1. Resolve local Doolphin base definition by ID or legacy alias
@@ -33,40 +33,41 @@ export async function getModel(modelId) {
     }
   }
 
-  // 2. Fetch authoritative provider catalog
-  const catalogRes = await getProviderCatalog();
-  const catalogData = catalogRes?.catalog;
-  const catalogModels = Array.isArray(catalogData?.models) ? catalogData.models : [];
-
   const targetProviderModelId = localDef?.providerSpec?.providerModelId || modelId;
-  const catalogEntry = catalogModels.find(
-    (m) => m.providerModelId === targetProviderModelId || m.id === targetProviderModelId
-  );
 
-  const catalogProvenance = catalogData?.provenance || {
-    source: catalogRes?.source || "BOOTSTRAP",
-    loadedAt: new Date().toISOString(),
-    providerFetchedAt: null,
-    validationStatus: "VALID",
-    stale: true,
-  };
+  // 2. Resolve Authoritative Provider Spec with explicit provenance
+  const providerResolution = await resolveAuthoritativeProviderSpec(targetProviderModelId, {
+    fetchImpl,
+    env,
+    forceRefresh,
+  });
 
-  // 3. If local definition exists, merge authoritative Provider Authority spec over local spec
-  if (localDef) {
-    const authoritativeSpec = catalogEntry ? {
-      providerModelId: catalogEntry.providerModelId || catalogEntry.id || localDef.providerSpec.providerModelId,
-      endpoint: catalogEntry.endpoint || localDef.providerSpec.endpoint,
-      category: catalogEntry.category || localDef.providerSpec.category,
-      description: catalogEntry.description || localDef.providerSpec.description,
-      cost: catalogEntry.cost !== undefined ? catalogEntry.cost : localDef.providerSpec.cost,
-      dynamicPricing: Boolean(catalogEntry.dynamic_pricing ?? catalogEntry.dynamicPricing ?? localDef.providerSpec.dynamicPricing),
-      estimateEndpoint: catalogEntry.estimateEndpoint || catalogEntry.estimate_endpoint || localDef.providerSpec.estimateEndpoint,
-      inputSchema: catalogEntry.inputSchema || catalogEntry.input_schema || localDef.providerSpec.inputSchema,
-      outputSchema: catalogEntry.outputSchema || catalogEntry.output_schema || localDef.providerSpec.outputSchema,
-      provenance: catalogProvenance,
-    } : {
-      ...localDef.providerSpec,
-      provenance: catalogProvenance,
+  const isCutoverEnabled = env.MODEL_PLATFORM_SEEDANCE_CUTOVER_ENABLED === "true";
+
+  // Cutover fail-closed guard: Cutover mode refuses LOCAL_FALLBACK for authoritative model cutover
+  if (isCutoverEnabled && localDef && providerResolution.provenance.source === "LOCAL_FALLBACK") {
+    throw new ModelPlatformError(
+      ERROR_CODES.PROVIDER_SPEC_UNAVAILABLE,
+      `Authoritative Provider Authority spec unavailable for cutover model '${modelId}'`
+    );
+  }
+
+  const resolvedSpec = providerResolution.success ? providerResolution.spec : (localDef?.providerSpec || null);
+  const provenance = providerResolution.provenance;
+
+  // 3. Merge Authoritative Provider Authority spec over Doolphin local definition
+  if (localDef && resolvedSpec) {
+    const authoritativeSpec = {
+      providerModelId: resolvedSpec.providerModelId || resolvedSpec.id || localDef.providerSpec.providerModelId,
+      endpoint: resolvedSpec.endpoint || localDef.providerSpec.endpoint,
+      category: resolvedSpec.category || localDef.providerSpec.category,
+      description: resolvedSpec.description || localDef.providerSpec.description,
+      cost: resolvedSpec.cost !== undefined ? resolvedSpec.cost : localDef.providerSpec.cost,
+      dynamicPricing: Boolean(resolvedSpec.dynamic_pricing ?? resolvedSpec.dynamicPricing ?? localDef.providerSpec.dynamicPricing),
+      estimateEndpoint: resolvedSpec.estimateEndpoint || resolvedSpec.estimate_endpoint || localDef.providerSpec.estimateEndpoint,
+      inputSchema: resolvedSpec.inputSchema || resolvedSpec.input_schema || localDef.providerSpec.inputSchema,
+      outputSchema: resolvedSpec.outputSchema || resolvedSpec.output_schema || localDef.providerSpec.outputSchema,
+      provenance,
     };
 
     return {
@@ -75,16 +76,17 @@ export async function getModel(modelId) {
     };
   }
 
-  // 4. Fallback: Dynamic lookup from catalog for unregistered models
-  if (catalogEntry) {
+  // 4. Dynamic lookup fallback for unregistered provider models
+  if (providerResolution.success && providerResolution.spec) {
+    const spec = providerResolution.spec;
     return {
       providerSpec: {
-        ...catalogEntry,
-        provenance: catalogProvenance,
+        ...spec,
+        provenance,
       },
       productPolicy: {
-        id: catalogEntry.providerModelId || catalogEntry.id,
-        displayName: catalogEntry.providerModelId || catalogEntry.id,
+        id: spec.providerModelId || spec.id,
+        displayName: spec.providerModelId || spec.id,
         studios: ["explore"],
         enabled: true,
         legacyAliases: [],

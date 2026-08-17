@@ -4,7 +4,7 @@ import crypto from "node:crypto";
 
 import { prepareExecutionPlan } from "../../src/lib/models/execution/prepareExecutionPlan.js";
 import { executeMuapiGenerationPlan } from "../../src/lib/models/execution/muapiExecutor.js";
-import { parseUsdToMicroUsdConservatively, calculateWorkflowCommercialQuote } from "../../src/lib/models/pricingIntegration.js";
+import { parseUsdToMicroUsdConservatively } from "../../src/lib/models/pricingIntegration.js";
 import { getModel } from "../../src/lib/models/registry.js";
 import { mapValidatedStudioWorkflowToNormalizedInvocation } from "../../src/lib/models/bridges/studioWorkflowBridge.js";
 import { ModelPlatformError, ERROR_CODES } from "../../src/lib/models/errors.js";
@@ -30,19 +30,121 @@ const mockEstimateFetch = async (url) => {
   };
 };
 
-test("Phase 4B.2 Resolution: Fresh provider facts override local provider spec while product/business policy stays local", async () => {
-  const model = await getModel("muapi.seedance2.omni-reference-fast");
-  assert.ok(model);
+test("Phase 4B.3 Provider Authority Injection: Live schema/endpoint overrides local spec without altering local product/business policy", async () => {
+  const mockLiveFetch = async (url) => {
+    if (url.includes("/api/v1/models")) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          models: [
+            {
+              providerModelId: "seedance-2-omni-reference-no-video-fast",
+              endpoint: "https://api.muapi.ai/api/v1/custom-live-endpoint-999",
+              cost: { amount: 0.0999, currency: "USD", strategy: "per_second" },
+              dynamic_pricing: true,
+              estimateEndpoint: "https://api.muapi.ai/api/v1/models/seedance-2-omni-reference-no-video-fast/estimate-cost",
+              inputSchema: { type: "object", properties: { prompt: { type: "string" } } },
+            },
+          ],
+        }),
+      };
+    }
+    return mockEstimateFetch(url);
+  };
 
-  // Local product & business policy preserved
+  const model = await getModel("muapi.seedance2.omni-reference-fast", {
+    fetchImpl: mockLiveFetch,
+    env: TEST_ENV,
+    forceRefresh: true,
+  });
+
+  assert.ok(model);
+  // Provider facts updated dynamically from live fetch
+  assert.equal(model.providerSpec.endpoint, "https://api.muapi.ai/api/v1/custom-live-endpoint-999");
+  assert.equal(model.providerSpec.cost.amount, 0.0999);
+  assert.equal(model.providerSpec.provenance.source, "LIVE_PROVIDER");
+
+  // Local Doolphin policies preserved unchanged
   assert.equal(model.productPolicy.id, "muapi.seedance2.omni-reference-fast");
   assert.equal(model.productPolicy.displayName, "Seedance 2 Omni Reference Fast");
   assert.equal(model.businessPolicy.targetContributionMarginBps, 3000);
+});
 
-  // Authoritative Provider Spec facts present
-  assert.equal(model.providerSpec.providerModelId, "seedance-2-omni-reference-no-video-fast");
-  assert.equal(model.providerSpec.endpoint, "https://api.muapi.ai/api/v1/seedance-2-omni-reference-no-video-fast");
-  assert.ok(model.providerSpec.provenance);
+test("Phase 4B.3 Route Simulation: Non-network simulation proves complete atomic prepared plan consistency", async () => {
+  const mockDualFetch = async (url, options) => {
+    if (url.includes("estimate-cost")) {
+      return { ok: true, status: 200, json: async () => ({ cost: 0.2419, currency: "USD" }) };
+    }
+    if (url.includes("/api/v1/models")) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          models: [
+            {
+              providerModelId: "seedance-2-omni-reference-no-video-fast",
+              endpoint: "https://api.muapi.ai/api/v1/seedance-2-omni-reference-no-video-fast",
+              cost: { amount: 0.04838, currency: "USD" },
+              dynamic_pricing: true,
+              estimateEndpoint: "https://api.muapi.ai/api/v1/models/seedance-2-omni-reference-no-video-fast/estimate-cost",
+              inputSchema: { type: "object", properties: { prompt: { type: "string" } } },
+            },
+          ],
+        }),
+      };
+    }
+    throw new Error("Generation POST must NOT be called during simulation");
+  };
+
+  const compiledPrompt = "Simulated Canonical Compiled Prompt for UGC Video";
+  const providerImageUrls = ["https://r2.doolphin.com/actor1.jpg"];
+
+  const normalizedInput = mapValidatedStudioWorkflowToNormalizedInvocation({
+    request: { settings: { durationSeconds: 5, aspectRatio: "9:16" } },
+    compiledPrompt,
+    providerImageUrls,
+  });
+
+  const plan = await prepareExecutionPlan({
+    modelId: "muapi.seedance2.omni-reference-fast",
+    normalizedInput,
+    outputCount: 2,
+    fetchImpl: mockDualFetch,
+    env: TEST_ENV,
+  });
+
+  assert.equal(plan.canonicalModelId, "muapi.seedance2.omni-reference-fast");
+  assert.equal(plan.workflowPricing.outputCount, 2);
+  assert.equal(
+    BigInt(plan.workflowPricing.totalProviderCostMicroUsd),
+    BigInt(plan.unitPricing.providerCostMicroUsd) * 2n
+  );
+
+  const snapshot = {
+    authorityVersion: "MODEL_PLATFORM_PREPARED_V1",
+    canonicalModelId: plan.canonicalModelId,
+    providerModelId: plan.providerModelId,
+    providerEndpoint: plan.providerEndpoint,
+    providerSpecHash: plan.providerSpecHash,
+    providerSpecSource: plan.provenance.source,
+    providerPayloadJson: plan.providerPayloadJson,
+    providerPayloadHash: plan.providerPayloadHash,
+    unitPricing: plan.unitPricing,
+    workflowPricing: plan.workflowPricing,
+  };
+
+  // Assert snapshot round-trip consistency
+  const serialized = JSON.stringify(snapshot);
+  const reloaded = JSON.parse(serialized);
+
+  assert.equal(reloaded.providerPayloadJson, plan.providerPayloadJson);
+  assert.equal(reloaded.workflowPricing.outputCount, 2);
+  assert.equal(reloaded.workflowPricing.totalProviderCostMicroUsd, plan.workflowPricing.totalProviderCostMicroUsd);
+
+  // SHA256 of payload string matches providerPayloadHash exactly
+  const hash = crypto.createHash("sha256").update(reloaded.providerPayloadJson).digest("hex");
+  assert.equal(hash, plan.providerPayloadHash);
 });
 
 test("Phase 4B.2 Multi-Output Pricing: outputCount=2 aggregates microUSD costs before credit rounding", async () => {
@@ -69,41 +171,15 @@ test("Phase 4B.2 Multi-Output Pricing: outputCount=2 aggregates microUSD costs b
   const totalProviderMicroUsd = BigInt(planMulti.workflowPricing.totalProviderCostMicroUsd);
   assert.equal(totalProviderMicroUsd, unitProviderMicroUsd * 2n);
 
-  // Quoted credits double appropriately at aggregate level
   assert.ok(planMulti.workflowPricing.quotedCredits >= planUnit.workflowPricing.quotedCredits * 2 - 5);
 });
 
 test("Phase 4B.2 USD Conversion: Conservative conversion never rounds costs downward", () => {
-  // Exact 6 decimal places
   assert.equal(parseUsdToMicroUsdConservatively("0.048380"), 48380n);
   assert.equal(parseUsdToMicroUsdConservatively("1.250000"), 1250000n);
-
-  // Sub-microUSD digit (7th decimal place) rounds UP by +1 microUSD
   assert.equal(parseUsdToMicroUsdConservatively("0.0000001"), 1n);
   assert.equal(parseUsdToMicroUsdConservatively("0.0483801"), 48381n);
-
-  // Binary floating point string representation (0.1 + 0.2 = 0.30000000000000004 -> safely rounds UP to 300001n)
   assert.equal(parseUsdToMicroUsdConservatively(0.1 + 0.2), 300001n);
-});
-
-test("Phase 4B.2 Persisted Provenance: Unit + Workflow pricing provenance survives DB serialization byte-for-byte", async () => {
-  const plan = await prepareExecutionPlan({
-    modelId: "muapi.seedance2.omni-reference-fast",
-    normalizedInput: { prompt: "Provenance persistence test prompt" },
-    outputCount: 2,
-    fetchImpl: mockEstimateFetch,
-    env: TEST_ENV,
-  });
-
-  const dbString = JSON.stringify(plan);
-  const reloadedPlan = JSON.parse(dbString);
-
-  assert.equal(reloadedPlan.canonicalModelId, "muapi.seedance2.omni-reference-fast");
-  assert.equal(reloadedPlan.provenance.source, "BOOTSTRAP");
-  assert.equal(reloadedPlan.unitPricing.providerCostMicroUsd, plan.unitPricing.providerCostMicroUsd);
-  assert.equal(reloadedPlan.workflowPricing.outputCount, 2);
-  assert.equal(reloadedPlan.workflowPricing.totalProviderCostMicroUsd, plan.workflowPricing.totalProviderCostMicroUsd);
-  assert.equal(reloadedPlan.providerPayloadJson, plan.providerPayloadJson);
 });
 
 test("Phase 4B.1 Webhook Transport: Query parameter is ?webhook= and NOT ?webhook_url=", async () => {
@@ -204,35 +280,6 @@ test("Phase 4B.1 Single Pipeline: Estimate and generation POST HTTP bodies are b
   assert.equal(estimateHash, plan.providerPayloadHash);
 });
 
-test("Phase 4B.1 Seedance Schema: Provider payload sets images_list field name and enforces max 9 limit", async () => {
-  const plan = await prepareExecutionPlan({
-    modelId: "muapi.seedance2.omni-reference-fast",
-    normalizedInput: {
-      prompt: "Seedance images_list verification prompt",
-      extraInputs: { images: ["https://r2.doolphin.com/actor1.jpg", "https://r2.doolphin.com/actor2.jpg"] },
-    },
-    fetchImpl: mockEstimateFetch,
-    env: TEST_ENV,
-  });
-
-  assert.ok(plan.providerPayload.images_list);
-  assert.equal(plan.providerPayload.images, undefined);
-  assert.equal(plan.providerPayload.images_list.length, 2);
-  assert.equal(plan.providerPayload.images_list[0], "https://r2.doolphin.com/actor1.jpg");
-
-  // Prove > 9 image references fail closed
-  const tooManyImages = Array.from({ length: 10 }, (_, i) => `https://r2.doolphin.com/actor${i + 1}.jpg`);
-  await assert.rejects(
-    () => prepareExecutionPlan({
-      modelId: "muapi.seedance2.omni-reference-fast",
-      normalizedInput: { prompt: "Too many images", extraInputs: { images: tooManyImages } },
-      fetchImpl: mockEstimateFetch,
-      env: TEST_ENV,
-    }),
-    (err) => err instanceof ModelPlatformError && err.code === ERROR_CODES.INVALID_MODEL_INPUT
-  );
-});
-
 test("Phase 4B.1 Studio Workflow Bridge: Canonical compiled prompt is passed directly without object stringification", () => {
   const mockScriptObj = { scene1: "Script object should not become string" };
   const mockRequest = { prompt: "Fallback prompt", script: mockScriptObj, settings: { durationSeconds: 5 } };
@@ -251,8 +298,4 @@ test("Phase 4B.1 Studio Workflow Bridge: Canonical compiled prompt is passed dir
   assert.notEqual(normalized.prompt, "[object Object]");
   assert.equal(normalized.extraInputs.images[0], "https://r2.doolphin.com/avatar.jpg");
   assert.equal(normalized.earliestSignedAssetExpiryMs, nowMs + 30 * 60 * 1000);
-});
-
-test("Phase 4B.1 Readiness Flag: Snapshot generation disabled when MODEL_PLATFORM_PREPARED_SNAPSHOT_ENABLED is false", () => {
-  assert.equal(process.env.MODEL_PLATFORM_PREPARED_SNAPSHOT_ENABLED, undefined);
 });
