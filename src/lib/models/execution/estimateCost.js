@@ -39,15 +39,44 @@ export async function estimateAuthoritativeModelCost({
       };
     }
 
-    let providerCostUsd;
+    let unitCostUsd;
     try {
-      providerCostUsd = Number(rawAmount);
-      if (isNaN(providerCostUsd) || providerCostUsd < 0) throw new Error();
+      unitCostUsd = Number(rawAmount);
+      if (isNaN(unitCostUsd) || unitCostUsd < 0) throw new Error();
     } catch {
       return {
         priced: false,
         code: ERROR_CODES.PRICING_UNAVAILABLE,
         reason: `Model '${modelDefinition.productPolicy.id}' is configured with fixed pricing (dynamic_pricing: false), but has invalid cost metadata`,
+      };
+    }
+
+    // CRITICAL: the declared cost STRATEGY must be honoured. MuAPI publishes
+    // most video models as a PER-SECOND rate (e.g. "$0.15/sec" -> 5s = $0.75,
+    // 8s = $1.20, 10s = $1.50). Treating a per-second rate as a flat total was
+    // a latent ~30x under-charge on this path: a 30s render priced as if it
+    // were 1s. Every strategy must be explicitly handled, and an unrecognised
+    // strategy must fail closed rather than silently assume "flat".
+    const strategy = String(providerSpec.cost?.strategy || "fixed_cost").toLowerCase();
+    let providerCostUsd;
+
+    if (strategy === "fixed_cost" || strategy === "per_request" || strategy === "per_generation") {
+      providerCostUsd = unitCostUsd;
+    } else if (strategy === "per_second") {
+      const durationSeconds = Number(normalizedInput?.duration);
+      if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) {
+        return {
+          priced: false,
+          code: ERROR_CODES.PRICING_UNAVAILABLE,
+          reason: `Model '${modelDefinition.productPolicy.id}' prices per second but no positive duration was supplied; refusing to quote a per-second model as a flat rate`,
+        };
+      }
+      providerCostUsd = unitCostUsd * durationSeconds;
+    } else {
+      return {
+        priced: false,
+        code: ERROR_CODES.PRICING_UNAVAILABLE,
+        reason: `Model '${modelDefinition.productPolicy.id}' declares unrecognised cost strategy '${strategy}'; refusing to guess a billing basis`,
       };
     }
 
@@ -58,9 +87,12 @@ export async function estimateAuthoritativeModelCost({
 
     return {
       ...quote,
-      strategy: providerSpec.cost?.strategy || "fixed_cost",
+      strategy,
       isDynamic: false,
       modelId: modelDefinition.productPolicy.id,
+      providerCostUsd,
+      unitCostUsd,
+      billedDurationSeconds: strategy === "per_second" ? Number(normalizedInput?.duration) : null,
       estimatedAt: new Date().toISOString(),
     };
   }
