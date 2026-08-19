@@ -277,3 +277,4 @@ Built with [Muapi.ai](https://muapi.ai?utm_source=github&utm_medium=readme&utm_c
 
 <!-- deploy-trigger: force Vercel to build the latest main commit after env var fixes -->
 <!-- deploy-verify: confirming Vercel Git webhook is reconnected and auto-deploy fires again -->
+<!-- deploy-verify-2: retry after confirming Vercel GitHub App has All-repositories access -->
