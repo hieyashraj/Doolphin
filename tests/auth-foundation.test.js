@@ -5,16 +5,23 @@ import { calculateRequiredCredits, PLANS, PRICING_REVISION } from "../src/lib/en
 const annualPeriods = (startsAt) => Array.from({ length: 12 }, (_, periodIndex) => ({ dueAt: new Date(Date.UTC(startsAt.getUTCFullYear(), startsAt.getUTCMonth() + periodIndex, startsAt.getUTCDate(), startsAt.getUTCHours(), startsAt.getUTCMinutes(), startsAt.getUTCSeconds())) }));
 
 test("pricing uses integer micro-USD and always rounds upward to five credits", () => {
-  assert.equal(PRICING_REVISION.maxFullyLoadedCostPerCreditMicroUsd, 21_000n);
-  assert.equal(calculateRequiredCredits({ providerCost: 400_000n }).quotedCredits, 20n);
-  assert.equal(calculateRequiredCredits({ providerCost: 1_100_000n }).quotedCredits, 55n);
-  assert.equal(calculateRequiredCredits({ providerCost: 2_000_000n }).quotedCredits, 100n);
+  // Revision 2026-08-credit-rescale-v2: 1 credit = $0.005 of fully-loaded cost
+  // allowance (was $0.021). Economics unchanged; credit counts rescaled 4.2x.
+  assert.equal(PRICING_REVISION.maxFullyLoadedCostPerCreditMicroUsd, 5_000n);
+  // $0.40 / $0.005 = 80 credits exactly.
+  assert.equal(calculateRequiredCredits({ providerCost: 400_000n }).quotedCredits, 80n);
+  // $1.10 / $0.005 = 220 credits exactly.
+  assert.equal(calculateRequiredCredits({ providerCost: 1_100_000n }).quotedCredits, 220n);
+  // $2.00 / $0.005 = 400 credits exactly.
+  assert.equal(calculateRequiredCredits({ providerCost: 2_000_000n }).quotedCredits, 400n);
+  // Not a multiple of 5 after ceiling division -> must round UP, never down.
+  assert.equal(calculateRequiredCredits({ providerCost: 400_001n }).quotedCredits, 85n);
 });
 
 test("annual plans grant monthly allowances rather than twelve months upfront", () => {
-  assert.equal(PLANS.STARTER_ANNUAL.credits, 700);
-  assert.equal(PLANS.GROWTH_ANNUAL.credits, 1900);
-  assert.equal(PLANS.AGENCY_ANNUAL.credits, 4300);
+  assert.equal(PLANS.STARTER_ANNUAL.credits, 2500);
+  assert.equal(PLANS.GROWTH_ANNUAL.credits, 7000);
+  assert.equal(PLANS.AGENCY_ANNUAL.credits, 16000);
   const periods = annualPeriods(new Date("2026-01-15T00:00:00.000Z"));
   assert.equal(periods.length, 12);
   assert.equal(periods[0].dueAt.toISOString(), "2026-01-15T00:00:00.000Z");

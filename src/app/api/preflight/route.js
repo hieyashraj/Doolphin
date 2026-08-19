@@ -11,6 +11,7 @@ import { R2StorageService } from "@/lib/storage/r2StorageService";
 import { mapValidatedStudioWorkflowToNormalizedInvocation } from "@/lib/models/bridges/studioWorkflowBridge.js";
 import { resolveTrustedApplicationOrigin } from "@/lib/models/bridges/applicationOrigin.js";
 import { prepareExecutionPlan } from "@/lib/models/execution/prepareExecutionPlan.js";
+import { assertProviderAssetsAreFetchable } from "@/lib/generation/assetReachability.js";
 
 function safeModelSnapshot(model) {
   return {
@@ -155,6 +156,25 @@ async function handlePreflight(req) {
         earliestSignedAssetExpiryMs,
         applicationOrigin,
       });
+
+      // FINANCIAL SAFETY GATE — must run before a billable quote exists.
+      //
+      // MuAPI fetches these URLs from its own servers. An unfetchable URL does
+      // NOT fail the provider job: MuAPI silently generates from prompt text
+      // alone and still bills us, yielding a fully-charged video that ignores
+      // the user's avatar and uploaded assets. Verify real reachability here
+      // and fail closed, so an unreachable asset costs an error message
+      // instead of a wasted paid generation plus a refund plus a lost user.
+      const reachability = await assertProviderAssetsAreFetchable(normalizedInput.extraInputs?.images || []);
+      if (!reachability.ok) {
+        return NextResponse.json({
+          success: false,
+          code: reachability.code,
+          error: "One of your references can't be reached by the video provider, so no generation was started and no credits were used.",
+          detail: reachability.reason,
+        }, { status: 422 });
+      }
+
       const modelId = body.modelId || model.id || "seedance-2";
       const plan = await prepareExecutionPlan({
         modelId,

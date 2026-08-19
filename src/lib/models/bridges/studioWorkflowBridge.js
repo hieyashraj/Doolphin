@@ -69,6 +69,10 @@ export function mapValidatedStudioWorkflowToNormalizedInvocation({
   const duration = Number(settings.durationSeconds || settings.duration || 5);
   const aspectRatio = settings.aspectRatio || "9:16";
   const generateAudio = settings.generateAudio !== false;
+  // Carried so the model definition can assert the quoted resolution matches
+  // what its endpoint actually produces. Previously dropped here entirely,
+  // which let a user pay for a resolution the payload never expressed.
+  const resolution = settings.resolution || null;
 
   const images = [];
   if (Array.isArray(providerImageUrls)) {
@@ -86,6 +90,7 @@ export function mapValidatedStudioWorkflowToNormalizedInvocation({
     duration,
     aspectRatio,
     generateAudio,
+    ...(resolution ? { resolution } : {}),
     earliestSignedAssetExpiryMs: earliestSignedAssetExpiryMs ? Number(earliestSignedAssetExpiryMs) : null,
     extraInputs: {
       images,

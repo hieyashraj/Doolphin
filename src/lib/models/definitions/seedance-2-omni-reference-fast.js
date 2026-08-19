@@ -32,12 +32,19 @@ export const seedance2OmniReferenceFastDefinition = {
     displayOrder: 5,
     badge: "UGC Core",
     description: "Production Seedance 2.0 UGC video generation with reference actors.",
-    legacyAliases: ["seedance-2", "seedance2-fast"]
+    legacyAliases: ["seedance-2", "seedance2-fast"],
+    // The ONLY resolution this specific endpoint produces. Resolution is an
+    // endpoint-level property in the MuAPI Seedance family (separate 480p /
+    // 1080p / 4K endpoints), never a body parameter — so a resolution the user
+    // is quoted for must match this exactly or the request must fail closed.
+    nativeResolution: "720p"
   },
   businessPolicy: {
     targetContributionMarginBps: 3000,
     variableInfraCostMicroUsd: 20000n, // $0.020 infra & verification reserve
-    minimumCredits: 10
+    // Credit floor. Scaled with the 2026-08-credit-rescale-v2 revision, in
+    // which 1 credit represents $0.005 of fully-loaded cost (was $0.021).
+    minimumCredits: 45
   },
 
   /**
@@ -66,6 +73,19 @@ export const seedance2OmniReferenceFastDefinition = {
     const aspectRatio = normalizedInput.aspectRatio || "9:16";
     if (!validAspectRatios.includes(aspectRatio)) {
       throw new Error(`[Seedance2Omni] Unsupported aspect ratio '${aspectRatio}'`);
+    }
+
+    // Resolution integrity: this endpoint emits 720p only, and MuAPI exposes no
+    // resolution parameter for it. If the caller was quoted any other
+    // resolution, fail closed rather than charge for one resolution and deliver
+    // another. Higher resolutions must be routed to their own dedicated
+    // endpoint definitions (e.g. a `...-1080p` model), not requested here.
+    const requestedResolution = normalizedInput.resolution;
+    if (requestedResolution && String(requestedResolution).toLowerCase() !== "720p") {
+      throw new Error(
+        `[Seedance2Omni] This endpoint only produces 720p; '${requestedResolution}' was requested. ` +
+        `Route higher resolutions to their dedicated endpoint definition instead of silently downgrading a paid generation.`
+      );
     }
 
     const imagesInput = normalizedInput.extraInputs?.images || normalizedInput.images || [];
