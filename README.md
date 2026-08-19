@@ -274,3 +274,5 @@ Built with [Muapi.ai](https://muapi.ai?utm_source=github&utm_medium=readme&utm_c
 ---
 
 *Looking for a free, open-source alternative to Arcads or MakeUGC? Open AI UGC is a self-hostable AI UGC video ad studio you can customize, rebrand, and resell. No content filters, no vendor lock-in, no per-seat pricing.*
+
+<!-- deploy-trigger: force Vercel to build the latest main commit after env var fixes -->
