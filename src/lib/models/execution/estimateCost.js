@@ -2,6 +2,7 @@ import { getMuapiApiKey } from "../../generation/muapiCredentials.js";
 import { calculateCommercialCreditQuote, parseUsdToMicroUsdConservatively } from "../pricingIntegration.js";
 import { canonicalJsonSerialize } from "./prepareExecutionPlan.js";
 import { ERROR_CODES } from "../errors.js";
+import { assertLiveCostWithinVerifiedBand } from "../verifiedCosts.js";
 
 const DEFAULT_ESTIMATE_TIMEOUT_MS = 3000;
 
@@ -175,6 +176,26 @@ export async function estimateAuthoritativeModelCost({
     const providerCostMicroUsd = parseUsdToMicroUsdConservatively(rawCost);
     const providerCostUsd = Number(providerCostMicroUsd) / 1_000_000;
 
+    // INDEPENDENT CROSS-CHECK before anything is billed. The provider is the
+    // pricing authority, but a single unchecked source can silently under-charge
+    // us forever if it regresses (a units change, a $0.00 for a paid model, a
+    // malformed-but-parseable value). Compare against an independently sourced
+    // verified snapshot and fail closed on implausible divergence rather than
+    // charging a figure nobody has validated.
+    const drift = assertLiveCostWithinVerifiedBand({
+      providerModelId: providerSpec.providerModelId || providerSpec.provider_model_id,
+      liveCostUsd: providerCostUsd,
+    });
+    if (!drift.ok) {
+      return {
+        priced: false,
+        code: drift.code,
+        reason: drift.reason,
+        liveCostUsd: drift.liveCostUsd,
+        verifiedCostUsd: drift.verifiedCostUsd,
+      };
+    }
+
     const quote = calculateCommercialCreditQuote({
       providerCostMicroUsd,
       variableInfraCostMicroUsd: businessPolicy?.variableInfraCostMicroUsd || 0n,
@@ -186,6 +207,11 @@ export async function estimateAuthoritativeModelCost({
       isDynamic: true,
       modelId: modelDefinition.productPolicy.id,
       providerCostUsd,
+      // Auditability: record whether an independent cross-check actually ran and
+      // what it compared against, so a later investigation can distinguish
+      // "verified in band" from "no snapshot available".
+      verifiedCostCrossChecked: drift.checked === true,
+      verifiedCostUsd: drift.verifiedCostUsd ?? null,
       estimatedAt: new Date().toISOString(),
     };
   } catch (error) {

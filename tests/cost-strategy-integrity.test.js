@@ -101,12 +101,26 @@ test("every shipped model definition declares an unambiguous billing basis", () 
   }
 });
 
-test("the discovery script refuses to run with a production credential", () => {
+test("the discovery script reads schemas without credentials and refuses production for cost probes", () => {
   const discovery = fs.readFileSync(new URL("../scripts/discover-muapi-models.mjs", import.meta.url), "utf8");
-  assert.match(discovery, /MUAPI_API_KEY_SANDBOX is required/);
-  assert.match(discovery, /MUAPI_API_KEY === sandboxKey/, "must reject identical prod/sandbox keys");
+
+  // Schemas come from MuAPI's public OpenAPI document, which needs no API key at
+  // all — so the default run cannot touch a credential or spend anything.
+  assert.match(discovery, /const OPENAPI_URL = "https:\/\/api\.muapi\.ai\/openapi\.json"/);
+  assert.match(discovery, /no API key required/);
+
+  // The optional --estimate probe is the only path that authenticates, and it is
+  // gated to a sandbox credential in a non-production environment.
+  assert.match(discovery, /--estimate requires MUAPI_API_KEY_SANDBOX/);
+  assert.match(discovery, /process\.env\.MUAPI_API_KEY === sandboxKey/, "must reject identical prod/sandbox keys");
   assert.match(discovery, /VERCEL_ENV === "production" \|\| process\.env\.DOOLPHIN_ENV === "production"/);
-  // It must only ever read metadata, never call a generation endpoint.
-  assert.ok(!/\/api\/v1\/(?!models)/.test(discovery), "discovery must only touch /api/v1/models metadata routes");
-  assert.match(discovery, /needsManualReview/, "ambiguous pricing must be surfaced, not defaulted");
+
+  // It must never POST to a generation endpoint. Only GETs are issued, and the
+  // only /api/v1 path touched is the estimate-cost quote route.
+  assert.ok(!/method:\s*"POST"/.test(discovery), "discovery must never POST (POST is how generations are started)");
+  assert.match(discovery, /estimate-cost/);
+
+  // Ambiguity must be surfaced for human review, never silently defaulted.
+  assert.match(discovery, /DO NOT SELL until resolved/);
+  assert.match(discovery, /Action required/);
 });
