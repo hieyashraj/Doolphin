@@ -222,9 +222,8 @@ function FaqItem({ item, isOpen, onToggle, id }) {
           >
             <div>
               {item.a.map((paragraph, index) => (
-                // Copy is authored in this repo, not user input, and carries only
-                // <strong>/<a> for emphasis and internal links.
-                // eslint-disable-next-line react/no-danger
+                // Copy is authored in this repo in ./faq.js — it is never user
+                // input and carries only <strong> and internal <a> links.
                 <p key={index} dangerouslySetInnerHTML={{ __html: paragraph }} />
               ))}
             </div>
