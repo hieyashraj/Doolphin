@@ -1,6 +1,7 @@
 import { prisma } from "../prisma.js";
 import { createClient } from "../supabase/server.js";
 import { isActivatedUser } from "./account-state.js";
+import { activeEntitlementWhere, findActiveEntitlement } from "./entitlement.js";
 import { linkSupabaseIdentity } from "./identity.js";
 import { logPerf } from "../perf.js";
 
@@ -92,6 +93,23 @@ export async function requireVerifiedUser(reqId) {
   return identity;
 }
 
+/**
+ * STEP 3 OF THE MANDATORY ACCESS GATE: a plan must have been purchased.
+ *
+ * Failure codes are distinct on purpose, because they route the user to
+ * different places and conflating them strands people:
+ *
+ *   ACCOUNT_DENIED (403)      the account is suspended, or its own records are
+ *                             inconsistent (no workspace / no membership).
+ *                             Nothing the user can self-serve -> support.
+ *   ACTIVATION_REQUIRED (402) the account is fine, it just has no plan in force
+ *                             — never bought one, or the subscription lapsed or
+ *                             was refunded. Entirely self-serve -> /pricing.
+ *
+ * A lapsed entitlement used to fall into ACCOUNT_DENIED and bounce the user to
+ * /sign-in?denied=1, which reads as "you are banned" to someone whose card
+ * simply expired, and offers them no way to pay. It is now ACTIVATION_REQUIRED.
+ */
 export async function requireActivatedAccount(reqId) {
   const identity = await requireVerifiedUser(reqId);
   if (
@@ -109,12 +127,13 @@ export async function requireActivatedAccount(reqId) {
   const t2 = performance.now();
   const [membership, entitlement, creditAccount] = await Promise.all([
     prisma.workspaceMember.findUnique({ where: { workspaceId_userId: { workspaceId, userId: identity.appUser.id } } }),
-    prisma.entitlement.findFirst({ where: { workspaceId, userId: identity.appUser.id, status: "ACTIVE", endsAt: { gt: new Date() } }, orderBy: { endsAt: "desc" } }),
+    findActiveEntitlement(prisma, { workspaceId, userId: identity.appUser.id }),
     prisma.creditAccount.findUnique({ where: { workspaceId }, select: { availableCredits: true } }),
   ]);
   logPerf(reqId, "auth:workspace+entitlement+creditAccount", t2);
 
-  if (!membership || !entitlement) throw new AuthorizationError("ACCOUNT_DENIED", 403);
+  if (!membership) throw new AuthorizationError("ACCOUNT_DENIED", 403);
+  if (!entitlement) throw new AuthorizationError("ACTIVATION_REQUIRED", 402);
 
   return { ...identity, membership, entitlement, creditAccount };
 }
@@ -137,7 +156,7 @@ export async function requireWorkspaceMembership(workspaceId) {
 export async function requireSubscriptionFeature(feature, workspaceId) {
   const identity = workspaceId ? await requireWorkspaceMembership(workspaceId) : await requireActivatedAccount();
   const entitlement = await prisma.entitlement.findFirst({
-    where: { workspaceId: workspaceId || identity.appUser.defaultWorkspaceId || undefined, status: "ACTIVE", endsAt: { gt: new Date() } },
+    where: activeEntitlementWhere({ workspaceId: workspaceId || identity.appUser.defaultWorkspaceId || undefined }),
     orderBy: { endsAt: "desc" },
   });
   if (!entitlement || !(entitlement.featuresJson || "").includes(feature)) throw new AuthorizationError("FEATURE_NOT_ENTITLED", 403);

@@ -1,19 +1,20 @@
 {
-  "revision": "2026-08-17-bootstrap-v1",
-  "generatedAt": "2026-08-17T15:45:00.000Z",
+  "revision": "2026-08-20-bootstrap-v2",
+  "generatedAt": "2026-08-20T00:00:00.000Z",
+  "_reconciliation": "Every entry here is reconciled field-for-field against MuAPI's own GET /api/v1/models response, recorded in src/lib/models/catalog/muapi-live-catalog.json, and against the shipped model definitions in src/lib/models/definitions/. This file is the BOOTSTRAP fallback used when the live provider fetch fails, and src/lib/models/registry.js merges it OVER the local definition (`resolvedSpec.dynamicPricing ?? localDef...` does not skip an explicit `false`). A wrong pricing mode here therefore silently overrides a correct definition on the exact code path that runs during a provider outage.",
   "models": [
     {
       "providerModelId": "grok-imagine-image-2-edit",
       "endpoint": "https://api.muapi.ai/api/v1/grok-imagine-image-2-edit",
       "category": "image-edit",
       "description": "Grok Imagine 2.0 image editing operation requiring a prior request_id.",
+      "_costNote": "MuAPI marks this model dynamic_pricing=true, so $0.05 is a REPRESENTATIVE BASE for cross-check/display only and is never billed; the exact charge comes from the estimate endpoint. This entry previously declared dynamicPricing=false with estimateEndpoint=null and an invented strategy:'FLAT', which made the bootstrap fallback path try to flat-bill a dynamically priced model.",
       "cost": {
         "amount": 0.05,
-        "currency": "USD",
-        "strategy": "FLAT"
+        "currency": "USD"
       },
-      "dynamicPricing": false,
-      "estimateEndpoint": null,
+      "dynamicPricing": true,
+      "estimateEndpoint": "https://api.muapi.ai/api/v1/models/grok-imagine-image-2-edit/estimate-cost",
       "inputSchema": {
         "type": "object",
         "required": ["prompt", "request_id"],
@@ -47,10 +48,10 @@
       "endpoint": "https://api.muapi.ai/api/v1/seedance-2.5-spicy-video-extend-480p",
       "category": "video-extend",
       "description": "ByteDance Seedance 2.5 Spicy 480p video continuation & extension model.",
+      "_costNote": "MuAPI's catalog states $0.935 for this model. This entry previously declared $0.08 with strategy:'PER_SECOND' — a per-unit rate MuAPI does not publish. REPRESENTATIVE BASE only, never billed; it is the cross-check baseline the drift guard compares the live estimate against, so an understated base here would let a genuinely expensive render pass as plausible.",
       "cost": {
-        "amount": 0.08,
-        "currency": "USD",
-        "strategy": "PER_SECOND"
+        "amount": 0.935,
+        "currency": "USD"
       },
       "dynamicPricing": true,
       "estimateEndpoint": "https://api.muapi.ai/api/v1/models/seedance-2.5-spicy-video-extend-480p/estimate-cost",

@@ -36,24 +36,59 @@ test("Application Origin Security: WEBHOOK_URL is irrelevant and cannot change a
   assert.equal(origin.includes("webhook"), false);
 });
 
-test("Application Origin Localhost: localhost request origin works in development", () => {
+// The two tests below previously asserted the OPPOSITE of what the resolver now
+// does. They were written against a rule that commit 7758eb4 deliberately
+// deleted: "non-production + localhost/127.0.0.1 request origin -> trust it".
+//
+// That rule minted absolute-but-unfetchable asset URLs such as
+// http://localhost:3009/avatars/Andrew%20E1.png and handed them to MuAPI, which
+// fetches references from ITS OWN servers. MuAPI does not error on an
+// unfetchable reference — it silently generates from the prompt text alone and
+// still bills us, producing a fully-charged video that ignores the user's avatar
+// and uploaded imagery.
+//
+// So these are now negative tests. They pin the fail-closed behaviour on the
+// paid path, and they are the executable partner of the source-level regression
+// guard in tests/pricing-profit-invariant.test.js ("the removed localhost rule
+// cannot silently return"). Restoring the old expectations would require
+// re-introducing the money-losing rule, so the assertions are inverted rather
+// than the source being reverted.
+//
+// Note these cases are already fully hermetic: resolveTrustedApplicationOrigin
+// is a pure function and every input is passed explicitly here, so no PORT /
+// APP_BASE_URL / NODE_ENV environment variable participates in the outcome.
+
+test("Application Origin Money Safety: localhost request origin is refused even in development", () => {
   const origin = resolveTrustedApplicationOrigin({
     appBaseUrl: null,
     nextAuthUrl: null,
     requestOrigin: "http://localhost:3009",
     nodeEnv: "development",
   });
-  assert.equal(origin, "http://localhost:3009");
+  assert.equal(origin, null, "a localhost origin is not fetchable by the provider and must never be trusted");
 });
 
-test("Application Origin Localhost: 127.0.0.1 request origin works in development", () => {
+test("Application Origin Money Safety: 127.0.0.1 request origin is refused even in development", () => {
   const origin = resolveTrustedApplicationOrigin({
     appBaseUrl: null,
     nextAuthUrl: null,
     requestOrigin: "http://127.0.0.1:3009",
     nodeEnv: "development",
   });
-  assert.equal(origin, "http://127.0.0.1:3009");
+  assert.equal(origin, null, "a loopback origin is not fetchable by the provider and must never be trusted");
+});
+
+test("Application Origin Development: the supported local dev path is a public HTTPS tunnel in APP_BASE_URL", () => {
+  // Replaces the coverage the two inverted tests used to provide: development
+  // CAN still resolve an origin, it just has to be one the provider can
+  // actually reach over the internet.
+  const origin = resolveTrustedApplicationOrigin({
+    appBaseUrl: "https://doolphin-dev.ngrok-free.app",
+    nextAuthUrl: null,
+    requestOrigin: "http://localhost:3009",
+    nodeEnv: "development",
+  });
+  assert.equal(origin, "https://doolphin-dev.ngrok-free.app");
 });
 
 test("Application Origin Security: Production HTTP APP_BASE_URL rejects", () => {

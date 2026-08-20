@@ -253,7 +253,11 @@ test("plan catalog and pricing engine agree, and all purchasable codes exist", (
 test("credit values reflect the rescaled unit (regression guard against silent reversion)", () => {
   assert.equal(COST_CEILING, 5_000n, "cost ceiling must be $0.005/credit for revision 2026-08-credit-rescale-v2");
   assert.equal(PRICING_REVISION.id, "2026-08-credit-rescale-v2");
-  assert.equal(PLAN_BY_CODE.EXPLORER.credits, 200);
+  // Explorer is 220, not 200: raised to the largest allowance that still clears
+  // the revenue floor once Polar's fixed $0.50 fee is taken off a $2.99 charge.
+  // 320 was tried and reverted — it netted 7314 microUSD/credit against the
+  // 10500 floor. The floor test above is what proves this number is safe.
+  assert.equal(PLAN_BY_CODE.EXPLORER.credits, 220);
   assert.equal(PLAN_BY_CODE.STARTER_MONTHLY.credits, 2500);
   assert.equal(PLAN_BY_CODE.GROWTH_MONTHLY.credits, 7000);
   assert.equal(PLAN_BY_CODE.AGENCY_MONTHLY.credits, 16000);

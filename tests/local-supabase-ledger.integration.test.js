@@ -1,15 +1,35 @@
 import assert from "node:assert/strict";
 import test, { after, before } from "node:test";
 import { createRequire } from "node:module";
+import { execFileSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { PrismaClient } from "@prisma/client";
 
 const localDatabase = process.env.DATABASE_URL?.includes("127.0.0.1:54322") && process.env.DIRECT_URL?.includes("127.0.0.1:54322");
-const localTest = localDatabase ? test : test.skip;
+// A hosted database is eligible only after the workflow guard has verified that
+// all TEST_* URLs point to the same non-production Supabase project. This keeps
+// a stray DATABASE_URL in a developer shell from ever enabling TRUNCATE.
+const remoteDisposableStaging =
+  process.env.RUN_REMOTE_STAGING_INTEGRATION === "1" &&
+  process.env.DOOLPHIN_DISPOSABLE_TARGET_VERIFIED === "true";
+const integrationDatabase = localDatabase || remoteDisposableStaging;
+const integrationTest = integrationDatabase ? test : test.skip;
+
+if (remoteDisposableStaging) {
+  // Re-run the standalone verifier in-process before a Pool is ever created.
+  // The workflow's prior check is defense in depth, not the authorization that
+  // makes this test able to execute a remote TRUNCATE.
+  execFileSync(
+    process.execPath,
+    [fileURLToPath(new URL("../scripts/verify-disposable-staging-target.mjs", import.meta.url)), "--require-destructive-confirmation"],
+    { stdio: "inherit" },
+  );
+}
 
 const require = createRequire(import.meta.url);
 const { PrismaPg } = require("@prisma/adapter-pg");
 const { Pool } = require("pg");
-const pool = new Pool({ connectionString: process.env.DIRECT_URL || "postgresql://invalid" });
+const pool = new Pool({ connectionString: integrationDatabase ? process.env.DIRECT_URL : "postgresql://invalid" });
 const db = new PrismaClient({ adapter: new PrismaPg(pool) });
 let grantCreditsIdempotently;
 const now = new Date("2026-08-11T12:00:00.000Z");
@@ -56,9 +76,17 @@ async function reconcile(workspaceId) {
   return db.ledgerCutover.upsert({ where: { workspaceId }, update: { status: discrepancy ? "BLOCKED" : "RECONCILED", discrepancyCredits: discrepancy }, create: { workspaceId, status: discrepancy ? "BLOCKED" : "RECONCILED", discrepancyCredits: discrepancy } });
 }
 
-if (localDatabase) { before(async () => { ({ grantCreditsIdempotently } = await import("../src/lib/entitlements/ledger.js")); await clear(); }); after(async () => { await clear(); await db.$disconnect(); await pool.end(); }); }
+if (integrationDatabase) {
+  before(async () => { ({ grantCreditsIdempotently } = await import("../src/lib/entitlements/ledger.js")); await clear(); });
+  after(async () => {
+    await clear();
+    await db.legalDocumentVersion.deleteMany({ where: { documentType: "TERMS", version: "integration-test-v1" } });
+    await db.$disconnect();
+    await pool.end();
+  });
+}
 
-localTest("database: Explorer partial unique indexes reject repeat user, workspace, and customer claims", async () => {
+integrationTest("database: Explorer partial unique indexes reject repeat user, workspace, and customer claims", async () => {
   const a = await fixture(); const b = await fixture();
   await db.entitlement.create({ data: { userId: a.user.id, workspaceId: a.workspace.id, planCode: "EXPLORER", billingInterval: "ONE_TIME", polarCustomerId: "cust-local", polarOrderId: "order-local", startsAt: now, endsAt: new Date("2036-01-01") } });
   await assert.rejects(() => db.entitlement.create({ data: { userId: a.user.id, workspaceId: b.workspace.id, planCode: "EXPLORER", billingInterval: "ONE_TIME", startsAt: now, endsAt: now } }));
@@ -66,7 +94,7 @@ localTest("database: Explorer partial unique indexes reject repeat user, workspa
   await assert.rejects(() => db.entitlement.create({ data: { userId: b.user.id, workspaceId: b.workspace.id, planCode: "EXPLORER", billingInterval: "ONE_TIME", polarCustomerId: "cust-local", startsAt: now, endsAt: now } }));
 });
 
-localTest("database: twenty concurrent duplicate billing grants produce one mutation and nineteen benign no-ops", async () => {
+integrationTest("database: twenty concurrent duplicate billing grants produce one mutation and nineteen benign no-ops", async () => {
   const { user, workspace } = await fixture();
   await db.billingWebhookEvent.create({ data: { polarEventId: "evt-local", eventType: "order.created", payloadJson: "{}" } });
   await assert.rejects(() => db.billingWebhookEvent.create({ data: { polarEventId: "evt-local", eventType: "order.created", payloadJson: "{}" } }));
@@ -77,12 +105,12 @@ localTest("database: twenty concurrent duplicate billing grants produce one muta
   assert.equal(await db.creditLedgerEntry.count({ where: { workspaceId: workspace.id } }), 1);
 });
 
-localTest("database: exact Explorer, Starter, Growth and Agency grants are ledgered", async () => {
+integrationTest("database: exact Explorer, Starter, Growth and Agency grants are ledgered", async () => {
   const grants = [["EXPLORER_GRANT", 50], ["STARTER_MONTHLY_GRANT", 700], ["GROWTH_MONTHLY_GRANT", 1900], ["AGENCY_MONTHLY_GRANT", 4300]];
   for (const [reason, amount] of grants) { const { user, workspace } = await fixture(); await grant({ workspaceId: workspace.id, userId: user.id, amount, reason, key: id("grant") }); assert.equal((await db.creditAccount.findUnique({ where: { workspaceId: workspace.id } })).availableCredits, amount); }
 });
 
-localTest("database: annual schedule has twelve periods, catches up once, continues through cancel-at-period-end, and stops after immediate revocation", async () => {
+integrationTest("database: annual schedule has twelve periods, catches up once, continues through cancel-at-period-end, and stops after immediate revocation", async () => {
   const { user, workspace } = await fixture();
   const entitlement = await db.entitlement.create({ data: { userId: user.id, workspaceId: workspace.id, planCode: "STARTER_ANNUAL", billingInterval: "ANNUAL", status: "CANCEL_AT_PERIOD_END", startsAt: now, endsAt: new Date("2027-08-11") } });
   await annualSchedule(entitlement, 700); assert.equal(await db.creditGrantSchedule.count({ where: { entitlementId: entitlement.id } }), 12);
@@ -92,7 +120,7 @@ localTest("database: annual schedule has twelve periods, catches up once, contin
   assert.equal((await db.creditGrantSchedule.findFirst({ where: { entitlementId: entitlement.id, periodIndex: 3 } })).status, "STOPPED");
 });
 
-localTest("database: Ledger V2 blocks unresolved reservations, creates one opening entry, and blocks discrepancies without repair", async () => {
+integrationTest("database: Ledger V2 blocks unresolved reservations, creates one opening entry, and blocks discrepancies without repair", async () => {
   const { workspace } = await fixture();
   await db.creditAccount.update({ where: { workspaceId: workspace.id }, data: { availableCredits: 23 } });
   const creation = await db.creation.create({ data: { workspaceId: workspace.id, userId: (await db.workspaceMember.findFirst({ where: { workspaceId: workspace.id } })).userId, generationType: "LEGACY", presetId: "local-test", idempotencyKey: id("creation"), status: "DRAFT" } });
@@ -107,8 +135,13 @@ localTest("database: Ledger V2 blocks unresolved reservations, creates one openi
   assert.equal(await db.creditLedgerEntry.count({ where: { workspaceId: workspace.id } }), 2);
 });
 
-localTest("database: LegalConsent is bound to the identity and document version, and duplicate acceptance is rejected", async () => {
-  const { user } = await fixture(); const terms = await db.legalDocumentVersion.findFirst({ where: { documentType: "TERMS" } });
+integrationTest("database: LegalConsent is bound to the identity and document version, and duplicate acceptance is rejected", async () => {
+  const { user } = await fixture();
+  const terms = await db.legalDocumentVersion.upsert({
+    where: { documentType_version: { documentType: "TERMS", version: "integration-test-v1" } },
+    update: { isCurrent: true },
+    create: { documentType: "TERMS", version: "integration-test-v1", contentHash: "integration-test-terms", isCurrent: true },
+  });
   await db.legalConsent.create({ data: { userId: user.id, supabaseUserId: user.supabaseUserId, legalDocumentVersionId: terms.id, source: "LOCAL_TEST" } });
   await assert.rejects(() => db.legalConsent.create({ data: { userId: user.id, supabaseUserId: user.supabaseUserId, legalDocumentVersionId: terms.id, source: "LOCAL_TEST" } }));
 });

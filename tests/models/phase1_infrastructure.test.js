@@ -7,6 +7,17 @@ import { grokImagineImage2EditDefinition } from "../../src/lib/models/definition
 import { seedanceSpicyVideoExtendDefinition } from "../../src/lib/models/definitions/seedance-2.5-spicy-video-extend-480p.js";
 import { validateAndTransformInvocationInput } from "../../src/lib/models/contracts/invocationContract.js";
 import { calculateCommercialCreditQuote } from "../../src/lib/models/pricingIntegration.js";
+import bootstrapCatalog from "../../src/lib/models/catalog/bootstrap-catalog.json" with { type: "json" };
+
+// The bootstrap revision is compared against the shipped file rather than a pinned
+// literal. What this test is proving is that the level-3 fallback served THE
+// BOOTSTRAP FILE WE SHIP (and that the memory cache then serves the same object) —
+// not that the catalog still carries one particular revision string. Correcting a
+// wrong entry in that catalog is supposed to bump its revision, so a hardcoded
+// literal here just fails every legitimate catalog fix. Whether the catalog's
+// CONTENTS are right is enforced separately, against MuAPI's own published
+// response, by tests/catalog-reconciliation.test.js.
+const BOOTSTRAP_REVISION = bootstrapCatalog.revision;
 
 test("Phase 1 Infrastructure: Catalog resolution hierarchy (Memory -> Store -> Bootstrap)", async () => {
   clearCatalogMemoryCache();
@@ -14,14 +25,14 @@ test("Phase 1 Infrastructure: Catalog resolution hierarchy (Memory -> Store -> B
   // Test Level 3 fallback to bootstrap-catalog.json
   const resFallback = await getProviderCatalog({ forceRefresh: true });
   assert.equal(resFallback.source, "BOOTSTRAP");
-  assert.equal(resFallback.catalog.revision, "2026-08-17-bootstrap-v1");
+  assert.equal(resFallback.catalog.revision, BOOTSTRAP_REVISION);
   assert.ok(Array.isArray(resFallback.catalog.models));
   assert.equal(resFallback.catalog.models.length, 2);
 
   // Test Level 1 memory cache hit on immediate second read
   const resCache = await getProviderCatalog();
   assert.equal(resCache.source, "BOOTSTRAP");
-  assert.equal(resCache.catalog.revision, "2026-08-17-bootstrap-v1");
+  assert.equal(resCache.catalog.revision, BOOTSTRAP_REVISION);
 
   // Test Level 2 CatalogStore abstraction override
   class CustomCatalogStore extends CatalogStoreAbstraction {
@@ -126,21 +137,41 @@ test("Phase 1 Infrastructure: Golden Model B (Seedance 2.5 Video Extend) paramet
 });
 
 test("Phase 1 Infrastructure: Integration with Doolphin Commercial Pricing Engine (pricing.js)", () => {
+  // CREDIT UNIT: pricing revision 2026-08-credit-rescale-v2. The divisor is
+  // PRICING_REVISION.maxFullyLoadedCostPerCreditMicroUsd = 5_000 ($0.005/credit).
+  // This test previously divided by 21_000 ($0.021/credit) and expected 5 and 20
+  // credits. The unit was deliberately rescaled 4.2x (identical economics, more
+  // credits per dollar) in src/lib/entitlements/pricing.js, so the same COSTS now
+  // quote 4.2x more CREDITS. The costs asserted below are unchanged — only the
+  // credit denomination moved.
+  //
+  // Note both expectations move UP, never down: this suite still proves the engine
+  // charges at least enough credits to cover cost at the target margin.
+  const COST_CEILING_MICRO_USD = 5_000;
+
   // Test $0.05 provider cost quote calculation
   const quoteFlat = calculateCommercialCreditQuote({ providerCostUsd: 0.05, variableInfraCostMicroUsd: 5000n });
   assert.equal(quoteFlat.priced, true);
   assert.equal(quoteFlat.providerCostMicroUsd, "50000");
   assert.equal(quoteFlat.fullyLoadedCostMicroUsd, "55000"); // $0.055 total cost
-  // rawCredits = Math.ceil(55000 / 21000) = 3 credits
-  // quotedCredits = step rounded in multiples of 5 = 5 credits
-  assert.equal(quoteFlat.totalCredits, 5);
+  // rawCredits = ceil(55000 / 5000) = 11 credits
+  // quotedCredits = rounded up to a multiple of 5 = 15 credits
+  assert.equal(quoteFlat.totalCredits, 15);
+  assert.ok(
+    quoteFlat.totalCredits * COST_CEILING_MICRO_USD >= Number(quoteFlat.fullyLoadedCostMicroUsd),
+    "credits quoted must always cover the fully-loaded cost at the ceiling"
+  );
 
   // Test $0.40 provider cost quote calculation (e.g. 5 sec video extension)
   const quoteVideo = calculateCommercialCreditQuote({ providerCostUsd: 0.40, variableInfraCostMicroUsd: 10000n });
   assert.equal(quoteVideo.priced, true);
   assert.equal(quoteVideo.providerCostMicroUsd, "400000");
   assert.equal(quoteVideo.fullyLoadedCostMicroUsd, "410000"); // $0.41 total cost
-  // rawCredits = Math.ceil(410000 / 21000) = 20 credits
-  // quotedCredits = 20 credits
-  assert.equal(quoteVideo.totalCredits, 20);
+  // rawCredits = ceil(410000 / 5000) = 82 credits
+  // quotedCredits = rounded up to a multiple of 5 = 85 credits
+  assert.equal(quoteVideo.totalCredits, 85);
+  assert.ok(
+    quoteVideo.totalCredits * COST_CEILING_MICRO_USD >= Number(quoteVideo.fullyLoadedCostMicroUsd),
+    "credits quoted must always cover the fully-loaded cost at the ceiling"
+  );
 });

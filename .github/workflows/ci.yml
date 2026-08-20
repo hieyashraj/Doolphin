@@ -1,0 +1,135 @@
+name: CI
+
+# Every push and every pull request gets compiled and tested. Before this
+# workflow existed there was no automated gate on this repository at all: the
+# only thing that ever compiled the app was a Vercel production deploy, which
+# means a broken build was discovered by shipping it.
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  # A newer push makes an in-flight run obsolete; cancel it rather than paying
+  # for two answers about the same branch.
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    env:
+      # Dummy values only. Nothing here reaches a network: `prisma validate`
+      # parses the schema without connecting, and the app resolves Supabase,
+      # Polar, MUAPI and R2 configuration lazily inside request handlers rather
+      # than at module scope. They exist because the code reads these names, and
+      # a build should fail on a real defect, not on an unset variable.
+      #
+      # Any check that genuinely needs live credentials belongs in a staging
+      # deploy, not here — see docs/QA.md.
+      DATABASE_URL: postgresql://ci:ci@127.0.0.1:5432/ci?schema=public
+      DIRECT_URL: postgresql://ci:ci@127.0.0.1:5432/ci?schema=public
+      NEXTAUTH_URL: http://localhost:3000
+      NEXTAUTH_SECRET: ci-placeholder-not-a-real-secret
+      CRON_SECRET: ci-placeholder-not-a-real-secret
+      NEXT_PUBLIC_SUPABASE_URL: https://ci-placeholder.supabase.co
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_ci_placeholder
+      SUPABASE_SERVICE_ROLE_KEY: ci-placeholder-service-role
+      MUAPI_API_KEY: ci-placeholder
+      MUAPI_WEBHOOK_SECRET: ci-placeholder-webhook-secret
+      WEBHOOK_URL: http://localhost:3000
+      POLAR_ENV: sandbox
+      NEXT_PUBLIC_THEME: light
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # `npm ci` installs exactly package-lock.json and fails if the lockfile
+      # and package.json disagree, which is itself a check worth having.
+      - name: Install dependencies
+        run: npm ci
+
+      # Ordered cheapest-first so an obvious break reports in seconds. Each step
+      # carries `if: always()` from here down so one failure does not hide the
+      # others — a single run should tell you everything that is wrong, not just
+      # the first thing.
+      # Reports which required secrets are configured WITHOUT ever printing a
+      # value. GitHub refuses to expose secret names over the API without admin
+      # scope, so this is the only safe way to confirm the integration
+      # credentials are actually in place before tests depend on them.
+      - name: Secret presence check
+        if: always()
+        env:
+          MUAPI_API_KEY: ${{ secrets.MUAPI_API_KEY }}
+          POLAR_SANDBOX_ACCESS_TOKEN: ${{ secrets.POLAR_SANDBOX_ACCESS_TOKEN }}
+          POLAR_SANDBOX_WEBHOOK_SECRET: ${{ secrets.POLAR_SANDBOX_WEBHOOK_SECRET }}
+          POLAR_SANDBOX_PRODUCT_EXPLORER: ${{ secrets.POLAR_SANDBOX_PRODUCT_EXPLORER }}
+          POLAR_SANDBOX_PRODUCT_STARTER_MONTHLY: ${{ secrets.POLAR_SANDBOX_PRODUCT_STARTER_MONTHLY }}
+          POLAR_SANDBOX_PRODUCT_STARTER_ANNUAL: ${{ secrets.POLAR_SANDBOX_PRODUCT_STARTER_ANNUAL }}
+          POLAR_SANDBOX_PRODUCT_GROWTH_MONTHLY: ${{ secrets.POLAR_SANDBOX_PRODUCT_GROWTH_MONTHLY }}
+          POLAR_SANDBOX_PRODUCT_GROWTH_ANNUAL: ${{ secrets.POLAR_SANDBOX_PRODUCT_GROWTH_ANNUAL }}
+          POLAR_SANDBOX_PRODUCT_AGENCY_MONTHLY: ${{ secrets.POLAR_SANDBOX_PRODUCT_AGENCY_MONTHLY }}
+          POLAR_SANDBOX_PRODUCT_AGENCY_ANNUAL: ${{ secrets.POLAR_SANDBOX_PRODUCT_AGENCY_ANNUAL }}
+          TEST_SUPABASE_URL: ${{ secrets.TEST_SUPABASE_URL }}
+          TEST_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.TEST_SUPABASE_PUBLISHABLE_KEY }}
+          TEST_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.TEST_SUPABASE_SERVICE_ROLE_KEY }}
+          TEST_DATABASE_URL: ${{ secrets.TEST_DATABASE_URL }}
+          TEST_DIRECT_URL: ${{ secrets.TEST_DIRECT_URL }}
+        run: |
+          missing=0
+          for name in MUAPI_API_KEY \
+            POLAR_SANDBOX_ACCESS_TOKEN POLAR_SANDBOX_WEBHOOK_SECRET \
+            POLAR_SANDBOX_PRODUCT_EXPLORER \
+            POLAR_SANDBOX_PRODUCT_STARTER_MONTHLY POLAR_SANDBOX_PRODUCT_STARTER_ANNUAL \
+            POLAR_SANDBOX_PRODUCT_GROWTH_MONTHLY POLAR_SANDBOX_PRODUCT_GROWTH_ANNUAL \
+            POLAR_SANDBOX_PRODUCT_AGENCY_MONTHLY POLAR_SANDBOX_PRODUCT_AGENCY_ANNUAL \
+            TEST_SUPABASE_URL TEST_SUPABASE_PUBLISHABLE_KEY TEST_SUPABASE_SERVICE_ROLE_KEY \
+            TEST_DATABASE_URL TEST_DIRECT_URL; do
+            if [ -n "${!name}" ]; then
+              echo "  present  $name"
+            else
+              echo "  MISSING  $name"
+              missing=$((missing+1))
+            fi
+          done
+          echo "----"
+          echo "missing: $missing"
+          # Reported, never enforced. The rest of the pipeline must stay green for
+          # contributors and forks that legitimately have no integration secrets.
+          exit 0
+
+      # The launch gate for billing. Fails while any legal document still contains
+      # unapproved placeholder copy, which is what must never reach a payment page.
+      - name: Legal document guard
+        if: always()
+        run: node scripts/check-legal-placeholders.mjs
+
+      - name: Prisma schema validate
+        if: always()
+        run: npx prisma validate
+
+      - name: Lint
+        if: always()
+        run: npm run lint
+
+      # Unit and contract tests. The Supabase/Postgres integration tests in this
+      # suite self-skip unless LOCAL_SUPABASE_* / a local DATABASE_URL are
+      # present, so they are inert here by design rather than silently passing.
+      - name: Tests
+        if: always()
+        run: npm test
+
+      # The real compile gate: type resolution, module boundaries, client/server
+      # separation, and route validity. This is the step that would have caught
+      # the duplicate middleware/proxy file before it reached a deploy.
+      - name: Build
+        if: always()
+        run: npm run build

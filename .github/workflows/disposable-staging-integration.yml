@@ -1,0 +1,95 @@
+name: Disposable staging integration
+
+# This workflow is intentionally MANUAL ONLY. It migrates and then resets core
+# application tables as part of realistic Auth + ledger verification. It must
+# never run on push, pull_request, a Vercel deployment, or a production database.
+on:
+  workflow_dispatch:
+    inputs:
+      destructive_confirmation:
+        description: "Type RESET_DOOLPHIN_STAGING to migrate and reset the disposable staging database"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  # The ledger test uses TRUNCATE, so two runs must never share this target.
+  group: disposable-doolphin-staging-integration
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    name: Verify disposable target
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    # TEST_* and the approved staging project ref are environment-scoped.
+    # Applying the same protected environment here prevents a false missing-
+    # secret preflight and requires its reviewers before any destructive run.
+    environment: disposable-doolphin-staging
+    env:
+      # Values are injected only into the guard process. The guard prints fixed
+      # PASS/REJECT codes and never prints a value, URL, hostname, or project ref.
+      TEST_SUPABASE_URL: ${{ secrets.TEST_SUPABASE_URL }}
+      TEST_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.TEST_SUPABASE_PUBLISHABLE_KEY }}
+      TEST_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.TEST_SUPABASE_SERVICE_ROLE_KEY }}
+      TEST_DATABASE_URL: ${{ secrets.TEST_DATABASE_URL }}
+      TEST_DIRECT_URL: ${{ secrets.TEST_DIRECT_URL }}
+      DATABASE_URL: ${{ secrets.TEST_DATABASE_URL }}
+      DIRECT_URL: ${{ secrets.TEST_DIRECT_URL }}
+      DOOLPHIN_DISPOSABLE_STAGING_PROJECT_REF: ${{ secrets.DOOLPHIN_DISPOSABLE_STAGING_PROJECT_REF }}
+      DOOLPHIN_DESTRUCTIVE_STAGING_CONFIRMATION: ${{ inputs.destructive_confirmation }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Refuse production or mismatched Supabase credentials
+        run: node scripts/verify-disposable-staging-target.mjs --require-destructive-confirmation
+
+  integration:
+    name: Auth and ledger integration
+    needs: preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: disposable-doolphin-staging
+    env:
+      # Prisma config requires these conventional names; it prefers DIRECT_URL.
+      # They come only from the disposable TEST_* secrets, never Vercel prod env.
+      DATABASE_URL: ${{ secrets.TEST_DATABASE_URL }}
+      DIRECT_URL: ${{ secrets.TEST_DIRECT_URL }}
+      TEST_SUPABASE_URL: ${{ secrets.TEST_SUPABASE_URL }}
+      TEST_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.TEST_SUPABASE_PUBLISHABLE_KEY }}
+      TEST_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.TEST_SUPABASE_SERVICE_ROLE_KEY }}
+      DOOLPHIN_DISPOSABLE_STAGING_PROJECT_REF: ${{ secrets.DOOLPHIN_DISPOSABLE_STAGING_PROJECT_REF }}
+      RUN_REMOTE_STAGING_INTEGRATION: "1"
+      DOOLPHIN_DESTRUCTIVE_STAGING_CONFIRMATION: ${{ inputs.destructive_confirmation }}
+      # The application must select sandbox-only provider/billing paths if any
+      # imported module resolves environment settings during the test run.
+      DOOLPHIN_ENV: staging
+      POLAR_ENV: sandbox
+      VERCEL_ENV: preview
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci
+
+      # Repeat the target check immediately before destructive work. A successful
+      # preflight from an earlier job is not a sufficient guarantee by itself.
+      - name: Re-verify target before migrations and reset
+        run: |
+          node scripts/verify-disposable-staging-target.mjs --require-destructive-confirmation
+          echo "DOOLPHIN_DISPOSABLE_TARGET_VERIFIED=true" >> "$GITHUB_ENV"
+
+      # Uses prisma.config.ts -> prisma/canonical_migrations. Never use
+      # migrate reset or db push here: deploy is the reviewed canonical chain.
+      - name: Apply canonical Prisma migrations to disposable staging
+        run: npx prisma migrate deploy
+
+      # These files opt into remote execution only when BOTH flags above are set.
+      # They are excluded from ordinary CI and cannot accidentally target a remote
+      # database merely because someone sets DATABASE_URL in a shell.
+      - name: Run real Supabase Auth and Postgres ledger integration tests
+        run: node --test tests/local-supabase-auth.integration.test.js tests/local-supabase-ledger.integration.test.js

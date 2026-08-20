@@ -22,12 +22,47 @@ const TEST_ENV_CUTOVER = {
   MODEL_PLATFORM_SEEDANCE_CUTOVER_ENABLED: "true",
 };
 
+/**
+ * Mocked provider estimate costs, PER MODEL.
+ *
+ * This mock used to return a single $0.2419 for every model. That predates the
+ * independent cost cross-check in src/lib/models/verifiedCosts.js, which compares
+ * every live estimate against MuAPI's own published catalog
+ * (src/lib/models/catalog/muapi-live-catalog.json) and fails closed outside a
+ * 4x-above / 10x-below band.
+ *
+ * $0.2419 is plausible for the Seedance models (catalog base $0.75 / $0.935) but is
+ * ~5x MuAPI's published base for grok-imagine-image-2-edit ($0.05), so the flat
+ * mock made the estimator correctly reject its own fixture with
+ * PROVIDER_COST_DRIFT_HIGH. The band is a deliberate money guard and is NOT relaxed
+ * here; the fixture is made truthful instead, by quoting each model at the base
+ * MuAPI actually publishes for it.
+ *
+ * No assertion in this file depends on the absolute cost — they all compare plans
+ * against each other (e.g. multi-output vs unit) — so this only removes a fixture
+ * that contradicted the provider.
+ */
+const MOCK_ESTIMATE_USD_BY_MODEL = {
+  "grok-imagine-image-2-edit": 0.05,
+  "seedance-2-omni-reference-no-video-fast": 0.75,
+  "seedance-2.5-spicy-video-extend-480p": 0.935,
+};
+
+const DEFAULT_MOCK_ESTIMATE_USD = 0.2419;
+
+function mockEstimateUsdForUrl(url) {
+  for (const [providerModelId, costUsd] of Object.entries(MOCK_ESTIMATE_USD_BY_MODEL)) {
+    if (String(url).includes(providerModelId)) return costUsd;
+  }
+  return DEFAULT_MOCK_ESTIMATE_USD;
+}
+
 const mockEstimateFetch = async (url) => {
   if (url.includes("estimate-cost")) {
     return {
       ok: true,
       status: 200,
-      json: async () => ({ cost: 0.2419, currency: "USD" }),
+      json: async () => ({ cost: mockEstimateUsdForUrl(url), currency: "USD" }),
     };
   }
   return {

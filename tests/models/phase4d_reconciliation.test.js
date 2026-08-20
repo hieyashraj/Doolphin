@@ -27,10 +27,29 @@ const mockAuthoritativeSpec = {
   cost: null,
 };
 
+/**
+ * Mocked estimate-cost for seedance-2-omni-reference-no-video-fast.
+ *
+ * This fixture used to quote $0.05. MuAPI's own published catalog
+ * (src/lib/models/catalog/muapi-live-catalog.json) prices this model at $0.75, and
+ * src/lib/models/verifiedCosts.js independently cross-checks every live estimate
+ * against that baseline, failing closed below 1/10 of it (PROVIDER_COST_DRIFT_LOW,
+ * DRIFT_LOWER_DIVISOR = 10 -> floor $0.075). $0.05 is under that floor, so
+ * prepareExecutionPlan threw PRICING_UNAVAILABLE before any test below reached its
+ * own assertions. That guard landed after this file was last touched.
+ *
+ * The low-side guard is the one that protects against UNDER-charging, so it is
+ * deliberately NOT relaxed. The fixture is corrected to the price MuAPI actually
+ * publishes. Every assertion below derives its expected credits from the returned
+ * plan rather than from a literal, so no financial expectation changes — this only
+ * stops the suite contradicting the provider's own catalog.
+ */
+const MOCK_SEEDANCE_ESTIMATE_USD = "0.75";
+
 const mockFetchImpl = async (url) => {
   if (url.includes("/estimate-cost")) {
     return new Response(JSON.stringify({
-      cost: { amount_usd: "0.05", currency: "USD" },
+      cost: { amount_usd: MOCK_SEEDANCE_ESTIMATE_USD, currency: "USD" },
       pricing_mode: "DYNAMIC",
     }), { status: 200, headers: { "content-type": "application/json" } });
   }

@@ -89,7 +89,11 @@ test("generation requires a server preflight quote and presents its credits befo
   assert.match(hub, /Generate Video · \$\{quotedCredits\} credits/);
   assert.match(hub, /await submitGeneration\(preparedQuote\.quote, crypto\.randomUUID\(\)\)/);
   assert.match(hub, /GENERATION_CONFIGURATION_UNPRICED/);
-  assert.match(hub, /disabled=\{isSubmitting \|\| quoteUnavailable\}/);
+  // The generate button must stay disabled while submitting and while the request
+  // cannot be priced. It is additionally disabled when the plan's concurrent
+  // generation slots are all in use, so the condition is asserted as a prefix.
+  assert.match(hub, /disabled=\{isSubmitting \|\| quoteUnavailable(\s*\|\|[^}]*)?\}/);
+  assert.match(hub, /disabled=\{isSubmitting \|\| quoteUnavailable \|\| slotsUnavailable\}/);
   assert.match(review, /insufficientCredits/);
   assert.match(review, /No provider request or credit reservation has happened yet/);
   assert.match(review, /disabled=\{isSubmitting \|\| insufficientCredits\}/);

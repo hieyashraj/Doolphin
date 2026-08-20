@@ -15,6 +15,34 @@ const TEST_ENV = {
   MODEL_PLATFORM_PREFLIGHT_SHADOW_ENABLED: "false",
 };
 
+/**
+ * OFFLINE PROVIDER MOCK.
+ *
+ * grok-imagine-image-2-edit is dynamically priced (MuAPI's own catalog says
+ * dynamic_pricing=true), so preparing a plan for it REQUIRES an estimate-cost call.
+ * These tests previously passed no fetchImpl, which meant the default global fetch —
+ * i.e. a real network call to MuAPI on a billable endpoint. That must never happen
+ * from a test run, so an explicit offline mock is injected.
+ *
+ * Catalog lookups deliberately answer 404 so provider-spec resolution falls through
+ * to the shipped bootstrap catalog, which is the BOOTSTRAP provenance these tests
+ * assert. The estimate answers MuAPI's own published base for this model ($0.05),
+ * keeping the fixture inside the verified-cost drift band in
+ * src/lib/models/verifiedCosts.js.
+ */
+const OFFLINE_GROK_ESTIMATE_USD = 0.05;
+
+const offlineProviderFetch = async (url) => {
+  if (String(url).includes("estimate-cost")) {
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ cost: OFFLINE_GROK_ESTIMATE_USD, currency: "USD" }),
+    };
+  }
+  return { ok: false, status: 404, json: async () => ({}) };
+};
+
 test("Phase 4A.2 Provenance: Bootstrap metadata cannot masquerade as fresh live provider metadata", async () => {
   clearCatalogMemoryCache();
   const result = await getProviderCatalog({ forceRefresh: false });
@@ -26,13 +54,14 @@ test("Phase 4A.2 Provenance: Bootstrap metadata cannot masquerade as fresh live 
 });
 
 test("Phase 4A.2 Provenance: Provider-spec hash is mechanically calculated and reproducible", async () => {
-  const model = await getModel("muapi.grok-imagine-image-2-edit");
+  const model = await getModel("muapi.grok-imagine-image-2-edit", { fetchImpl: offlineProviderFetch });
   assert.ok(model);
 
   const plan = await prepareExecutionPlan({
     modelId: "muapi.grok-imagine-image-2-edit",
     normalizedInput: { prompt: "Test prompt", sourceRequestId: "req_123" },
     env: TEST_ENV,
+    fetchImpl: offlineProviderFetch,
   });
 
   const expectedHash = computeCatalogHash(model.providerSpec);
@@ -62,6 +91,7 @@ test("Phase 4A.2 Transport Security: Webhook secret token is absent from prepare
     modelId: "muapi.grok-imagine-image-2-edit",
     normalizedInput: { prompt: "Test edit", sourceRequestId: "req_edit_01" },
     env: TEST_ENV,
+    fetchImpl: offlineProviderFetch,
   });
 
   assert.equal(plan.transport.webhookUrl, undefined);

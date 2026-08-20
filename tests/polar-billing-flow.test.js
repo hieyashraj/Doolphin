@@ -6,6 +6,65 @@ import test from "node:test";
 const { getPolarConfig } = await import("../src/lib/billing/polarEnvironment.js");
 const { processPolarBillingEvent, resolvePlanFromPolarProduct } = await import("../src/lib/billing/polarWebhookProcessor.js");
 const { annualPeriods, materializeAnnualGrantSchedule, processDueGrantSchedules } = await import("../src/lib/entitlements/grants.js");
+const { PLANS } = await import("../src/lib/entitlements/pricing.js");
+
+/**
+ * CREDIT AMOUNTS IN THIS SUITE — pricing revision 2026-08-credit-rescale-v2.
+ *
+ * The credit UNIT was deliberately rescaled from $0.021 to $0.005 of fully-loaded
+ * cost allowance (PRICING_REVISION.maxFullyLoadedCostPerCreditMicroUsd = 5_000 in
+ * src/lib/entitlements/pricing.js). Identical economics, 4.2x more credits per
+ * dollar, so every plan allowance grew: STARTER 700 -> 2,500, GROWTH 1,900 -> 7,000,
+ * AGENCY 4,300 -> 16,000, EXPLORER 50 -> 200+.
+ *
+ * Commit 7758eb4 rewrote src/lib/entitlements/plan-catalog.js but left this file
+ * asserting the pre-rescale allowances (100 seeded + 700 = 800, etc.), so the
+ * balance assertions were stale — not evidence of a grant bug.
+ *
+ * WHY THE ALLOWANCE IS NOW READ FROM THE CATALOG RATHER THAN RE-TYPED HERE:
+ * this suite's subject is the GRANT LIFECYCLE — that a webhook grants the plan the
+ * PRODUCT authority resolves (never the plan a caller puts in metadata), exactly
+ * once, and nothing at all when the transaction rolls back. Whether the allowance
+ * is the right SIZE, and whether it is profitable, is a separate guarantee owned by
+ * tests/billing-plan-catalog.test.js and tests/pricing-profit-invariant.test.js
+ * (which include an explicit regression guard against silent reversion of the
+ * rescale). Re-typing the literal here only meant that every legitimate repricing
+ * broke an unrelated transaction-atomicity test.
+ *
+ * The money guard is STRENGTHENED, not weakened, by this change — see assertGrants:
+ * grants are now verified against the LEDGER as well as the balance, so splitting
+ * one allowance into two half-grants (which nets to a correct-looking balance and
+ * PASSED the old literal check) now fails.
+ */
+const SEEDED_BALANCE = 100; // balance createMockDb() gives ws_123 before any webhook
+const EXPLORER_CREDITS = PLANS.EXPLORER.credits;
+const STARTER_CREDITS = PLANS.STARTER_MONTHLY.credits;
+
+/**
+ * Asserts a workspace received EXACTLY the expected grants — by balance AND by
+ * ledger cardinality.
+ *
+ * A balance check alone is a weaker money guard than it looks: granting half the
+ * allowance twice lands on the same total as granting it once, so a genuine
+ * double-grant can hide behind a correct-looking balance. The ledger is the durable
+ * financial record, so the number of grant entries and each entry's amount are
+ * asserted too.
+ *
+ * @param {object} db mock db from createMockDb()
+ * @param {number[]} expectedGrantAmounts every grant expected, in any order
+ */
+function assertGrants(db, expectedGrantAmounts, message) {
+  const account = db._store.creditAccount.get("ws_123");
+  const expectedBalance = expectedGrantAmounts.reduce((sum, amount) => sum + amount, SEEDED_BALANCE);
+  assert.equal(account.availableCredits, expectedBalance, `${message}: available balance`);
+
+  const grantAmounts = Array.from(db._store.creditLedgerEntry.values()).map((entry) => entry.amount);
+  assert.deepEqual(
+    grantAmounts.slice().sort((a, b) => a - b),
+    expectedGrantAmounts.slice().sort((a, b) => a - b),
+    `${message}: ledger must record exactly these grants — no duplicates, none missing`
+  );
+}
 
 // Mock DB store for unit integration tests with atomic transaction support
 function createMockDb() {
@@ -219,7 +278,9 @@ test("ENVIRONMENT RESOLVER: rejects contradictory & missing environments (fails 
 test("METADATA FINANCIAL FALLBACK REMOVAL (4 Explicit Scenarios)", async () => {
   process.env.POLAR_PRODUCT_STARTER_MONTHLY = "prod_starter_789";
 
-  // Scenario 1: Recognized Starter product + metadata Agency -> Starter authority wins (700 credits granted, NOT 4300)
+  // Scenario 1: Recognized Starter product + metadata Agency -> Starter authority wins.
+  // Exactly ONE grant, of the STARTER allowance, NOT the Agency allowance the
+  // attacker-supplied metadata asked for.
   const db1 = createMockDb();
   const res1 = await processPolarBillingEvent({
     id: "msg_mismatch_1",
@@ -235,7 +296,12 @@ test("METADATA FINANCIAL FALLBACK REMOVAL (4 Explicit Scenarios)", async () => {
   }, mockHeader("msg_mismatch_1"), db1);
   assert.equal(res1.status, "PROCESSED");
   assert.equal(res1.entitlement.planCode, "STARTER_MONTHLY");
-  assert.equal(db1._store.creditAccount.get("ws_123").availableCredits, 800);
+  assertGrants(db1, [STARTER_CREDITS], "recognized Starter product + Agency metadata");
+  assert.notEqual(
+    db1._store.creditAccount.get("ws_123").availableCredits,
+    SEEDED_BALANCE + PLANS.AGENCY_MONTHLY.credits,
+    "a metadata-supplied Agency plan must never be granted off a Starter product"
+  );
 
   // Scenario 2: Recognized Starter product + no metadata -> Starter granted
   const db2 = createMockDb();
@@ -253,7 +319,7 @@ test("METADATA FINANCIAL FALLBACK REMOVAL (4 Explicit Scenarios)", async () => {
   }, mockHeader("msg_nometadata_2"), db2);
   assert.equal(res2.status, "PROCESSED");
   assert.equal(res2.entitlement.planCode, "STARTER_MONTHLY");
-  assert.equal(db2._store.creditAccount.get("ws_123").availableCredits, 800);
+  assertGrants(db2, [STARTER_CREDITS], "recognized Starter product + no plan metadata");
 
   // Scenario 3: Missing product_id + metadata Starter -> IGNORED_UNRECOGNIZED_PRODUCT, zero credits
   const db3 = createMockDb();
@@ -267,7 +333,7 @@ test("METADATA FINANCIAL FALLBACK REMOVAL (4 Explicit Scenarios)", async () => {
     },
   }, mockHeader("msg_noprod_3"), db3);
   assert.equal(res3.status, "IGNORED_UNRECOGNIZED_PRODUCT");
-  assert.equal(db3._store.creditAccount.get("ws_123").availableCredits, 100);
+  assertGrants(db3, [], "missing product_id + Starter metadata");
 
   // Scenario 4: Unknown product_id + metadata Agency -> IGNORED_UNRECOGNIZED_PRODUCT, zero credits
   const db4 = createMockDb();
@@ -282,7 +348,7 @@ test("METADATA FINANCIAL FALLBACK REMOVAL (4 Explicit Scenarios)", async () => {
     },
   }, mockHeader("msg_unknownprod_4"), db4);
   assert.equal(res4.status, "IGNORED_UNRECOGNIZED_PRODUCT");
-  assert.equal(db4._store.creditAccount.get("ws_123").availableCredits, 100);
+  assertGrants(db4, [], "unknown product_id + Agency metadata");
 
   delete process.env.POLAR_PRODUCT_STARTER_MONTHLY;
 });
@@ -303,13 +369,16 @@ test("WEBHOOK TRANSACTION ATOMICITY: failure mid-transaction rolls back event in
   );
 
   assert.equal(db._store.billingWebhookEvent.size, 0);
-  assert.equal(db._store.creditAccount.get("ws_123").availableCredits, 100);
+  // The rolled-back attempt must leave NO trace: no balance change, no ledger entry.
+  assertGrants(db, [], "after a mid-transaction failure");
 
   payload.data.metadata.supabaseUserId = "sup_123";
   const retryRes = await processPolarBillingEvent(payload, mockHeader("msg_fail_mid_tx"), db);
   assert.equal(retryRes.status, "PROCESSED");
   assert.equal(db._store.billingWebhookEvent.get("msg_fail_mid_tx").processedAt !== null, true);
-  assert.equal(db._store.creditAccount.get("ws_123").availableCredits, 150);
+  // The retry grants exactly ONE Explorer allowance — the rolled-back first attempt
+  // must not have banked a partial grant that the retry then tops up.
+  assertGrants(db, [EXPLORER_CREDITS], "after retrying the rolled-back event");
 
   delete process.env.POLAR_PRODUCT_EXPLORER;
 });
@@ -387,7 +456,7 @@ test("MONTHLY BILLING: order.paid + subscription_create grants Month 1 credits",
 
   const res = await processPolarBillingEvent(payload, mockHeader("msg_monthly_init_1"), db);
   assert.equal(res.status, "PROCESSED");
-  assert.equal(db._store.creditAccount.get("ws_123").availableCredits, 800);
+  assertGrants(db, [STARTER_CREDITS], "monthly subscription_create");
 
   delete process.env.POLAR_PRODUCT_STARTER_MONTHLY;
 });
@@ -419,7 +488,8 @@ test("MONTHLY RENEWAL: order.paid + subscription_cycle grants cycle credits usin
 
   const res = await processPolarBillingEvent(renewalPayload, mockHeader("msg_m2"), db);
   assert.equal(res.status, "PROCESSED");
-  assert.equal(db._store.creditAccount.get("ws_123").availableCredits, 1500);
+  // TWO grants and only two: one for subscription_create, one for subscription_cycle.
+  assertGrants(db, [STARTER_CREDITS, STARTER_CREDITS], "monthly create + one renewal cycle");
 
   delete process.env.POLAR_PRODUCT_STARTER_MONTHLY;
 });
@@ -443,12 +513,17 @@ test("ANNUAL BILLING: order.paid + subscription_create materializes 12 periods &
 
   const res = await processPolarBillingEvent(payload, mockHeader("msg_ann_1"), db);
   assert.equal(res.status, "PROCESSED");
-  assert.equal(db._store.creditAccount.get("ws_123").availableCredits, 800);
+  // Annual charges ONCE but grants one month's allowance at a time. Exactly ONE grant
+  // now; materializing all 12 periods as credits up front would hand a customer a
+  // year of credits they could burn before the term is served.
+  assertGrants(db, [STARTER_CREDITS], "annual subscription_create (Month 0 only)");
   assert.equal(db._store.creditGrantSchedule.size, 12);
 
+  // Month 0 is already GRANTED and months 1-11 are not yet due, so the cron must be a
+  // strict no-op — re-granting Month 0 here would be a duplicate allowance.
   const cronProcessed = await processDueGrantSchedules(new Date(), db);
   assert.equal(cronProcessed, 0);
-  assert.equal(db._store.creditAccount.get("ws_123").availableCredits, 800);
+  assertGrants(db, [STARTER_CREDITS], "annual after an immediate cron pass");
 
   delete process.env.POLAR_PRODUCT_STARTER_ANNUAL;
 });
@@ -742,7 +817,7 @@ test("RENEWAL REGRESSION: Existing subscription + new subscription_cycle order g
     data: { id: "ord_init_cycle", product_id: "prod_starter_111", subscription_id: "sub_cycle_reg", billing_reason: "subscription_create", customer_id: "cust_cycle_reg", metadata: { supabaseUserId: "sup_123" } },
   };
   await processPolarBillingEvent(initialPayload, { "webhook-id": "msg_init_cycle" }, db);
-  assert.equal(db._store.creditAccount.get("ws_123").availableCredits, 800);
+  assertGrants(db, [STARTER_CREDITS], "month 1 purchase");
 
   // Month 2 renewal order (new order ID)
   const renewalPayload = {
@@ -752,7 +827,8 @@ test("RENEWAL REGRESSION: Existing subscription + new subscription_cycle order g
   };
   const resCycle = await processPolarBillingEvent(renewalPayload, { "webhook-id": "msg_renew_cycle" }, db);
   assert.equal(resCycle.status, "PROCESSED");
-  assert.equal(db._store.creditAccount.get("ws_123").availableCredits, 1500);
+  // EXACTLY ONCE for the renewal: two ledger grants in total, never three, never one.
+  assertGrants(db, [STARTER_CREDITS, STARTER_CREDITS], "month 1 purchase + month 2 renewal");
 
   delete process.env.POLAR_PRODUCT_STARTER_MONTHLY;
 });

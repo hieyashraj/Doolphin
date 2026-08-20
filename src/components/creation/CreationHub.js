@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { 
   FiEdit3, 
@@ -30,6 +30,7 @@ import { listGenerationModels } from "@/lib/generation/modelRegistry";
 import toast from "react-hot-toast";
 import LazyVideo from "@/components/LazyVideo";
 import { useAppAccount } from "@/components/AppAccountProvider";
+import { IN_FLIGHT_VARIANT_STATUSES, VIDEO_GENERATION_TYPES, videoSlotsForPlan } from "@/lib/generation/concurrencyLimit";
 
 const PRESET_MODES = [
   {
@@ -144,7 +145,7 @@ export default function CreationHub({
   onStudioModeChange,
   userCredits
 }) {
-  const { refreshAccount } = useAppAccount();
+  const { account, refreshAccount } = useAppAccount();
   const [activeModeId, setActiveModeId] = useState(() => STUDIO_IDS[studioMode] ? studioMode : "video_maker");
   const [isPresetModalOpen, setIsPresetModalOpen] = useState(false);
   const [presetSearch, setPresetSearch] = useState("");
@@ -686,6 +687,50 @@ export default function CreationHub({
   const quotedCredits = quoteIsCurrent ? Number(preparedQuote.quote?.costs?.totalCredits) : null;
   const hasInsufficientQuotedCredits = quotedCredits !== null && Number(displayedCredits ?? 0) < quotedCredits;
 
+  // CONCURRENT GENERATION SLOTS — advisory mirror of the server rule.
+  //
+  // Derived from the gallery data already being polled rather than a new
+  // endpoint: `creations` is refreshed every 5s while anything is in flight, so
+  // this stays current for free and there is no second request to keep in sync.
+  //
+  // This is a courtesy, NOT the enforcement point. The authority is
+  // assertVideoSlotAvailable() inside the submission transaction, which is the
+  // only place that can be race-free. The value of computing it here is that the
+  // user sees "1 of 1 slots in use" and a disabled button instead of composing a
+  // whole generation and being rejected at the last step.
+  const videoSlots = useMemo(() => {
+    const limit = videoSlotsForPlan(account?.planCode);
+    const inFlight = creations.reduce((total, creation) => {
+      if (!VIDEO_GENERATION_TYPES.includes(creation.generationType)) return total;
+      const active = (creation.variants || []).filter((variant) =>
+        IN_FLIGHT_VARIANT_STATUSES.includes(String(variant.status || "").toUpperCase())
+      ).length;
+      return total + active;
+    }, 0);
+    return { limit, inFlight, available: Math.max(0, limit - inFlight) };
+  }, [creations, account?.planCode]);
+
+  const requestedOutputCount = Number(numVideos) || 1;
+  const slotsUnavailable = videoSlots.inFlight + requestedOutputCount > videoSlots.limit;
+  // Two genuinely different problems, and telling them apart matters: waiting is
+  // temporary and resolves itself, whereas asking for more videos at once than
+  // the plan will ever allow needs the user to change the request or upgrade.
+  const exceedsSlotCeiling = requestedOutputCount > videoSlots.limit;
+  const slotLimitMessage = !slotsUnavailable
+    ? null
+    : exceedsSlotCeiling
+      ? `Your plan generates ${videoSlots.limit === 1 ? "one video" : `up to ${videoSlots.limit} videos`} at a time. Lower the number of videos${videoSlots.limit === 1 ? "" : " or upgrade"} to continue.`
+      : videoSlots.limit === 1
+        ? "One video is already generating. It will appear in your library when it is done, then you can start the next one."
+        : `All ${videoSlots.limit} generation slots are in use. As soon as one finishes and appears in your library, a slot frees up.`;
+
+  // A restored draft (or a downgraded plan) can carry a count the current plan no
+  // longer permits. Clamp it rather than letting the user stare at an unexplained
+  // disabled Generate button.
+  useEffect(() => {
+    if (requestedOutputCount > videoSlots.limit) setNumVideos(videoSlots.limit);
+  }, [requestedOutputCount, videoSlots.limit]);
+
   const submitGeneration = async (quote, idempotencyKey) => {
     try {
       const response = await fetch("/api/generations", {
@@ -748,6 +793,13 @@ export default function CreationHub({
       setSubmitError("You do not have enough available credits for this generation.");
       return;
     }
+    // Refuse locally so the quote is not spent on a submission the server will
+    // reject anyway. If this check is stale the server still refuses, and its
+    // message replaces this one.
+    if (slotsUnavailable) {
+      setSubmitError(slotLimitMessage);
+      return;
+    }
     setIsSubmitting(true);
     setSubmitError(null);
     try {
@@ -763,6 +815,16 @@ export default function CreationHub({
 
   const handleRetry = async (creation) => {
     if (!creation?.retryRequest) return;
+    // A retry is a new generation and occupies a slot like any other, so it is
+    // subject to the same ceiling.
+    if (videoSlots.available < 1) {
+      setSubmitError(
+        videoSlots.limit === 1
+          ? "One video is already generating. Wait for it to finish before restarting this one."
+          : `All ${videoSlots.limit} generation slots are in use. Wait for one to finish before restarting this video.`
+      );
+      return;
+    }
     setIsSubmitting(true);
     setSubmitError(null);
     try {
@@ -890,6 +952,7 @@ export default function CreationHub({
               aspectRatio={aspectRatio}
               setAspectRatio={setAspectRatio}
               numVideos={numVideos}
+              maxVideos={videoSlots.limit}
               setNumVideos={setNumVideos}
               selectedActor={draftAvatar}
               onOpenActorModal={onOpenAvatarModal}
@@ -927,6 +990,7 @@ export default function CreationHub({
               aspectRatio={aspectRatio}
               setAspectRatio={setAspectRatio}
               numVideos={numVideos}
+              maxVideos={videoSlots.limit}
               setNumVideos={setNumVideos}
               selectedModel={selectedModel}
               setSelectedModel={selectModel}
@@ -956,6 +1020,7 @@ export default function CreationHub({
               aspectRatio={aspectRatio}
               setAspectRatio={setAspectRatio}
               numVideos={numVideos}
+              maxVideos={videoSlots.limit}
               setNumVideos={setNumVideos}
               selectedModel={selectedModel}
               setSelectedModel={selectModel}
@@ -1017,15 +1082,26 @@ export default function CreationHub({
               {submitError}
             </div>
           )}
+          {/* Concurrency is stated before the user commits, not after. Shown only
+              while something is actually generating or the request cannot fit, so
+              it never becomes permanent chrome the eye learns to skip. */}
+          {(videoSlots.inFlight > 0 || slotsUnavailable) && (
+            <div className={`p-2.5 rounded-xl text-xs border ${slotsUnavailable ? "bg-[#E6D9FF]/50 border-[#111111]/25 text-[#111111]" : "bg-[#F2EFE5] border-[#111111]/10 text-[#55534E]"}`}>
+              <span className="font-semibold">{videoSlots.inFlight} of {videoSlots.limit} {videoSlots.limit === 1 ? "slot" : "slots"} in use</span>
+              {slotLimitMessage ? <> — {slotLimitMessage}</> : " — you can start another generation."}
+            </div>
+          )}
           <button
             type="button"
-            disabled={isSubmitting || quoteUnavailable}
+            disabled={isSubmitting || quoteUnavailable || slotsUnavailable}
             onClick={quoteIsCurrent ? confirmPreparedQuote : handlePreflight}
             className="studio-generate-button w-full py-3.5 px-6 bg-[#E6D9FF] hover:bg-[#DBCBFF] hover:scale-[1.01] text-[#111111] rounded-full font-semibold text-sm border-[1.5px] border-[#111111] shadow-sm transition-all active:scale-[0.98] flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
           >
             <FiZap size={16} />
             <span>{isSubmitting
               ? "Calculating…"
+              : slotsUnavailable
+                ? exceedsSlotCeiling ? `Maximum ${videoSlots.limit} at a time` : "Waiting for a free slot"
               : quoteIsCurrent
                 ? `Generate Video · ${quotedCredits} credits`
                 : quoteUnavailable

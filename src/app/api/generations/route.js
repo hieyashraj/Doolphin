@@ -10,6 +10,8 @@ import { buildMuapiWebhookUrl } from "@/lib/generation/webhookSecurity";
 import { userFacingGenerationMessage } from "@/lib/generation/statusMessages";
 import { claimProviderSubmission, clearSubmissionLease, newSubmissionOwner, submissionOwnerWhere } from "@/lib/generation/providerSubmissionLease";
 import { HARDENED_RECONCILIATION_ENGINE_REVISION } from "@/lib/generation/reconciliationEligibility";
+import { assertVideoSlotAvailable } from "@/lib/generation/concurrencyLimit";
+import { assertModelAllowedForPlan } from "@/lib/entitlements/modelAccess";
 
 import { validateModelPlatformPreparedQuoteForDispatch } from "@/lib/models/execution/validateDispatch.js";
 import { isModelPlatformV1Creation, settleModelPlatformWorkflow } from "@/lib/models/execution/workflowSettlement.js";
@@ -36,7 +38,11 @@ function sanitizePayload(rawJson) {
 }
 
 async function handleGenerationSubmission(req) {
-  let session; try { const { appUser } = await requireActivatedAccount(); session = { user: { id: appUser.id } }; } catch (error) { return NextResponse.json({ success: false, code: error.code || "UNAUTHORIZED", error: "Activation required" }, { status: error.status || 401 }); }
+  // `entitlement` is carried through because the concurrent-generation ceiling is
+  // a per-plan entitlement, and requireActivatedAccount already loaded it in the
+  // same parallel query pass — resolving the plan again later would be a second
+  // round trip for data we are holding.
+  let session; let planCode; try { const { appUser, entitlement } = await requireActivatedAccount(); session = { user: { id: appUser.id } }; planCode = entitlement.planCode; } catch (error) { return NextResponse.json({ success: false, code: error.code || "UNAUTHORIZED", error: "Activation required" }, { status: error.status || 401 }); }
 
   let body;
   try {
@@ -146,18 +152,20 @@ async function handleGenerationSubmission(req) {
   const webhookUrl = buildMuapiWebhookUrl(webhookBase);
 
   const created = await prisma.$transaction(async (tx) => {
-    const activeVariantCount = await tx.creationVariant.count({
-      where: {
-        creation: { workspaceId: quote.workspaceId },
-        status: { in: ["QUEUED", "PROCESSING"] },
-      },
+    // Per-plan concurrency ceiling. Inside this transaction, and before the quote
+    // is claimed, so a refused submission leaves the quote reusable and the user
+    // can simply retry once a slot frees rather than re-running preflight.
+    await assertVideoSlotAvailable({
+      tx,
+      workspaceId: quote.workspaceId,
+      requestedCount: request.settings.outputCount,
+      planCode,
     });
-    if (activeVariantCount + request.settings.outputCount > 2) {
-      const error = new Error("You already have two videos being created. Please wait for one to finish before starting another.");
-      error.code = "ACTIVE_VIDEO_LIMIT";
-      error.statusCode = 429;
-      throw error;
-    }
+    // Per-plan model access. Re-checked here even though preflight already
+    // refused it, because a quote could have been created while the account was
+    // on a paid plan and submitted after it lapsed to the trial. Cheap, and the
+    // alternative is spending a restricted model's credits.
+    assertModelAllowedForPlan({ planCode, providerModelId: model.id, modelName: model.name });
     const quoteClaim = await tx.preflightQuote.updateMany({ where: { id: quote.id, consumedAt: null, expiresAt: { gt: new Date() } }, data: { consumedAt: new Date() } });
     if (quoteClaim.count !== 1) throw new Error("Preflight quote was consumed concurrently or expired");
 
