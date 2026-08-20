@@ -11,6 +11,7 @@ import { R2StorageService } from "@/lib/storage/r2StorageService";
 import { mapValidatedStudioWorkflowToNormalizedInvocation } from "@/lib/models/bridges/studioWorkflowBridge.js";
 import { resolveTrustedApplicationOrigin } from "@/lib/models/bridges/applicationOrigin.js";
 import { prepareExecutionPlan } from "@/lib/models/execution/prepareExecutionPlan.js";
+import { assertModelAllowedForPlan } from "@/lib/entitlements/modelAccess";
 import { assertProviderAssetsAreFetchable } from "@/lib/generation/assetReachability.js";
 
 function safeModelSnapshot(model) {
@@ -31,7 +32,7 @@ function safeModelSnapshot(model) {
 }
 
 async function handlePreflight(req) {
-  let session; try { const { appUser } = await requireActivatedAccount(); session = { user: { id: appUser.id } }; } catch (error) { return NextResponse.json({ success: false, code: error.code || "UNAUTHORIZED", error: "Activation required" }, { status: error.status || 401 }); }
+  let session; let planCode; try { const { appUser, entitlement } = await requireActivatedAccount(); session = { user: { id: appUser.id } }; planCode = entitlement.planCode; } catch (error) { return NextResponse.json({ success: false, code: error.code || "UNAUTHORIZED", error: "Activation required" }, { status: error.status || 401 }); }
 
   let body;
   try {
@@ -176,6 +177,16 @@ async function handlePreflight(req) {
       }
 
       const modelId = body.modelId || model.id || "seedance-2";
+
+      // Per-plan model access, checked BEFORE prepareExecutionPlan. That call
+      // asks MuAPI for a live cost estimate, which is a real outbound request —
+      // there is no reason to spend one on a model this plan may not use.
+      try {
+        assertModelAllowedForPlan({ planCode, providerModelId: modelId, modelName: model.name });
+      } catch (error) {
+        return NextResponse.json({ success: false, code: error.code, error: error.message, upgradeRequired: true }, { status: error.status });
+      }
+
       const plan = await prepareExecutionPlan({
         modelId,
         normalizedInput,

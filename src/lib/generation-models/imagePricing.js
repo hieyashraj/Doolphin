@@ -14,10 +14,30 @@ const FIXED = Object.freeze({
   "muapi.nano-banana-2-t2i": { "1K": 60_000n, "2K": 90_000n, "4K": 120_000n },
   "muapi.nano-banana-pro-t2i": { "1K": 120_000n, "2K": 120_000n, "4K": 180_000n },
   "muapi.nano-banana-t2i": 30_000n,
-  "muapi.grok-imagine-quality-t2i": 50_000n,
-  "muapi.grok-imagine-i2i": 50_000n,
-  "muapi.grok-imagine-t2i": 50_000n,
 });
+
+/**
+ * Models MuAPI prices dynamically (`dynamic_pricing: true` in its catalog).
+ *
+ * For these there is no such thing as a correct offline price: the $0.05 the
+ * catalog publishes is a representative base, not a rate. They previously sat in
+ * the FIXED table at a flat 50_000n, which meant that whenever the live
+ * estimate-cost call failed, Doolphin would silently flat-bill a model whose real
+ * price varies per request — the exact defect that
+ * tests/static-cost-catalog-guard.test.js was written to prevent in the
+ * model-platform layer, reproduced in the image layer where that guard does not run.
+ *
+ * They are listed here rather than simply deleted so the omission is explicit and
+ * a future contributor cannot "helpfully" restore a hardcoded number. A quote for
+ * one of these REQUIRES an authoritative live estimate; without it we fail closed
+ * and the caller returns 503 rather than guessing with someone's money.
+ */
+const DYNAMIC_ONLY = Object.freeze(new Set([
+  "muapi.grok-imagine-t2i",
+  "muapi.grok-imagine-i2i",
+  "muapi.grok-imagine-quality-t2i",
+  "muapi.grok-imagine-image-2",
+]));
 
 function providerCost(modelId, request) {
   const entry = FIXED[modelId];
@@ -27,6 +47,10 @@ function providerCost(modelId, request) {
 }
 
 export function calculateImageQuote(model, request, authoritativeEstimatedProviderCostMicroUsd = null) {
+  // A dynamically priced model may never fall back to an offline number.
+  if (authoritativeEstimatedProviderCostMicroUsd === null && DYNAMIC_ONLY.has(model?.id)) {
+    return { priced: false, code: "IMAGE_ESTIMATE_REQUIRED", reason: "MuAPI prices this model per request, so a live estimate is required before it can be charged.", pricingRevisionId: IMAGE_PRICING_REVISION };
+  }
   const estimatedProviderCostMicroUsd = authoritativeEstimatedProviderCostMicroUsd ?? providerCost(model?.id, request);
   if (estimatedProviderCostMicroUsd === null || estimatedProviderCostMicroUsd === undefined) {
     return { priced: false, code: "IMAGE_CONFIGURATION_UNPRICED", reason: "No verified MuAPI estimate-cost basis exists for this image configuration.", pricingRevisionId: IMAGE_PRICING_REVISION };

@@ -6,12 +6,14 @@
  * per-plan concurrency ceiling, monthly grant scheduling on annual terms). Kept
  * out of the page component so the copy can be reviewed as copy.
  *
- * DELIBERATE OMISSIONS: no claims about content licensing, ownership,
- * commercial-use rights, or refunds. Doolphin's legal documents are still
- * unapproved placeholders (see src/lib/legal/documents.js, which fails closed on
- * PENDING_APPROVED_LEGAL_COPY), and a pricing page is not the place to invent
- * terms that the Terms themselves do not yet state. Those questions link to
- * /terms instead.
+ * Detailed licensing, refund and acceptable-use questions deliberately link to
+ * /terms, /privacy and /refund-policy rather than being paraphrased here — a
+ * pricing FAQ must not become a second, subtly different set of terms.
+ *
+ * NOTHING here may describe a tier difference that is not enforced in code. The
+ * only enforced differences are credits per month, how many videos generate at
+ * once (assertVideoSlotAvailable), and Seedance 2.5 being excluded from the
+ * Explorer trial (assertModelAllowedForPlan).
  */
 export const FAQ_GROUPS = [
   {
@@ -27,8 +29,8 @@ export const FAQ_GROUPS = [
       {
         q: "Is there a free trial?",
         a: [
-          "There is no free tier, but there is a $2.99 one-time trial called Explorer. It includes 200 credits — enough for roughly six Video Studio generations — and gives you the full product: every studio, every model.",
-          "It is available once per account, after you verify your email, and it does not renew or auto-charge. When you want more, move to a plan at any time and anything you have already created stays in your library.",
+          "There is no free tier, but there is a $2.99 one-time trial called Explorer. It includes 220 credits — about one standard video plus a few images — and opens all four studios.",
+          "It is available once per account, after you verify your email, and it does not renew or auto-charge. The one thing it leaves out is the Seedance 2.5 model family, which is included on every paid plan. When you want more, move to a plan at any time and anything you have already created stays in your library.",
         ],
       },
       {
@@ -47,7 +49,7 @@ export const FAQ_GROUPS = [
         q: "How do credits work?",
         a: [
           "Credits are one universal unit spent across every studio and model. What a generation costs depends on the model, resolution, duration and how many outputs you ask for — a short standard clip costs a fraction of a long high-resolution one.",
-          "You never have to guess: the exact credit cost is quoted on the generate button before you confirm, and nothing is charged until you do.",
+          "You never have to guess: the exact credit cost is quoted on the generate button before you confirm, and nothing is charged until you do. The same configuration on the same model always quotes the same number, and the figure you agreed to is the figure that is charged — if anything about the quote no longer matches at submission time, the generation is refused rather than silently repriced.",
         ],
       },
       {
@@ -59,14 +61,15 @@ export const FAQ_GROUPS = [
       {
         q: "What is the difference between monthly and annual billing?",
         a: [
-          "Annual costs 20% less than paying month to month. You are charged once, and your credit allowance is then granted <strong>every month</strong> across the twelve months of the term.",
+          "Annual costs 20% less than paying month to month — Starter works out at $23.20/month, Growth at $63.20 and Agency at $143.20. You are charged once, and your credit allowance is then granted <strong>every month</strong> across the twelve months of the term.",
           "That is worth being precise about: annual does not drop a year of credits into your balance on day one. You get the same monthly allowance as the monthly plan, for a lower total price.",
         ],
       },
       {
-        q: "Are any models locked to the higher tiers?",
+        q: "Are any models or quality settings locked to the higher tiers?",
         a: [
-          "No. Every plan gets every AI model available in Doolphin. Tiers differ on volume (credits per month), how many videos you can generate at once, the resolution and duration ceilings, and how many seats and workspaces you get — never on which models you may use.",
+          "No. Every <strong>paid</strong> plan gets every AI model, every resolution and every clip length the model itself supports — Starter can render exactly what Agency can render. There is no 4K upsell and no duration upsell.",
+          "Paid plans differ on two things only: how many credits you get each month, and how many videos you can generate at once. The single exception anywhere is the $2.99 Explorer trial, which excludes the Seedance 2.5 family because one Seedance 2.5 generation would consume most of the trial's allowance in a single click.",
         ],
       },
     ],

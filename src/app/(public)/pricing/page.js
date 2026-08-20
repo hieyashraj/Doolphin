@@ -5,12 +5,14 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
+  ANNUAL_DISCOUNT_PERCENT,
   PLAN_BY_CODE,
   PLAN_FEATURES,
   PLAN_TAGLINES,
   PUBLIC_PLAN_CODES,
   RECOMMENDED_PLAN_CODE,
   TRIAL_PLAN_CODE,
+  standardVideosFor,
 } from "@/lib/entitlements/plan-catalog";
 import { FAQ_GROUPS } from "./faq";
 // landing.css carries the public-site chrome AND, critically, the rule that
@@ -20,19 +22,13 @@ import { FAQ_GROUPS } from "./faq";
 import "../landing.css";
 import "./pricing.css";
 
-/**
- * Credits consumed by a representative standard Video Studio generation, used
- * only to translate a credit allowance into an "about this many videos" figure.
- *
- * Labelled as an estimate everywhere it appears, because it genuinely is one:
- * real cost varies with model, resolution, duration and output count, and the
- * authoritative number is the quote shown on the generate button. A credit
- * balance alone is meaningless to someone who has never used the product, so an
- * honest estimate with a visible caveat serves them better than no figure.
- */
-const STANDARD_VIDEO_CREDITS = 30;
-
-const ANNUAL_DISCOUNT_LABEL = "20% off";
+// The videos-per-plan figure and the discount label both come from the plan
+// catalog. This page previously hardcoded 30 credits per video while a standard
+// generation actually costs 155, overstating every plan's output by more than 5x.
+// A number this load-bearing gets exactly one definition, next to the credit
+// values it depends on, and scripts/analyze-plan-economics.mjs re-derives it from
+// real provider cost so it cannot drift again.
+const ANNUAL_DISCOUNT_LABEL = `${ANNUAL_DISCOUNT_PERCENT}% off`;
 
 function annualCodeFor(monthlyCode) {
   return monthlyCode.replace("_MONTHLY", "_ANNUAL");
@@ -125,7 +121,9 @@ function PlanCard({ monthlyCode, annual, onChoose, pendingCode, isCurrent, disab
     ? (plan.priceMicroUsd / 12_000_000).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
     : (monthlyPlan.priceMicroUsd / 1_000_000).toLocaleString("en-US", { maximumFractionDigits: 0 });
 
-  const estimatedVideos = Math.round(plan.credits / STANDARD_VIDEO_CREDITS);
+  // Floored, never rounded: promising 7 videos when the allowance covers 6 is
+  // the kind of small dishonesty that reads as a bait-and-switch on first use.
+  const estimatedVideos = standardVideosFor(plan.credits);
 
   return (
     <article className="plan-card" data-featured={featured}>
@@ -372,8 +370,9 @@ function PricingContent() {
         <p className="eyebrow">Plans <span>✦</span> Simple, universal credits</p>
         <h1 id="pricing-title">Pick your <em>pace.</em></h1>
         <p>
-          Every plan unlocks every studio and every model. What changes is how much
-          you make, and how much of it you make at once.
+          Every paid plan unlocks every studio, every model, every resolution and
+          every clip length. The only thing that changes is how much you make, and
+          how much of it you make at once.
         </p>
         <BillingToggle annual={annual} onChange={setAnnual} />
       </section>
@@ -418,10 +417,13 @@ function PricingContent() {
       )}
 
       <p className="pricing-fineprint">
-        Credits roll over and never expire while your plan is active. Video and
-        image estimates assume a standard-model generation — the exact credit cost
-        is always shown before you generate. Annual plans are charged once and
-        grant your credit allowance every month for twelve months.
+        Credits roll over and never expire while your plan is active. The
+        &ldquo;videos per month&rdquo; figure assumes a standard 5-second 720p
+        generation; longer clips, higher resolutions and multiple outputs cost
+        more, and the exact credit cost is always quoted before you generate.
+        Every paid plan includes every model, resolution and clip length.
+        Annual plans are charged once and grant your credit allowance every month
+        for twelve months.
       </p>
 
       <section className="faq-section" aria-labelledby="faq-title">

@@ -11,6 +11,7 @@ import { userFacingGenerationMessage } from "@/lib/generation/statusMessages";
 import { claimProviderSubmission, clearSubmissionLease, newSubmissionOwner, submissionOwnerWhere } from "@/lib/generation/providerSubmissionLease";
 import { HARDENED_RECONCILIATION_ENGINE_REVISION } from "@/lib/generation/reconciliationEligibility";
 import { assertVideoSlotAvailable } from "@/lib/generation/concurrencyLimit";
+import { assertModelAllowedForPlan } from "@/lib/entitlements/modelAccess";
 
 import { validateModelPlatformPreparedQuoteForDispatch } from "@/lib/models/execution/validateDispatch.js";
 import { isModelPlatformV1Creation, settleModelPlatformWorkflow } from "@/lib/models/execution/workflowSettlement.js";
@@ -160,6 +161,11 @@ async function handleGenerationSubmission(req) {
       requestedCount: request.settings.outputCount,
       planCode,
     });
+    // Per-plan model access. Re-checked here even though preflight already
+    // refused it, because a quote could have been created while the account was
+    // on a paid plan and submitted after it lapsed to the trial. Cheap, and the
+    // alternative is spending a restricted model's credits.
+    assertModelAllowedForPlan({ planCode, providerModelId: model.id, modelName: model.name });
     const quoteClaim = await tx.preflightQuote.updateMany({ where: { id: quote.id, consumedAt: null, expiresAt: { gt: new Date() } }, data: { consumedAt: new Date() } });
     if (quoteClaim.count !== 1) throw new Error("Preflight quote was consumed concurrently or expired");
 
