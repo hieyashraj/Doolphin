@@ -9,9 +9,12 @@
     "upstreamOrigin": "muapiapp/server/data/schema_data.json (MuAPI internal server data)",
     "generatedBy": "scripts/refresh_registry.py in the official MuAPI CLI repo",
     "retrievedAt": "2026-08-19T20:03:27.049Z",
-    "costUnit": "USD per generation",
-    "costUnitEvidence": "refresh_registry.py: \"# Tier heuristic: classify by cost per generation (dollars)\" and cost = float(m.get(\"cost\") or 0) copied verbatim from MuAPI schema_data.json",
-    "warning": "SNAPSHOT, not live. Authoritative runtime pricing MUST come from each model's estimate-cost endpoint. This file exists as a cross-check and a fail-closed floor, never as the sole price source."
+    "costUnit": "USD per call — BASE cost only",
+    "warning": "SNAPSHOT, not live. Authoritative runtime pricing MUST come from each model's estimate-cost endpoint. This file exists as a cross-check and a fail-closed floor, never as the sole price source.",
+    "costSemantics": "CONFIRMED from MuAPI OpenAPI (GET /api/v1/models): if pricing_strategy == \"fixed_cost\" the cost IS the exact price per call; for any DYNAMIC strategy the cost is only a REPRESENTATIVE BASE and the exact price MUST come from POST /api/v1/models/{name}/estimate-cost with the real payload.",
+    "criticalLimitation": "This snapshot does NOT include the pricing_strategy flag, because the upstream dataset omits it. Therefore these figures CANNOT be used to distinguish an exact price from a representative base, and MUST NOT be used as a billing price for dynamic models. Use them only as an order-of-magnitude drift cross-check. Run scripts/discover-muapi-models.mjs to obtain pricing_strategy and exact prices.",
+    "authoritativeRuntimeSource": "POST /api/v1/models/{name}/estimate-cost (confirmed to exist; runs the same cost function as the billing system)",
+    "costUnitEvidence": "refresh_registry.py comment \"classify by cost per generation (dollars)\" — but see costSemantics: for dynamic models this is a base, not a final price."
   },
   "modelCount": 342,
   "models": {

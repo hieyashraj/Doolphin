@@ -1,302 +1,324 @@
 #!/usr/bin/env node
 /**
- * MuAPI MODEL DISCOVERY — schemas from the live OpenAPI spec, costs cross-checked
- * against the verified snapshot.
+ * MuAPI MODEL, SCHEMA & PRICE DISCOVERY — authoritative, no guessing.
  *
- * ── WHY THIS SHAPE ──────────────────────────────────────────────────────────
- * Doolphin needs two different things per model, from two different authorities:
+ * ── CONFIRMED API SURFACE ───────────────────────────────────────────────────
+ * Verified against MuAPI's own OpenAPI document (https://api.muapi.ai/openapi.json):
  *
- *   1. REQUEST SCHEMA (what inputs exist, which are required, allowed enums,
- *      duration bounds). Needed to render the correct form per model and to stop
- *      offering controls a model does not support. AUTHORITY: MuAPI's own
- *      OpenAPI document at https://api.muapi.ai/openapi.json — the same source
- *      MuAPI's official CLI reads for `muapi run` schema introspection. It is
- *      served WITHOUT authentication.
+ *   GET  /api/v1/models
+ *        Public catalog of every model, with human-readable description,
+ *        category, base USD `cost` per call, and a `pricing_strategy` flag.
  *
- *   2. COST. AUTHORITY AT RUNTIME is each model's estimate-cost endpoint, which
- *      prices the exact payload. This script additionally reconciles against
- *      src/lib/models/catalog/muapi-verified-costs.json (independently sourced
- *      from MuAPI's published CLI package) so a stale snapshot or an API
- *      regression is visible rather than silent.
+ *   GET  /api/v1/models/{name}
+ *        Pricing + metadata for one model, PLUS the full `input_schema` and
+ *        `output_schema` — i.e. everything needed to render a correct per-model
+ *        form without reading /openapi.json.
  *
- * Hand-transcribing either of these from a docs page is what produced the
- * "$0.15/sec read as $0.15 flat" class of error. Nothing here is typed by hand.
+ *   POST /api/v1/models/{name}/estimate-cost
+ *        Body is the same JSON you would POST to /api/v1/{name}. For models with
+ *        dynamic pricing (duration, resolution, audio length, ...) this runs the
+ *        SAME cost function the billing system uses, so the quote matches what
+ *        you will actually be charged. For fixed-price models it returns the base
+ *        cost unchanged. Intended exactly for pre-flight price preview in a UI.
+ *
+ * ── PRICING SEMANTICS (this is the part that must never be guessed) ─────────
+ *   pricing_strategy == "fixed_cost"  ->  `cost` IS the exact USD price per call.
+ *   anything else (dynamic)           ->  `cost` is only a REPRESENTATIVE BASE.
+ *                                         The real price depends on the payload
+ *                                         and MUST come from estimate-cost.
+ *
+ * Treating a dynamic model's base `cost` as the final price is precisely the
+ * mis-pricing this script exists to prevent.
  *
  * ── COST OF RUNNING ────────────────────────────────────────────────────────
- * Reads the OpenAPI document only. No generation endpoint is called, so no media
- * is produced and no generation credit should be consumed. The OpenAPI fetch
- * needs no API key at all; a sandbox key is only used for the optional
- * --estimate probe.
+ * Catalog and schema reads are GETs. estimate-cost is a POST but is explicitly a
+ * pricing-preview endpoint — it quotes, it does not generate, and it returns no
+ * media. No generation endpoint (POST /api/v1/{name}) is ever called here.
+ * Still, --estimate is opt-in and refuses to use a production credential.
  *
  * ── USAGE ───────────────────────────────────────────────────────────────────
- *   node scripts/discover-muapi-models.mjs
- *   node scripts/discover-muapi-models.mjs --only veo3.1-fast-image-to-video,kling-v2.6-pro-i2v
+ *   # Catalog + per-model schemas (recommended first run)
+ *   MUAPI_API_KEY_SANDBOX=sk_... node scripts/discover-muapi-models.mjs
  *
- * Optional live cost probe (calls estimate-cost, still not a generation).
- * Requires MUAPI_API_KEY_SANDBOX and refuses to use a production credential:
+ *   # Also fetch exact prices for representative payloads of dynamic models
  *   DOOLPHIN_ENV=staging MUAPI_API_KEY_SANDBOX=sk_... \
  *     node scripts/discover-muapi-models.mjs --estimate
  *
+ *   # Limit to specific models
+ *   ... --only veo3.1-fast-image-to-video,kling-v2.6-pro-i2v
+ *
  * ── OUTPUT ──────────────────────────────────────────────────────────────────
- *   evidence/muapi-discovery/openapi-<ts>.json     verbatim spec
- *   evidence/muapi-discovery/schemas-<ts>.json     per-model resolved schema + cost reconciliation
- *   evidence/muapi-discovery/report-<ts>.md        human review, flags every ambiguity
+ *   evidence/muapi-discovery/catalog-<ts>.json    verbatim GET /models
+ *   evidence/muapi-discovery/models-<ts>.json     per-model schema + pricing
+ *   evidence/muapi-discovery/report-<ts>.md       human review  <-- send this back
  */
 
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 
-const OPENAPI_URL = "https://api.muapi.ai/openapi.json";
-const API_BASE = "https://api.muapi.ai/api/v1";
+const API = "https://api.muapi.ai/api/v1";
 const OUT_DIR = path.resolve("evidence/muapi-discovery");
-const VERIFIED_COSTS_PATH = path.resolve("src/lib/models/catalog/muapi-verified-costs.json");
-const TIMEOUT_MS = 20000;
+const TIMEOUT_MS = 25000;
 
-const REQUESTED = [
-  "veo3.1-lite-image-to-video", "veo3.1-fast-image-to-video", "veo3.1-4k-video",
-  "veo3.1-image-to-video", "veo3.1-reference-to-video", "veo3.1-extend-video",
-  "kling-v2.6-pro-i2v", "kling-v3.0-pro-image-to-video",
-  "openai-sora-2-pro-image-to-video", "grok-imagine-image-to-video", "gemini-omni-image-to-video",
-  "seedance-2-omni-reference-no-video-fast", "seedance-2-omni-reference", "seedance-2-omni-reference-480p",
-  "seedance-2-omni-reference-no-video", "seedance-2-vip-omni-reference-fast",
-  "seedance-2-vip-omni-reference-1080p", "seedance-2-video-edit", "seedance-2-extend",
-  "seedance-2-i2v-480p", "seedance-2-image-to-video", "seedance-2-image-to-video-fast",
+/** Models Doolphin intends to sell in Video Studio. */
+const TARGETS = [
+  // Seedance 2 family (the "2.5-spicy-*" names do not exist upstream)
+  "seedance-2-omni-reference-no-video-fast", "seedance-2-omni-reference-no-video",
+  "seedance-2-omni-reference", "seedance-2-omni-reference-480p",
+  "seedance-2-vip-omni-reference-fast", "seedance-2-vip-omni-reference",
+  "seedance-2-vip-omni-reference-1080p",
+  "seedance-2-image-to-video", "seedance-2-image-to-video-fast", "seedance-2-i2v", "seedance-2-i2v-480p",
   "seedance-2-first-last-frame", "seedance-2-first-last-frame-fast",
+  "seedance-2-video-edit", "seedance-2-extend", "seedance-2-vip-extend", "seedance-2-vip-extend-1080p",
+  "seedance-2-new-omni", "seedance-2-new-first-last",
+  // Veo
+  "veo3.1-lite-image-to-video", "veo3.1-fast-image-to-video", "veo3.1-image-to-video",
+  "veo3.1-4k-video", "veo3.1-reference-to-video", "veo3.1-extend-video", "veo-4-image-to-video",
+  // Kling
+  "kling-v2.6-pro-i2v", "kling-v3.0-pro-image-to-video", "kling-v3.0-standard-image-to-video",
+  "kling-v3.0-omni-pro-image-to-video", "kling-v3.0-4k-image-to-video",
+  "kling-o1-image-to-video", "kling-o1-reference-to-video", "kling-o1-video-edit",
+  // Others
+  "openai-sora-2-image-to-video", "openai-sora-2-pro-image-to-video",
+  "grok-imagine-image-to-video", "grok-imagine-extend",
+  "gemini-omni-image-to-video", "gemini-omni-video-edit",
 ];
 
-function loadVerifiedCosts() {
+/** Minimal representative payloads used ONLY for estimate-cost previews. */
+const ESTIMATE_PAYLOADS = {
+  default: { prompt: "pricing probe", duration: 5, aspect_ratio: "9:16" },
+  durations: [4, 5, 8, 10, 15, 30],
+};
+
+function resolveKey({ required }) {
+  const sandbox = process.env.MUAPI_API_KEY_SANDBOX;
+  if (process.env.VERCEL_ENV === "production" || process.env.DOOLPHIN_ENV === "production") {
+    console.error("REFUSING: environment asserts production. Run locally with DOOLPHIN_ENV=staging.");
+    process.exit(1);
+  }
+  if (sandbox && process.env.MUAPI_API_KEY && process.env.MUAPI_API_KEY === sandbox) {
+    console.error("REFUSING: MUAPI_API_KEY equals MUAPI_API_KEY_SANDBOX. Use genuinely different keys.");
+    process.exit(1);
+  }
+  if (required && (!sandbox || sandbox.includes("placeholder"))) {
+    console.error("REFUSING: MUAPI_API_KEY_SANDBOX is required (never a production key).");
+    process.exit(1);
+  }
+  return sandbox || null;
+}
+
+async function req(url, { method = "GET", key = null, body = null } = {}) {
+  const headers = { Accept: "application/json" };
+  if (key) headers["x-api-key"] = key;
+  if (body) headers["Content-Type"] = "application/json";
+  let response;
   try {
-    return JSON.parse(fs.readFileSync(VERIFIED_COSTS_PATH, "utf8"));
-  } catch (error) {
-    console.warn(`WARNING: could not read verified cost snapshot (${error.message}). Cost reconciliation will be skipped.`);
-    return { models: {}, provenance: {} };
-  }
-}
-
-async function getJson(url, headers = {}) {
-  const response = await fetch(url, {
-    method: "GET",
-    headers: { Accept: "application/json", ...headers },
-    redirect: "follow",
-    signal: AbortSignal.timeout(TIMEOUT_MS),
-  });
-  const text = await response.text();
-  let body = null;
-  try { body = JSON.parse(text); } catch { /* keep raw */ }
-  return { ok: response.ok, status: response.status, body, raw: text };
-}
-
-/** Follows $ref chains inside an OpenAPI document. */
-function resolveRef(spec, node, depth = 0) {
-  if (!node || typeof node !== "object" || depth > 12) return node;
-  if (typeof node.$ref === "string" && node.$ref.startsWith("#/")) {
-    const target = node.$ref.slice(2).split("/").reduce((acc, key) => (acc ? acc[key] : undefined), spec);
-    return resolveRef(spec, target, depth + 1);
-  }
-  return node;
-}
-
-/** Fully dereferences a schema one level deep into properties. */
-function materialiseSchema(spec, schema) {
-  const resolved = resolveRef(spec, schema);
-  if (!resolved || typeof resolved !== "object") return null;
-  const out = { type: resolved.type || "object", required: resolved.required || [], properties: {} };
-  for (const [key, raw] of Object.entries(resolved.properties || {})) {
-    const prop = resolveRef(spec, raw);
-    out.properties[key] = {
-      type: prop?.type ?? null,
-      description: prop?.description ?? null,
-      enum: prop?.enum ?? null,
-      default: prop?.default ?? null,
-      minimum: prop?.minimum ?? null,
-      maximum: prop?.maximum ?? null,
-      maxLength: prop?.maxLength ?? null,
-      items: prop?.items ? { type: resolveRef(spec, prop.items)?.type ?? null } : null,
-    };
-  }
-  return out;
-}
-
-function findModelPaths(spec) {
-  const found = new Map();
-  for (const [pathKey, pathItem] of Object.entries(spec.paths || {})) {
-    if (!pathKey.startsWith("/api/v1/")) continue;
-    const post = pathItem?.post;
-    if (!post) continue;
-    const modelId = pathKey.replace("/api/v1/", "").replace(/\/$/, "");
-    if (!modelId || modelId.includes("/")) continue; // skip nested utility routes
-    const schemaNode = post.requestBody?.content?.["application/json"]?.schema;
-    found.set(modelId, {
-      path: pathKey,
-      summary: post.summary || null,
-      operationId: post.operationId || null,
-      schema: materialiseSchema(spec, schemaNode),
+    response = await fetch(url, {
+      method, headers,
+      body: body ? JSON.stringify(body) : undefined,
+      redirect: "follow",
+      signal: AbortSignal.timeout(TIMEOUT_MS),
     });
+  } catch (error) {
+    return { ok: false, status: 0, error: error?.message || String(error) };
   }
-  return found;
+  const text = await response.text();
+  let parsed = null;
+  try { parsed = JSON.parse(text); } catch { /* keep raw */ }
+  // Generations return the real charge in this header; capture it if present.
+  const costHeader = response.headers.get("x-muapi-cost-usd");
+  return { ok: response.ok, status: response.status, body: parsed, raw: text, costHeader };
 }
 
-/** Describes the UI control a property implies — the dynamic-form input. */
-function describeControl(name, prop) {
-  if (prop.enum?.length) return { control: "select", options: prop.enum, default: prop.default ?? null };
-  if (prop.type === "integer" || prop.type === "number") {
-    return { control: "number", min: prop.minimum ?? null, max: prop.maximum ?? null, default: prop.default ?? null };
+/** Reads the exact cost from an estimate-cost response, without inventing one. */
+function readCost(body) {
+  if (!body || typeof body !== "object") return null;
+  for (const k of ["cost", "cost_usd", "estimated_cost", "amount", "amount_usd", "price", "total_cost"]) {
+    if (body[k] !== undefined && body[k] !== null) return Number(body[k]);
   }
-  if (prop.type === "boolean") return { control: "toggle", default: prop.default ?? null };
-  if (prop.type === "array") return { control: "multi-asset", itemType: prop.items?.type ?? "string" };
-  if (/image|video|audio|url|frame/i.test(name)) return { control: "asset-upload", default: null };
-  if (prop.maxLength && prop.maxLength > 200) return { control: "textarea", maxLength: prop.maxLength };
+  return null;
+}
+
+function isFixedPrice(strategy) {
+  const s = String(strategy || "").toLowerCase();
+  return s === "fixed_cost" || s === "fixed" || s === "per_request" || s === "per_generation";
+}
+
+/** Maps a JSON-schema property to the UI control the studio should render. */
+function control(name, prop = {}) {
+  const t = prop.type;
+  if (Array.isArray(prop.enum) && prop.enum.length) return { control: "select", options: prop.enum, default: prop.default ?? null };
+  if (t === "integer" || t === "number") return { control: "number", min: prop.minimum ?? null, max: prop.maximum ?? null, default: prop.default ?? null };
+  if (t === "boolean") return { control: "toggle", default: prop.default ?? null };
+  if (t === "array") return { control: "multi-asset", itemType: prop.items?.type ?? "string", maxItems: prop.maxItems ?? null };
+  if (/image|video|audio|url|frame|mask/i.test(name)) return { control: "asset-upload" };
+  if ((prop.maxLength ?? 0) > 200 || /prompt|description|script/i.test(name)) return { control: "textarea", maxLength: prop.maxLength ?? null };
   return { control: "text", maxLength: prop.maxLength ?? null };
 }
 
 async function main() {
   const args = process.argv.slice(2);
+  const doEstimate = args.includes("--estimate");
   const onlyArg = args.find((a) => a.startsWith("--only"));
   const only = onlyArg
     ? (onlyArg.includes("=") ? onlyArg.split("=")[1] : args[args.indexOf(onlyArg) + 1] || "")
         .split(",").map((s) => s.trim()).filter(Boolean)
     : null;
-  const doEstimate = args.includes("--estimate");
 
-  let sandboxKey = null;
-  if (doEstimate) {
-    sandboxKey = process.env.MUAPI_API_KEY_SANDBOX;
-    if (!sandboxKey || sandboxKey.includes("placeholder")) {
-      console.error("--estimate requires MUAPI_API_KEY_SANDBOX (never a production key). Aborting.");
-      process.exit(1);
-    }
-    if (process.env.MUAPI_API_KEY && process.env.MUAPI_API_KEY === sandboxKey) {
-      console.error("MUAPI_API_KEY equals MUAPI_API_KEY_SANDBOX. Refusing to proceed. Aborting.");
-      process.exit(1);
-    }
-    if (process.env.VERCEL_ENV === "production" || process.env.DOOLPHIN_ENV === "production") {
-      console.error("Environment asserts production. Refusing to probe costs. Aborting.");
-      process.exit(1);
-    }
-  }
-
+  const key = resolveKey({ required: doEstimate });
   fs.mkdirSync(OUT_DIR, { recursive: true });
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-  const verified = loadVerifiedCosts();
 
-  console.log(`Fetching OpenAPI document (no API key required): ${OPENAPI_URL}`);
-  const spec = await getJson(OPENAPI_URL);
-  if (!spec.ok || !spec.body) {
-    console.error(`FAILED: HTTP ${spec.status}`);
-    console.error((spec.raw || "").slice(0, 600));
-    console.error("");
-    console.error("If this is a network/firewall issue, open the URL in a browser, save the JSON,");
-    console.error("and re-run with:  MUAPI_OPENAPI_FILE=/path/to/openapi.json node scripts/discover-muapi-models.mjs");
+  // ---- 1. Full catalog ----------------------------------------------------
+  console.log(`GET ${API}/models`);
+  const catalog = await req(`${API}/models`, { key });
+  if (!catalog.ok) {
+    console.error(`FAILED: HTTP ${catalog.status} ${catalog.error || ""}`);
+    console.error((catalog.raw || "").slice(0, 500));
+    console.error(`\nIf this needs auth, set MUAPI_API_KEY_SANDBOX and retry.`);
     process.exit(1);
   }
-  fs.writeFileSync(path.join(OUT_DIR, `openapi-${stamp}.json`), JSON.stringify(spec.body, null, 2));
+  const list = Array.isArray(catalog.body) ? catalog.body : (catalog.body?.models ?? catalog.body?.data ?? []);
+  fs.writeFileSync(path.join(OUT_DIR, `catalog-${stamp}.json`), JSON.stringify(catalog.body, null, 2));
+  console.log(`  -> ${list.length} models in catalog`);
 
-  const modelPaths = findModelPaths(spec.body);
-  console.log(`OpenAPI exposes ${modelPaths.size} model endpoints.`);
+  const byName = new Map(list.map((m) => [m.name ?? m.model ?? m.id, m]));
+  const targets = only?.length ? only : TARGETS;
 
-  const targets = only?.length ? only : REQUESTED;
+  // ---- 2. Per-model schema + pricing -------------------------------------
   const results = [];
-
-  for (const id of targets) {
-    const entry = modelPaths.get(id);
-    const verifiedEntry = verified.models?.[id] || null;
-
-    if (!entry) {
-      results.push({ id, foundInSpec: false, verifiedCostUsdPerGeneration: verifiedEntry?.costUsdPerGeneration ?? null });
+  for (const name of targets) {
+    process.stdout.write(`  ${name} ... `);
+    const detail = await req(`${API}/models/${encodeURIComponent(name)}`, { key });
+    if (!detail.ok) {
+      console.log(`HTTP ${detail.status}`);
+      results.push({ name, found: false, status: detail.status });
       continue;
     }
+    const spec = detail.body?.model ?? detail.body?.data ?? detail.body;
+    const strategy = spec?.pricing_strategy ?? spec?.pricingStrategy ?? byName.get(name)?.pricing_strategy ?? null;
+    const baseCost = spec?.cost ?? byName.get(name)?.cost ?? null;
+    const fixed = isFixedPrice(strategy);
 
+    const inputSchema = spec?.input_schema ?? spec?.inputSchema ?? null;
+    const props = inputSchema?.properties ?? {};
     const controls = {};
-    for (const [name, prop] of Object.entries(entry.schema?.properties || {})) {
-      controls[name] = { ...describeControl(name, prop), required: (entry.schema.required || []).includes(name), raw: prop };
+    for (const [k, v] of Object.entries(props)) {
+      controls[k] = { ...control(k, v), required: (inputSchema?.required ?? []).includes(k), raw: v };
     }
 
-    let liveEstimate = null;
+    // ---- 3. Exact price via estimate-cost (dynamic models only) ----------
+    let estimates = null;
     if (doEstimate) {
-      const probe = await getJson(`${API_BASE}/models/${encodeURIComponent(id)}/estimate-cost`, { "x-api-key": sandboxKey })
-        .catch((e) => ({ ok: false, status: 0, raw: e.message }));
-      liveEstimate = probe.ok ? (probe.body?.cost ?? probe.body?.estimated_cost ?? probe.body?.amount ?? null) : `ERROR HTTP ${probe.status}`;
+      estimates = {};
+      const durationProp = props.duration;
+      const durations = fixed
+        ? [null] // fixed price: payload cannot change the cost
+        : (durationProp ? ESTIMATE_PAYLOADS.durations.filter((d) =>
+            (durationProp.minimum == null || d >= durationProp.minimum) &&
+            (durationProp.maximum == null || d <= durationProp.maximum)) : [null]);
+
+      for (const d of durations) {
+        const payload = { ...ESTIMATE_PAYLOADS.default };
+        if (d === null) delete payload.duration; else payload.duration = d;
+        if (props.aspect_ratio?.enum?.length && !props.aspect_ratio.enum.includes(payload.aspect_ratio)) {
+          payload.aspect_ratio = props.aspect_ratio.enum[0];
+        }
+        const q = await req(`${API}/models/${encodeURIComponent(name)}/estimate-cost`, { method: "POST", key, body: payload });
+        estimates[d === null ? "base" : `${d}s`] = q.ok
+          ? { exactCostUsd: readCost(q.body), raw: q.body }
+          : { error: `HTTP ${q.status}`, raw: (q.raw || "").slice(0, 200) };
+      }
     }
 
     results.push({
-      id,
-      foundInSpec: true,
-      endpoint: `${API_BASE}/${id}`,
-      summary: entry.summary,
-      requiredInputs: entry.schema?.required || [],
+      name, found: true,
+      endpoint: `${API}/${name}`,
+      category: spec?.category ?? null,
+      description: spec?.description ?? null,
+      pricingStrategy: strategy,
+      pricingStrategyKnown: strategy !== null && strategy !== undefined,
+      isFixedPrice: fixed,
+      baseCostUsd: baseCost,
+      exactCostIsBaseCost: fixed,
+      requiredInputs: inputSchema?.required ?? [],
       controls,
-      verifiedCostUsdPerGeneration: verifiedEntry?.costUsdPerGeneration ?? null,
-      verifiedCategory: verifiedEntry?.category ?? null,
-      liveEstimate,
+      estimates,
+      rawSpec: spec,
     });
+    console.log(fixed ? `OK (fixed $${baseCost})` : `OK (dynamic, base $${baseCost})`);
   }
 
-  fs.writeFileSync(path.join(OUT_DIR, `schemas-${stamp}.json`), JSON.stringify({
-    fetchedAt: new Date().toISOString(),
-    openapiUrl: OPENAPI_URL,
-    verifiedCostProvenance: verified.provenance || null,
-    endpointsInSpec: modelPaths.size,
-    results,
+  fs.writeFileSync(path.join(OUT_DIR, `models-${stamp}.json`), JSON.stringify({
+    fetchedAt: new Date().toISOString(), api: API, catalogSize: list.length, results,
   }, null, 2));
 
-  // ---- Human review report -------------------------------------------------
+  // ---- 4. Report ---------------------------------------------------------
   const L = [];
   L.push(`# MuAPI Discovery Report`);
   L.push(``);
   L.push(`- Fetched: ${new Date().toISOString()}`);
-  L.push(`- Schema source: \`${OPENAPI_URL}\` (${modelPaths.size} model endpoints)`);
-  L.push(`- Cost cross-check source: \`${verified.provenance?.source || "unavailable"}\` @ \`${verified.provenance?.sourceCommit || "?"}\``);
-  L.push(`- Cost unit: **${verified.provenance?.costUnit || "unknown"}**`);
+  L.push(`- Catalog size: ${list.length} models`);
+  L.push(`- estimate-cost probed: ${doEstimate ? "yes" : "no (re-run with --estimate for exact dynamic prices)"}`);
   L.push(``);
-  L.push(`> Runtime billing authority remains each model's estimate-cost endpoint.`);
-  L.push(`> Costs below are the independent cross-check used to detect drift.`);
+  L.push(`## Pricing semantics`);
+  L.push(``);
+  L.push(`- \`pricing_strategy == fixed_cost\` -> base cost IS the exact price per call.`);
+  L.push(`- any other strategy -> base cost is only REPRESENTATIVE; the exact price`);
+  L.push(`  comes from \`POST /api/v1/models/{name}/estimate-cost\` for the actual payload.`);
   L.push(``);
   L.push(`## Coverage`);
   L.push(``);
-  L.push(`| Model | In OpenAPI | Verified cost/gen | Required inputs | Live estimate |`);
-  L.push(`|---|---|---|---|---|`);
+  L.push(`| Model | Found | Strategy | Fixed? | Base cost | Exact prices |`);
+  L.push(`|---|---|---|---|---|---|`);
   for (const r of results) {
-    const cost = r.verifiedCostUsdPerGeneration === null ? "**NONE**" : `$${r.verifiedCostUsdPerGeneration}`;
-    L.push(`| \`${r.id}\` | ${r.foundInSpec ? "yes" : "**NO**"} | ${cost} | ${r.foundInSpec ? (r.requiredInputs.join(", ") || "none") : "-"} | ${r.liveEstimate ?? "not probed"} |`);
+    if (!r.found) { L.push(`| \`${r.name}\` | **NO (${r.status})** | - | - | - | - |`); continue; }
+    const ex = r.estimates
+      ? Object.entries(r.estimates).map(([k, v]) => `${k}=${v.exactCostUsd ?? v.error}`).join(", ")
+      : "not probed";
+    L.push(`| \`${r.name}\` | yes | ${r.pricingStrategy ?? "**UNKNOWN**"} | ${r.isFixedPrice ? "yes" : "no"} | $${r.baseCostUsd ?? "?"} | ${ex} |`);
   }
 
   L.push(``);
   L.push(`## Per-model form specification`);
-  L.push(``);
-  L.push(`These are the exact controls Doolphin should render for each model.`);
-  for (const r of results.filter((x) => x.foundInSpec)) {
+  for (const r of results.filter((x) => x.found)) {
     L.push(``);
-    L.push(`### \`${r.id}\``);
+    L.push(`### \`${r.name}\``);
     L.push(`- endpoint: \`${r.endpoint}\``);
-    if (r.summary) L.push(`- summary: ${r.summary}`);
-    L.push(`- verified cost/generation: ${r.verifiedCostUsdPerGeneration === null ? "**NOT IN SNAPSHOT — must verify before selling**" : `$${r.verifiedCostUsdPerGeneration}`}`);
+    L.push(`- category: ${r.category ?? "?"}`);
+    L.push(`- pricing: ${r.isFixedPrice ? `FIXED $${r.baseCostUsd} per call` : `DYNAMIC (base $${r.baseCostUsd}; exact via estimate-cost)`}`);
+    if (r.estimates) {
+      for (const [k, v] of Object.entries(r.estimates)) {
+        L.push(`  - ${k}: ${v.exactCostUsd !== undefined && v.exactCostUsd !== null ? `$${v.exactCostUsd}` : v.error}`);
+      }
+    }
+    L.push(`- required inputs: ${r.requiredInputs.join(", ") || "none declared"}`);
     L.push(``);
     L.push(`| Input | Required | Control | Options / bounds | Default |`);
     L.push(`|---|---|---|---|---|`);
-    for (const [name, c] of Object.entries(r.controls)) {
+    for (const [k, c] of Object.entries(r.controls)) {
       const bounds = c.options ? c.options.join(" \\| ")
-        : (c.min !== null && c.min !== undefined) || (c.max !== null && c.max !== undefined) ? `${c.min ?? "?"}..${c.max ?? "?"}`
-        : c.maxLength ? `maxLength ${c.maxLength}` : "-";
-      L.push(`| \`${name}\` | ${c.required ? "**yes**" : "no"} | ${c.control} | ${bounds} | ${c.default ?? "-"} |`);
+        : (c.min != null || c.max != null) ? `${c.min ?? "?"}..${c.max ?? "?"}`
+        : c.maxLength ? `maxLength ${c.maxLength}`
+        : c.maxItems ? `maxItems ${c.maxItems}` : "-";
+      L.push(`| \`${k}\` | ${c.required ? "**yes**" : "no"} | ${c.control} | ${bounds} | ${c.default ?? "-"} |`);
     }
   }
 
-  const notInSpec = results.filter((r) => !r.foundInSpec);
-  const noCost = results.filter((r) => r.foundInSpec && r.verifiedCostUsdPerGeneration === null);
-  if (notInSpec.length || noCost.length) {
+  const missing = results.filter((r) => !r.found);
+  const unknownStrategy = results.filter((r) => r.found && !r.pricingStrategyKnown);
+  if (missing.length || unknownStrategy.length) {
     L.push(``);
     L.push(`## Action required`);
-    if (notInSpec.length) {
-      L.push(``);
-      L.push(`### Not present in the OpenAPI document`);
-      L.push(`These IDs do not exist as endpoints. The name may have changed, or the model may not be available on your account.`);
-      for (const r of notInSpec) L.push(`- \`${r.id}\``);
+    if (missing.length) {
+      L.push(``); L.push(`### Not found (ID may have changed, or not enabled on this account)`);
+      for (const r of missing) L.push(`- \`${r.name}\` (HTTP ${r.status})`);
     }
-    if (noCost.length) {
-      L.push(``);
-      L.push(`### No verified cost — DO NOT SELL until resolved`);
-      for (const r of noCost) L.push(`- \`${r.id}\``);
+    if (unknownStrategy.length) {
+      L.push(``); L.push(`### pricing_strategy missing — DO NOT SELL until resolved`);
+      L.push(`Without this flag we cannot tell an exact price from a representative base.`);
+      for (const r of unknownStrategy) L.push(`- \`${r.name}\``);
     }
   }
 
@@ -304,14 +326,11 @@ async function main() {
 
   console.log(``);
   console.log(`Wrote:`);
-  console.log(`  ${path.join(OUT_DIR, `openapi-${stamp}.json`)}`);
-  console.log(`  ${path.join(OUT_DIR, `schemas-${stamp}.json`)}`);
-  console.log(`  ${path.join(OUT_DIR, `report-${stamp}.md`)}   <-- paste this one back`);
+  console.log(`  ${path.join(OUT_DIR, `catalog-${stamp}.json`)}`);
+  console.log(`  ${path.join(OUT_DIR, `models-${stamp}.json`)}`);
+  console.log(`  ${path.join(OUT_DIR, `report-${stamp}.md`)}   <-- send this back`);
   console.log(``);
-  console.log(`SUMMARY: ${results.filter((r) => r.foundInSpec).length}/${targets.length} found in OpenAPI, ${notInSpec.length} missing, ${noCost.length} without a verified cost.`);
+  console.log(`SUMMARY: ${results.filter((r) => r.found).length}/${targets.length} found | ${missing.length} missing | ${unknownStrategy.length} without a pricing_strategy`);
 }
 
-main().catch((error) => {
-  console.error("Discovery failed:", error?.stack || error?.message || error);
-  process.exit(1);
-});
+main().catch((e) => { console.error("Discovery failed:", e?.stack || e?.message || e); process.exit(1); });

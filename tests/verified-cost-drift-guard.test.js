@@ -23,16 +23,28 @@ import {
  * Pure arithmetic against a vendored snapshot. No network, no provider spend.
  */
 
-test("the verified snapshot carries full provenance and a stated cost unit", () => {
-  assert.equal(VERIFIED_COST_PROVENANCE.costUnit, "USD per generation");
+test("the verified snapshot carries full provenance and states its cost semantics honestly", () => {
   assert.match(VERIFIED_COST_PROVENANCE.source, /github\.com\/SamurAIGPT\/muapi-cli/);
   assert.ok(VERIFIED_COST_PROVENANCE.sourceCommit && VERIFIED_COST_PROVENANCE.sourceCommit !== "unknown", "must record the exact upstream commit");
   assert.match(VERIFIED_COST_PROVENANCE.upstreamOrigin, /schema_data\.json/);
-  // The unit claim must be evidence-backed, not asserted.
-  assert.match(VERIFIED_COST_PROVENANCE.costUnitEvidence, /cost per generation/);
-  // Must state plainly that it is a snapshot and not the billing authority.
+
+  // MuAPI's OpenAPI document defines the pricing contract: a fixed_cost model's
+  // cost IS its exact price, but a DYNAMIC model's cost is only a representative
+  // base. The snapshot must say so rather than implying every figure is final.
+  assert.match(VERIFIED_COST_PROVENANCE.costUnit, /BASE cost only/);
+  assert.match(VERIFIED_COST_PROVENANCE.costSemantics, /fixed_cost/);
+  assert.match(VERIFIED_COST_PROVENANCE.costSemantics, /REPRESENTATIVE BASE/);
+  assert.match(VERIFIED_COST_PROVENANCE.costSemantics, /estimate-cost/);
+
+  // The snapshot lacks pricing_strategy, so it cannot distinguish exact from
+  // base. That limitation must be recorded explicitly so no future reader
+  // mistakes these figures for billable prices.
+  assert.match(VERIFIED_COST_PROVENANCE.criticalLimitation, /does NOT include the pricing_strategy flag/);
+  assert.match(VERIFIED_COST_PROVENANCE.criticalLimitation, /MUST NOT be used as a billing price for dynamic models/);
+
+  // And it must name the real runtime authority.
+  assert.match(VERIFIED_COST_PROVENANCE.authoritativeRuntimeSource, /estimate-cost/);
   assert.match(VERIFIED_COST_PROVENANCE.warning, /SNAPSHOT/);
-  assert.match(VERIFIED_COST_PROVENANCE.warning, /estimate-cost/);
 });
 
 test("the snapshot actually contains the models Doolphin sells", () => {

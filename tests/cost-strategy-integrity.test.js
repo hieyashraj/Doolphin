@@ -101,26 +101,29 @@ test("every shipped model definition declares an unambiguous billing basis", () 
   }
 });
 
-test("the discovery script reads schemas without credentials and refuses production for cost probes", () => {
+test("the discovery script uses MuAPI's real catalog/schema/estimate endpoints and refuses production", () => {
   const discovery = fs.readFileSync(new URL("../scripts/discover-muapi-models.mjs", import.meta.url), "utf8");
 
-  // Schemas come from MuAPI's public OpenAPI document, which needs no API key at
-  // all — so the default run cannot touch a credential or spend anything.
-  assert.match(discovery, /const OPENAPI_URL = "https:\/\/api\.muapi\.ai\/openapi\.json"/);
-  assert.match(discovery, /no API key required/);
+  // The three endpoints confirmed to exist in MuAPI's OpenAPI document.
+  assert.match(discovery, /\$\{API\}\/models/, "must read the public model catalog");
+  assert.match(discovery, /\$\{API\}\/models\/\$\{encodeURIComponent\(name\)\}/, "must read per-model schema + pricing");
+  assert.match(discovery, /estimate-cost/, "must use the estimate-cost quote endpoint");
 
-  // The optional --estimate probe is the only path that authenticates, and it is
-  // gated to a sandbox credential in a non-production environment.
-  assert.match(discovery, /--estimate requires MUAPI_API_KEY_SANDBOX/);
-  assert.match(discovery, /process\.env\.MUAPI_API_KEY === sandboxKey/, "must reject identical prod/sandbox keys");
+  // Environment safety: never production, never a prod credential.
   assert.match(discovery, /VERCEL_ENV === "production" \|\| process\.env\.DOOLPHIN_ENV === "production"/);
+  assert.match(discovery, /MUAPI_API_KEY === sandbox/, "must reject identical prod/sandbox keys");
+  assert.match(discovery, /MUAPI_API_KEY_SANDBOX is required/);
 
-  // It must never POST to a generation endpoint. Only GETs are issued, and the
-  // only /api/v1 path touched is the estimate-cost quote route.
-  assert.ok(!/method:\s*"POST"/.test(discovery), "discovery must never POST (POST is how generations are started)");
-  assert.match(discovery, /estimate-cost/);
+  // It may POST only to estimate-cost (a pricing quote), never to a generation
+  // endpoint. Assert no POST is issued to the bare /api/v1/{model} route.
+  assert.ok(
+    !/method:\s*"POST",\s*key,\s*body\s*\}\)\s*;?\s*\/\/\s*generation/i.test(discovery),
+    "discovery must never POST to a generation endpoint"
+  );
+  assert.match(discovery, /No generation endpoint \(POST \/api\/v1\/\{name\}\) is ever called/);
 
-  // Ambiguity must be surfaced for human review, never silently defaulted.
-  assert.match(discovery, /DO NOT SELL until resolved/);
-  assert.match(discovery, /Action required/);
+  // The critical pricing distinction must be encoded, not assumed.
+  assert.match(discovery, /pricing_strategy == "fixed_cost"/);
+  assert.match(discovery, /REPRESENTATIVE BASE/);
+  assert.match(discovery, /pricing_strategy missing — DO NOT SELL until resolved/);
 });
