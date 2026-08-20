@@ -300,6 +300,21 @@ test("ENVIRONMENT RESOLVER: auto-detects tier from VERCEL_ENV, accepts either na
   assert.equal(cfg.env, "production");
   assert.equal(cfg.baseUrl, "https://api.polar.sh");
 
+  // 6. POLAR_TEST_MODE forces SANDBOX even on the production deployment, so the
+  //    full test flow can run on the stable production URL. It can only ever
+  //    select test billing, never live — so it can never take real money.
+  reset();
+  process.env.VERCEL_ENV = "production";
+  process.env.POLAR_TEST_MODE = "true";
+  process.env.POLAR_PRODUCTION_ACCESS_TOKEN = "polar_prod_tok"; // present but must be ignored
+  process.env.POLAR_PRODUCTION_WEBHOOK_SECRET = "whsec_prod";
+  process.env.POLAR_SANDBOX_ACCESS_TOKEN = "polar_sbx_tok";
+  process.env.POLAR_SANDBOX_WEBHOOK_SECRET = "whsec_sbx";
+  cfg = getPolarConfig();
+  assert.equal(cfg.env, "sandbox", "POLAR_TEST_MODE must force sandbox even on production");
+  assert.equal(cfg.baseUrl, "https://sandbox-api.polar.sh");
+  assert.equal(cfg.token, "polar_sbx_tok", "must use the sandbox token, never the production one");
+
   reset();
   for (const [k, v] of Object.entries(snapshot)) if (v !== undefined) process.env[k] = v;
 });
