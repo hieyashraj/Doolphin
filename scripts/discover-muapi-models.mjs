@@ -171,17 +171,25 @@ async function main() {
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
 
   // ---- 1. Full catalog ----------------------------------------------------
+  // Non-fatal: if the catalog call fails (auth, transient, network policy) we
+  // still attempt every per-model fetch below, because a single run is often the
+  // only chance to collect this data. Partial results beat no results.
   console.log(`GET ${API}/models`);
   const catalog = await req(`${API}/models`, { key });
+  let list = [];
   if (!catalog.ok) {
-    console.error(`FAILED: HTTP ${catalog.status} ${catalog.error || ""}`);
-    console.error((catalog.raw || "").slice(0, 500));
-    console.error(`\nIf this needs auth, set MUAPI_API_KEY_SANDBOX and retry.`);
-    process.exit(1);
+    console.warn(`  WARNING: catalog failed (HTTP ${catalog.status}${catalog.error ? " " + catalog.error : ""}).`);
+    if (catalog.status === 401 || catalog.status === 403) {
+      console.warn(`  This looks like an auth problem — set MUAPI_API_KEY_SANDBOX.`);
+    } else if (catalog.status === 0) {
+      console.warn(`  This looks like a network/firewall problem, not auth.`);
+    }
+    console.warn(`  Continuing with per-model lookups anyway...`);
+  } else {
+    list = Array.isArray(catalog.body) ? catalog.body : (catalog.body?.models ?? catalog.body?.data ?? []);
+    fs.writeFileSync(path.join(OUT_DIR, `catalog-${stamp}.json`), JSON.stringify(catalog.body, null, 2));
+    console.log(`  -> ${list.length} models in catalog`);
   }
-  const list = Array.isArray(catalog.body) ? catalog.body : (catalog.body?.models ?? catalog.body?.data ?? []);
-  fs.writeFileSync(path.join(OUT_DIR, `catalog-${stamp}.json`), JSON.stringify(catalog.body, null, 2));
-  console.log(`  -> ${list.length} models in catalog`);
 
   const byName = new Map(list.map((m) => [m.name ?? m.model ?? m.id, m]));
   const targets = only?.length ? only : TARGETS;
