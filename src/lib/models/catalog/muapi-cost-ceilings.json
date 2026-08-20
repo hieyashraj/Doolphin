@@ -14,6 +14,8 @@
       "title": "Omni Reference Fast",
       "resolutions": [],
       "resolutionSource": "unknown",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
       "availability": "AVAILABLE",
       "comingSoonReason": null,
       "isNew": false,
@@ -88,6 +90,8 @@
       "title": "Omni Reference",
       "resolutions": [],
       "resolutionSource": "unknown",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
       "availability": "AVAILABLE",
       "comingSoonReason": null,
       "isNew": false,
@@ -162,6 +166,8 @@
       "title": "Omni Reference",
       "resolutions": [],
       "resolutionSource": "unknown",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
       "availability": "AVAILABLE",
       "comingSoonReason": null,
       "isNew": false,
@@ -276,6 +282,8 @@
       "title": "Omni Reference VIP Fast",
       "resolutions": [],
       "resolutionSource": "unknown",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
       "availability": "AVAILABLE",
       "comingSoonReason": null,
       "isNew": false,
@@ -325,6 +333,8 @@
         "1080p"
       ],
       "resolutionSource": "endpoint-name",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
       "availability": "AVAILABLE",
       "comingSoonReason": null,
       "isNew": false,
@@ -374,6 +384,8 @@
         "2K"
       ],
       "resolutionSource": "prose-hint",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
       "availability": "AVAILABLE",
       "comingSoonReason": null,
       "isNew": false,
@@ -445,6 +457,8 @@
       "title": "Seedance 2 Fast Image to Video",
       "resolutions": [],
       "resolutionSource": "unknown",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
       "availability": "AVAILABLE",
       "comingSoonReason": null,
       "isNew": false,
@@ -519,6 +533,8 @@
         "720p"
       ],
       "resolutionSource": "price-table",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
       "availability": "AVAILABLE",
       "comingSoonReason": null,
       "isNew": false,
@@ -606,6 +622,8 @@
         "480p"
       ],
       "resolutionSource": "endpoint-name",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
       "availability": "AVAILABLE",
       "comingSoonReason": null,
       "isNew": false,
@@ -705,6 +723,8 @@
       "title": "Seedance 2 First & Last Frame",
       "resolutions": [],
       "resolutionSource": "unknown",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
       "availability": "AVAILABLE",
       "comingSoonReason": null,
       "isNew": false,
@@ -776,6 +796,8 @@
       "title": "Seedance 2 First & Last Frame Fast",
       "resolutions": [],
       "resolutionSource": "unknown",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
       "availability": "AVAILABLE",
       "comingSoonReason": null,
       "isNew": false,
@@ -847,6 +869,8 @@
       "title": "Seedance 2 Video Edit",
       "resolutions": [],
       "resolutionSource": "unknown",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
       "availability": "AVAILABLE",
       "comingSoonReason": null,
       "isNew": false,
@@ -953,6 +977,8 @@
       "title": "Seedance 2 Extend Video",
       "resolutions": [],
       "resolutionSource": "unknown",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
       "availability": "AVAILABLE",
       "comingSoonReason": null,
       "isNew": false,
@@ -1056,6 +1082,8 @@
         "720p"
       ],
       "resolutionSource": "prose-hint",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
       "availability": "COMING_SOON",
       "comingSoonReason": "COST_NOT_BOUNDABLE",
       "isNew": false,
@@ -1164,6 +1192,8 @@
         "1080p"
       ],
       "resolutionSource": "endpoint-name",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
       "availability": "COMING_SOON",
       "comingSoonReason": "COST_NOT_BOUNDABLE",
       "isNew": false,
@@ -1274,6 +1304,12 @@
         "1080p"
       ],
       "resolutionSource": "prose-hint",
+      "apiPayloadKeys": [
+        "prompt",
+        "duration",
+        "aspect_ratio"
+      ],
+      "payloadContractVerified": true,
       "availability": "AVAILABLE",
       "comingSoonReason": null,
       "isNew": true,
@@ -1355,6 +1391,12 @@
         "1080p"
       ],
       "resolutionSource": "prose-hint",
+      "apiPayloadKeys": [
+        "prompt",
+        "image_url",
+        "duration"
+      ],
+      "payloadContractVerified": true,
       "availability": "AVAILABLE",
       "comingSoonReason": null,
       "isNew": true,
@@ -1434,6 +1476,12 @@
         "480p"
       ],
       "resolutionSource": "endpoint-name",
+      "apiPayloadKeys": [
+        "prompt",
+        "image_url",
+        "duration"
+      ],
+      "payloadContractVerified": true,
       "availability": "AVAILABLE",
       "comingSoonReason": null,
       "isNew": true,
@@ -1515,6 +1563,13 @@
         "1080p"
       ],
       "resolutionSource": "prose-hint",
+      "apiPayloadKeys": [
+        "prompt",
+        "images_list",
+        "videos_list",
+        "duration"
+      ],
+      "payloadContractVerified": true,
       "availability": "AVAILABLE",
       "comingSoonReason": null,
       "isNew": true,
@@ -1620,6 +1675,8 @@
         "4k"
       ],
       "resolutionSource": "endpoint-name",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
       "availability": "AVAILABLE",
       "comingSoonReason": null,
       "isNew": true,
@@ -1699,6 +1756,12 @@
         "480p"
       ],
       "resolutionSource": "endpoint-name",
+      "apiPayloadKeys": [
+        "prompt",
+        "images_list",
+        "duration"
+      ],
+      "payloadContractVerified": true,
       "availability": "AVAILABLE",
       "comingSoonReason": null,
       "isNew": true,
@@ -1804,6 +1867,8 @@
         "1080p"
       ],
       "resolutionSource": "endpoint-name",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
       "availability": "AVAILABLE",
       "comingSoonReason": null,
       "isNew": true,
@@ -1883,6 +1948,8 @@
         "4k"
       ],
       "resolutionSource": "endpoint-name",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
       "availability": "AVAILABLE",
       "comingSoonReason": null,
       "isNew": true,
@@ -1962,6 +2029,8 @@
         "4k"
       ],
       "resolutionSource": "endpoint-name",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
       "availability": "AVAILABLE",
       "comingSoonReason": null,
       "isNew": true,
@@ -2067,6 +2136,8 @@
         "1080p"
       ],
       "resolutionSource": "endpoint-name",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
       "availability": "AVAILABLE",
       "comingSoonReason": null,
       "isNew": true,
@@ -2170,6 +2241,12 @@
       "title": "Seedance 2.5 Video Edit",
       "resolutions": [],
       "resolutionSource": "unknown",
+      "apiPayloadKeys": [
+        "prompt",
+        "video",
+        "duration"
+      ],
+      "payloadContractVerified": true,
       "availability": "AVAILABLE",
       "comingSoonReason": null,
       "isNew": true,
@@ -2278,6 +2355,11 @@
         "480p"
       ],
       "resolutionSource": "endpoint-name",
+      "apiPayloadKeys": [
+        "prompt",
+        "duration"
+      ],
+      "payloadContractVerified": true,
       "availability": "AVAILABLE",
       "comingSoonReason": null,
       "isNew": true,
@@ -2323,6 +2405,8 @@
         "1080p"
       ],
       "resolutionSource": "endpoint-name",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
       "availability": "COMING_SOON",
       "comingSoonReason": "UNRELEASED_NO_PUBLISHED_PRICING",
       "isNew": true,
@@ -2368,6 +2452,8 @@
         "1080p"
       ],
       "resolutionSource": "endpoint-name",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
       "availability": "COMING_SOON",
       "comingSoonReason": "UNRELEASED_NO_PUBLISHED_PRICING",
       "isNew": true,
@@ -2413,6 +2499,8 @@
         "4k"
       ],
       "resolutionSource": "endpoint-name",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
       "availability": "COMING_SOON",
       "comingSoonReason": "UNRELEASED_NO_PUBLISHED_PRICING",
       "isNew": true,
@@ -2458,6 +2546,8 @@
         "4k"
       ],
       "resolutionSource": "endpoint-name",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
       "availability": "COMING_SOON",
       "comingSoonReason": "UNRELEASED_NO_PUBLISHED_PRICING",
       "isNew": true,
@@ -2505,6 +2595,12 @@
         "1080p"
       ],
       "resolutionSource": "prose-hint",
+      "apiPayloadKeys": [
+        "prompt",
+        "image_url",
+        "duration"
+      ],
+      "payloadContractVerified": true,
       "availability": "AVAILABLE",
       "comingSoonReason": null,
       "isNew": true,
@@ -2550,6 +2646,14 @@
         "4K"
       ],
       "resolutionSource": "prose-hint",
+      "apiPayloadKeys": [
+        "prompt",
+        "image_url",
+        "resolution",
+        "duration",
+        "generate_audio"
+      ],
+      "payloadContractVerified": true,
       "availability": "COMING_SOON",
       "comingSoonReason": "UNRELEASED_NO_PUBLISHED_PRICING",
       "isNew": true,
@@ -2595,6 +2699,8 @@
         "1080p"
       ],
       "resolutionSource": "endpoint-name",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
       "availability": "COMING_SOON",
       "comingSoonReason": "UNRELEASED_NO_PUBLISHED_PRICING",
       "isNew": true,
@@ -2640,6 +2746,8 @@
         "1080p"
       ],
       "resolutionSource": "endpoint-name",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
       "availability": "COMING_SOON",
       "comingSoonReason": "UNRELEASED_NO_PUBLISHED_PRICING",
       "isNew": true,
@@ -2685,6 +2793,8 @@
         "1080p"
       ],
       "resolutionSource": "prose-hint",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
       "availability": "AVAILABLE",
       "comingSoonReason": null,
       "isNew": false,
@@ -2730,6 +2840,8 @@
         "1080p"
       ],
       "resolutionSource": "prose-hint",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
       "availability": "AVAILABLE",
       "comingSoonReason": null,
       "isNew": false,
@@ -2777,6 +2889,8 @@
         "4k"
       ],
       "resolutionSource": "price-table",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
       "availability": "AVAILABLE",
       "comingSoonReason": null,
       "isNew": false,
@@ -2852,6 +2966,8 @@
         "4k"
       ],
       "resolutionSource": "price-table",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
       "availability": "AVAILABLE",
       "comingSoonReason": null,
       "isNew": false,
@@ -2925,6 +3041,8 @@
         "4K"
       ],
       "resolutionSource": "prose-hint",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
       "availability": "AVAILABLE",
       "comingSoonReason": null,
       "isNew": false,
@@ -2972,6 +3090,8 @@
         "4k"
       ],
       "resolutionSource": "price-table",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
       "availability": "AVAILABLE",
       "comingSoonReason": null,
       "isNew": false,
@@ -3047,6 +3167,8 @@
         "4k"
       ],
       "resolutionSource": "price-table",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
       "availability": "AVAILABLE",
       "comingSoonReason": null,
       "isNew": false,
@@ -3122,6 +3244,8 @@
         "4k"
       ],
       "resolutionSource": "price-table",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
       "availability": "AVAILABLE",
       "comingSoonReason": null,
       "isNew": false,
@@ -3197,6 +3321,8 @@
         "4k"
       ],
       "resolutionSource": "price-table",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
       "availability": "AVAILABLE",
       "comingSoonReason": null,
       "isNew": false,
@@ -3272,6 +3398,8 @@
         "4k"
       ],
       "resolutionSource": "price-table",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
       "availability": "AVAILABLE",
       "comingSoonReason": null,
       "isNew": false,
@@ -3347,6 +3475,8 @@
         "4k"
       ],
       "resolutionSource": "price-table",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
       "availability": "AVAILABLE",
       "comingSoonReason": null,
       "isNew": false,
@@ -3418,6 +3548,8 @@
       "title": "Veo 3 Fast Image to Video",
       "resolutions": [],
       "resolutionSource": "unknown",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
       "availability": "AVAILABLE",
       "comingSoonReason": null,
       "isNew": false,
@@ -3461,6 +3593,8 @@
       "title": "Veo 3 Fast Text to Video",
       "resolutions": [],
       "resolutionSource": "unknown",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
       "availability": "AVAILABLE",
       "comingSoonReason": null,
       "isNew": false,
@@ -3504,6 +3638,8 @@
       "title": "Veo 3 Text to Video",
       "resolutions": [],
       "resolutionSource": "unknown",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
       "availability": "AVAILABLE",
       "comingSoonReason": null,
       "isNew": false,
@@ -3547,6 +3683,8 @@
       "title": "Veo 3 Image to Video",
       "resolutions": [],
       "resolutionSource": "unknown",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
       "availability": "AVAILABLE",
       "comingSoonReason": null,
       "isNew": false,
@@ -3592,6 +3730,8 @@
         "1080p"
       ],
       "resolutionSource": "prose-hint",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
       "availability": "AVAILABLE",
       "comingSoonReason": null,
       "isNew": false,
@@ -3659,6 +3799,8 @@
         "1080p"
       ],
       "resolutionSource": "prose-hint",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
       "availability": "AVAILABLE",
       "comingSoonReason": null,
       "isNew": false,
@@ -3726,6 +3868,8 @@
         "720p"
       ],
       "resolutionSource": "prose-hint",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
       "availability": "AVAILABLE",
       "comingSoonReason": null,
       "isNew": false,
@@ -3793,6 +3937,8 @@
         "4K"
       ],
       "resolutionSource": "prose-hint",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
       "availability": "AVAILABLE",
       "comingSoonReason": null,
       "isNew": false,
@@ -3862,6 +4008,8 @@
         "4K"
       ],
       "resolutionSource": "prose-hint",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
       "availability": "AVAILABLE",
       "comingSoonReason": null,
       "isNew": false,
@@ -3929,6 +4077,8 @@
         "1080p"
       ],
       "resolutionSource": "prose-hint",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
       "availability": "AVAILABLE",
       "comingSoonReason": null,
       "isNew": false,
@@ -4016,6 +4166,8 @@
         "720p"
       ],
       "resolutionSource": "prose-hint",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
       "availability": "AVAILABLE",
       "comingSoonReason": null,
       "isNew": false,
@@ -4101,6 +4253,8 @@
       "title": "Kling 2.6 Standard Motion Control",
       "resolutions": [],
       "resolutionSource": "unknown",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
       "availability": "AVAILABLE",
       "comingSoonReason": null,
       "isNew": false,
@@ -4183,6 +4337,8 @@
       "title": "Kling 2.6 Pro Motion Control",
       "resolutions": [],
       "resolutionSource": "unknown",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
       "availability": "AVAILABLE",
       "comingSoonReason": null,
       "isNew": false,
@@ -4265,6 +4421,8 @@
       "title": "Kling O1 Video Edit Fast",
       "resolutions": [],
       "resolutionSource": "unknown",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
       "availability": "AVAILABLE",
       "comingSoonReason": null,
       "isNew": false,
@@ -4347,6 +4505,8 @@
       "title": "Kling 2.5 Standard",
       "resolutions": [],
       "resolutionSource": "unknown",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
       "availability": "AVAILABLE",
       "comingSoonReason": null,
       "isNew": false,
@@ -4412,6 +4572,8 @@
       "title": "OpenAI Sora 2 Pro Storyboard",
       "resolutions": [],
       "resolutionSource": "unknown",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
       "availability": "AVAILABLE",
       "comingSoonReason": null,
       "isNew": false,
@@ -4486,6 +4648,8 @@
         "1080p"
       ],
       "resolutionSource": "price-table",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
       "availability": "AVAILABLE",
       "comingSoonReason": null,
       "isNew": false,
@@ -4600,6 +4764,8 @@
         "1080p"
       ],
       "resolutionSource": "price-table",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
       "availability": "AVAILABLE",
       "comingSoonReason": null,
       "isNew": false,
@@ -4711,6 +4877,8 @@
       "title": "OpenAI Sora 2 Image to Video",
       "resolutions": [],
       "resolutionSource": "unknown",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
       "availability": "AVAILABLE",
       "comingSoonReason": null,
       "isNew": false,
@@ -4794,6 +4962,8 @@
       "title": "OpenAI Sora 2 Text to Video",
       "resolutions": [],
       "resolutionSource": "unknown",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
       "availability": "AVAILABLE",
       "comingSoonReason": null,
       "isNew": false,
@@ -4880,6 +5050,8 @@
         "720p"
       ],
       "resolutionSource": "price-table",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
       "availability": "AVAILABLE",
       "comingSoonReason": null,
       "isNew": false,
@@ -4980,6 +5152,8 @@
         "720p"
       ],
       "resolutionSource": "price-table",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
       "availability": "AVAILABLE",
       "comingSoonReason": null,
       "isNew": false,
@@ -5080,6 +5254,8 @@
         "720p"
       ],
       "resolutionSource": "price-table",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
       "availability": "AVAILABLE",
       "comingSoonReason": null,
       "isNew": false,
@@ -5180,6 +5356,8 @@
         "720p"
       ],
       "resolutionSource": "price-table",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
       "availability": "AVAILABLE",
       "comingSoonReason": null,
       "isNew": false,
@@ -5281,6 +5459,8 @@
         "4K"
       ],
       "resolutionSource": "price-table",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
       "availability": "AVAILABLE",
       "comingSoonReason": null,
       "isNew": false,

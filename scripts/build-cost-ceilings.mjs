@@ -214,6 +214,16 @@ for (const doc of docs.models) {
     title,
     resolutions,
     resolutionSource,
+    /*
+     * Whether a request payload can actually be built for this model.
+     *
+     * Pricing being solved does not make a model dispatchable: the wire-format
+     * parameter names are a separate fact, published only in the curl examples.
+     * A model priced correctly but dispatched with guessed key names produces a
+     * provider-side failure, so this is tracked independently of availability.
+     */
+    apiPayloadKeys: doc.apiPayloadKeys ?? [],
+    payloadContractVerified: (doc.apiPayloadKeys ?? []).length > 0,
     availability,
     comingSoonReason,
     // Seedance 2.5 is the newest family and is surfaced with a NEW tag.

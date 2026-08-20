@@ -20,6 +20,22 @@ import { calculateRequiredCredits } from "../entitlements/pricing.js";
 
 const MODELS = ceilings.models;
 
+/**
+ * Provider models that have a real request adapter today.
+ *
+ * Pricing being solved does not make a model dispatchable. A model needs a
+ * `toProviderPayload` that builds its exact request body; the generic fallback
+ * sends only `{ prompt }`, which is malformed for anything that takes an image,
+ * a duration or a resolution, and produces a provider-side failure.
+ *
+ * Kept as an explicit list rather than inferred so the catalogue cannot quietly
+ * start advertising a model whose adapter was never written. Every id here must
+ * correspond to a definition under src/lib/models/definitions/.
+ */
+const INTEGRATED_PROVIDER_MODEL_IDS = Object.freeze(
+  new Set(["seedance-2-omni-reference-no-video-fast"]),
+);
+
 /** Families ordered so the newest and most capable appear first. */
 const FAMILY_ORDER = [
   "seedance-2.5",
@@ -144,7 +160,51 @@ function badgesFor(entry) {
 
 function toCatalogueEntry(providerModelId, entry) {
   const comingSoon = entry.availability === "COMING_SOON";
+
+  /*
+   * Three distinct states, because two different things must both be true before
+   * a model can be generated with, and conflating them hides real work:
+   *
+   *   comingSoon           the provider has not released it, or its cost cannot
+   *                        be bounded -- nothing we can do until they publish
+   *   pendingIntegration   priced and bounded, but the document never publishes
+   *                        its request parameter names (only 9 of 71 include a
+   *                        curl example). Dispatching with guessed key names
+   *                        yields a malformed request and a failed generation, so
+   *                        it is withheld rather than offered and broken.
+   *   selectable           priced, bounded, and its request contract is verified
+   *
+   * Offering a model that fails on click is worse than not listing it: the user
+   * spends attention choosing it, waits, and gets an error.
+   */
+  const integrated = INTEGRATED_PROVIDER_MODEL_IDS.has(providerModelId);
+  const selectable = !comingSoon && integrated;
+  const pendingIntegration = !comingSoon && !integrated;
+
+  /*
+   * Two different reasons a priced model is not yet usable, distinguished because
+   * one is our work and the other is blocked on data we do not have:
+   *
+   *   contract known    the document publishes this model's request parameter
+   *                     names (a curl example), so its adapter can be written now
+   *   contract unknown  only 9 of 71 models publish a curl example; the schema
+   *                     tables give human labels ("Image URLs"), not wire keys
+   *                     ("images_list"). Guessing keys yields a malformed request
+   *                     and a failed generation, so it waits for the real schema.
+   */
+  const pendingIntegrationLabel = !pendingIntegration
+    ? null
+    : entry.payloadContractVerified
+      ? "Integration in progress"
+      : "Awaiting provider schema";
+
   return Object.freeze({
+    selectable,
+    integrated,
+    pendingIntegration,
+    payloadContractVerified: Boolean(entry.payloadContractVerified),
+    /** Shown on a disabled row so the state is explained, not just greyed out. */
+    pendingIntegrationLabel,
     providerModelId,
     title: entry.title || providerModelId,
     family: entry.family,
@@ -178,16 +238,23 @@ function toCatalogueEntry(providerModelId, entry) {
   });
 }
 
-/** Every documented model, including coming-soon ones. */
-export function listCatalogueModels({ includeComingSoon = true, mode = null } = {}) {
+/** Every documented model, including ones that cannot be used yet. */
+export function listCatalogueModels({
+  includeComingSoon = true,
+  includePendingIntegration = true,
+  mode = null,
+} = {}) {
   return Object.entries(MODELS)
     .map(([id, entry]) => toCatalogueEntry(id, entry))
-    .filter((m) => (includeComingSoon ? true : m.available))
+    .filter((m) => (includeComingSoon ? true : !m.comingSoon))
+    .filter((m) => (includePendingIntegration ? true : !m.pendingIntegration))
     .filter((m) => (mode ? m.mode === mode : true))
     .sort((a, b) => {
-      // Available before coming-soon, then by family order, then NEW first,
-      // then cheapest first so the affordable option is the easy one to reach.
-      if (a.available !== b.available) return a.available ? -1 : 1;
+      // Usable first, then pending integration, then coming soon; within each,
+      // family order, NEW first, then cheapest so the affordable option is easy
+      // to reach.
+      if (a.selectable !== b.selectable) return a.selectable ? -1 : 1;
+      if (a.pendingIntegration !== b.pendingIntegration) return a.pendingIntegration ? -1 : 1;
       const fa = FAMILY_ORDER.indexOf(a.family);
       const fb = FAMILY_ORDER.indexOf(b.family);
       if (fa !== fb) return (fa === -1 ? 999 : fa) - (fb === -1 ? 999 : fb);
@@ -227,9 +294,12 @@ export function getCatalogueModel(providerModelId) {
  * current and affordable rather than merely expensive.
  */
 export function listFeaturedModels(limit = 6) {
-  return listCatalogueModels({ includeComingSoon: false })
-    .filter((m) => m.isNew || m.family === "veo3.1" || m.family === "sora")
-    .slice(0, limit);
+  // Only genuinely usable models are featured. Featuring something that cannot
+  // be generated with is the most damaging place to put it.
+  return listCatalogueModels({ includeComingSoon: false, includePendingIntegration: false }).slice(
+    0,
+    limit,
+  );
 }
 
 export const CATALOGUE_REVISION = ceilings.revision;

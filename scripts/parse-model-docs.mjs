@@ -720,6 +720,34 @@ for (const section of sections) {
    * precisely because nothing financial depends on it; the price surface is read
    * from tables only.
    */
+  /*
+   * API parameter names, taken from the model's own curl example.
+   *
+   * This is the ONLY place the document states real request keys. The
+   * configuration-schema table uses human labels ("Image URLs", "Duration
+   * (seconds)"), which are not the wire format -- the actual keys are
+   * `images_list`, `duration`, and so on.
+   *
+   * Without these a payload cannot be constructed, so a model with no curl
+   * example has no verifiable request contract and must not be dispatched:
+   * guessing key names produces a malformed request, a failed generation, and a
+   * refund cycle that looks like a broken product.
+   *
+   * Only 9 of 71 models publish a curl example, so this is deliberately recorded
+   * as a per-model capability rather than assumed present.
+   */
+  const curlIndex = sectionText.indexOf("curl -X POST");
+  const apiPayloadKeys =
+    curlIndex === -1
+      ? []
+      : [
+          ...new Set(
+            [...sectionText.slice(curlIndex, curlIndex + 1400).matchAll(/"([a-z_0-9]+)"\s*:/g)].map(
+              (m) => m[1],
+            ),
+          ),
+        ];
+
   const descriptionRegion = lines.slice(0, 14).join(" ");
   const resolutionMentions = [
     ...new Set(
@@ -764,6 +792,7 @@ for (const section of sections) {
     headingRaw: section.headingRaw,
     category,
     resolutionMentions,
+    apiPayloadKeys,
     title: (lines[1] ?? "").trim(),
     defaultCostUsd: defaultCost,
     pricingDescriptor: descriptor,

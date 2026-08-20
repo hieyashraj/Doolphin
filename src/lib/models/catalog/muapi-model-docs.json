@@ -38,6 +38,7 @@
       "headingRaw": "seedance-2-omni-reference-no-video-fast",
       "category": "Image to Video",
       "resolutionMentions": [],
+      "apiPayloadKeys": [],
       "title": "Omni Reference Fast: AI Image-to-Video Generator",
       "defaultCostUsd": 0.75,
       "pricingDescriptor": "Price varies by duration ($0.15/sec)",
@@ -156,6 +157,7 @@
       "headingRaw": "seedance-2-omni-reference-no-video",
       "category": "Image to Video",
       "resolutionMentions": [],
+      "apiPayloadKeys": [],
       "title": "Omni Reference: AI Image-to-Video Generator",
       "defaultCostUsd": 1.25,
       "pricingDescriptor": "Price varies by duration ($0.25/sec)",
@@ -274,6 +276,7 @@
       "headingRaw": "seedance-2-omni-reference",
       "category": "Image to Video",
       "resolutionMentions": [],
+      "apiPayloadKeys": [],
       "title": "Omni Reference: AI Image-to-Video Generator",
       "defaultCostUsd": 1.5,
       "pricingDescriptor": "Price varies by quality and duration",
@@ -489,6 +492,7 @@
       "headingRaw": "seedance-2-vip-omni-reference-fast",
       "category": "Image to Video",
       "resolutionMentions": [],
+      "apiPayloadKeys": [],
       "title": "Omni Reference VIP Fast: AI Image-to-Video Generator",
       "defaultCostUsd": 1.05,
       "pricingDescriptor": "Flat rate per run",
@@ -584,6 +588,7 @@
       "resolutionMentions": [
         "1080p"
       ],
+      "apiPayloadKeys": [],
       "title": "Omni Reference VIP 1080p: AI Image-to-Video Generator",
       "defaultCostUsd": 3.375,
       "pricingDescriptor": "Flat rate per run",
@@ -674,6 +679,7 @@
       "resolutionMentions": [
         "2K"
       ],
+      "apiPayloadKeys": [],
       "title": "Seedance 2 Image to Video: AI Image-to-Video Generator",
       "defaultCostUsd": 1.25,
       "pricingDescriptor": "Price varies by duration ($0.25/sec)",
@@ -808,6 +814,7 @@
       "headingRaw": "seedance-2-image-to-video-fast",
       "category": "Image to Video",
       "resolutionMentions": [],
+      "apiPayloadKeys": [],
       "title": "Seedance 2 Fast Image to Video: AI Image-to-Video Generator",
       "defaultCostUsd": 0.75,
       "pricingDescriptor": "Price varies by duration ($0.15/sec)",
@@ -942,6 +949,7 @@
       "headingRaw": "seedance-2-i2v",
       "category": "Image to Video",
       "resolutionMentions": [],
+      "apiPayloadKeys": [],
       "title": "Seedance 2 Image to Video: AI Image-to-Video Generator",
       "defaultCostUsd": 0.75,
       "pricingDescriptor": "Price varies by resolution and duration",
@@ -1109,6 +1117,7 @@
         "480p",
         "720p"
       ],
+      "apiPayloadKeys": [],
       "title": "Seedance 2 480p Image to Video: AI Image-to-Video Generator",
       "defaultCostUsd": 0.6,
       "pricingDescriptor": "Price varies by quality and duration",
@@ -1260,6 +1269,7 @@
       "headingRaw": "seedance-2-first-last-frame",
       "category": "Image to Video",
       "resolutionMentions": [],
+      "apiPayloadKeys": [],
       "title": "Seedance 2 First & Last Frame: AI Image-to-Video Generator",
       "defaultCostUsd": 1.25,
       "pricingDescriptor": "Price varies by duration ($0.25/sec)",
@@ -1394,6 +1404,7 @@
       "headingRaw": "seedance-2-first-last-frame-fast",
       "category": "Image to Video",
       "resolutionMentions": [],
+      "apiPayloadKeys": [],
       "title": "Seedance 2 First & Last Frame Fast: AI Image-to-Video Generator",
       "defaultCostUsd": 0.75,
       "pricingDescriptor": "Price varies by duration ($0.15/sec)",
@@ -1528,6 +1539,7 @@
       "headingRaw": "muapi/seedance-2-video-edit",
       "category": "Video to Video",
       "resolutionMentions": [],
+      "apiPayloadKeys": [],
       "title": "Seedance 2 Video Edit: AI Video Editor",
       "defaultCostUsd": 1.365,
       "pricingDescriptor": "Price varies by quality and duration",
@@ -1708,6 +1720,7 @@
       "headingRaw": "muapi/seedance-2-extend",
       "category": "Text to Video",
       "resolutionMentions": [],
+      "apiPayloadKeys": [],
       "title": "Seedance 2 Extend Video: AI Video Generator",
       "defaultCostUsd": 1.05,
       "pricingDescriptor": "Price varies by quality and duration",
@@ -1910,6 +1923,7 @@
       "resolutionMentions": [
         "720p"
       ],
+      "apiPayloadKeys": [],
       "title": "Seedance 2 VIP Extend Video: AI Video Generator",
       "defaultCostUsd": 1.05,
       "pricingDescriptor": "Price varies by quality and duration",
@@ -2098,6 +2112,7 @@
       "resolutionMentions": [
         "1080p"
       ],
+      "apiPayloadKeys": [],
       "title": "Seedance 2 VIP Extend Video 1080p: AI Video Generator",
       "defaultCostUsd": 3.375,
       "pricingDescriptor": "Price varies by quality and duration",
@@ -2288,6 +2303,11 @@
         "480p",
         "1080p"
       ],
+      "apiPayloadKeys": [
+        "prompt",
+        "duration",
+        "aspect_ratio"
+      ],
       "title": "Seedance 2.5 Text to Video: AI Video Generator",
       "defaultCostUsd": 1.7,
       "pricingDescriptor": "Price varies by duration",
@@ -2422,6 +2442,11 @@
         "720p",
         "480p",
         "1080p"
+      ],
+      "apiPayloadKeys": [
+        "prompt",
+        "image_url",
+        "duration"
       ],
       "title": "Seedance 2.5 Image to Video: AI Image-to-Video Generator",
       "defaultCostUsd": 1.7,
@@ -2563,6 +2588,11 @@
         "480p",
         "720p"
       ],
+      "apiPayloadKeys": [
+        "prompt",
+        "image_url",
+        "duration"
+      ],
       "title": "Seedance 2.5 Image to Video 480p: AI Image-to-Video Generator",
       "defaultCostUsd": 0.85,
       "pricingDescriptor": "Price varies by duration",
@@ -2694,6 +2724,12 @@
         "720p",
         "480p",
         "1080p"
+      ],
+      "apiPayloadKeys": [
+        "prompt",
+        "images_list",
+        "videos_list",
+        "duration"
       ],
       "title": "Seedance 2.5 Omni Reference: AI Image-to-Video Generator",
       "defaultCostUsd": 1.7,
@@ -2891,6 +2927,7 @@
         "4K",
         "720p"
       ],
+      "apiPayloadKeys": [],
       "title": "Text to Video 4K: AI Video Generator",
       "defaultCostUsd": 8.5,
       "pricingDescriptor": "Price varies by duration",
@@ -3003,6 +3040,11 @@
       "resolutionMentions": [
         "480p",
         "720p"
+      ],
+      "apiPayloadKeys": [
+        "prompt",
+        "images_list",
+        "duration"
       ],
       "title": "Seedance 2.5 Omni Reference 480p: AI Image-to-Video Generator",
       "defaultCostUsd": 0.85,
@@ -3187,6 +3229,7 @@
         "1080p",
         "720p"
       ],
+      "apiPayloadKeys": [],
       "title": "Image to Video 1080p: AI Image-to-Video Generator",
       "defaultCostUsd": 4.25,
       "pricingDescriptor": "Price varies by duration",
@@ -3306,6 +3349,7 @@
         "4K",
         "720p"
       ],
+      "apiPayloadKeys": [],
       "title": "Image to Video 4K: AI Image-to-Video Generator",
       "defaultCostUsd": 8.5,
       "pricingDescriptor": "Price varies by duration",
@@ -3425,6 +3469,7 @@
         "4K",
         "720p"
       ],
+      "apiPayloadKeys": [],
       "title": "Omni Reference 4K: AI Image-to-Video Generator",
       "defaultCostUsd": 8.5,
       "pricingDescriptor": "Price varies by duration; a video reference switches billing to a reduced per-second rate charged on output duration plus every reference video's duration",
@@ -3592,6 +3637,7 @@
         "1080p",
         "720p"
       ],
+      "apiPayloadKeys": [],
       "title": "Omni Reference 1080p: AI Image-to-Video Generator",
       "defaultCostUsd": 4.25,
       "pricingDescriptor": "Price varies by duration; a video reference switches billing to a reduced per-second rate charged on output duration plus every reference video's duration",
@@ -3756,6 +3802,11 @@
       "headingRaw": "seedance-2.5-video-edit",
       "category": "Video to Video",
       "resolutionMentions": [],
+      "apiPayloadKeys": [
+        "prompt",
+        "video",
+        "duration"
+      ],
       "title": "Seedance 2.5 Video Edit: AI Video Editor",
       "defaultCostUsd": 1.7,
       "pricingDescriptor": "Price varies by duration; a video reference switches billing to a reduced per-second rate charged on output duration plus every reference video's duration",
@@ -3933,6 +3984,10 @@
         "480p",
         "720p"
       ],
+      "apiPayloadKeys": [
+        "prompt",
+        "duration"
+      ],
       "title": "Spicy Seedance 2.5 Text to Video 480p: AI Video Generator",
       "defaultCostUsd": 0.935,
       "pricingDescriptor": "$0.17/sec— Pay-per-generation pricing with no subscription.",
@@ -4023,6 +4078,7 @@
         "1080p",
         "720p"
       ],
+      "apiPayloadKeys": [],
       "title": "Spicy Text to Video 1080p: AI Video Generator",
       "defaultCostUsd": 4.675,
       "pricingDescriptor": "",
@@ -4099,6 +4155,7 @@
         "1080p",
         "720p"
       ],
+      "apiPayloadKeys": [],
       "title": "Intl Text to Video 1080p: AI Video Generator",
       "defaultCostUsd": 4.675,
       "pricingDescriptor": "",
@@ -4175,6 +4232,7 @@
         "4K",
         "720p"
       ],
+      "apiPayloadKeys": [],
       "title": "Intl Text to Video 4K: AI Video Generator",
       "defaultCostUsd": 9.35,
       "pricingDescriptor": "",
@@ -4251,6 +4309,7 @@
         "4K",
         "720p"
       ],
+      "apiPayloadKeys": [],
       "title": "Spicy Text to Video 4K: AI Video Generator",
       "defaultCostUsd": 9.35,
       "pricingDescriptor": "",
@@ -4327,6 +4386,11 @@
         "720p",
         "480p",
         "1080p"
+      ],
+      "apiPayloadKeys": [
+        "prompt",
+        "image_url",
+        "duration"
       ],
       "title": "Seedance 2.5 Image to Video (Intl): AI Image-to-Video Generator",
       "defaultCostUsd": 1.87,
@@ -4436,6 +4500,13 @@
       "resolutionMentions": [
         "4K"
       ],
+      "apiPayloadKeys": [
+        "prompt",
+        "image_url",
+        "resolution",
+        "duration",
+        "generate_audio"
+      ],
       "title": "Seedance 2.5 Spicy Image to Video: AI Image-to-Video Generator",
       "defaultCostUsd": 1.87,
       "pricingDescriptor": "",
@@ -4537,6 +4608,7 @@
         "1080p",
         "720p"
       ],
+      "apiPayloadKeys": [],
       "title": "Intl Image to Video 1080p: AI Image-to-Video Generator",
       "defaultCostUsd": 4.675,
       "pricingDescriptor": "",
@@ -4619,6 +4691,7 @@
         "1080p",
         "720p"
       ],
+      "apiPayloadKeys": [],
       "title": "Spicy Image to Video 1080p: AI Image-to-Video Generator",
       "defaultCostUsd": 4.675,
       "pricingDescriptor": "",
@@ -4700,6 +4773,7 @@
       "resolutionMentions": [
         "1080p"
       ],
+      "apiPayloadKeys": [],
       "title": "Veo 4 Image to Video: AI Image-to-Video Generator",
       "defaultCostUsd": 3,
       "pricingDescriptor": "Flat rate per run",
@@ -4774,6 +4848,7 @@
       "resolutionMentions": [
         "1080p"
       ],
+      "apiPayloadKeys": [],
       "title": "Veo 4 Text to Video: AI Video Generator",
       "defaultCostUsd": 3,
       "pricingDescriptor": "Flat rate per run",
@@ -4840,6 +4915,7 @@
       "headingRaw": "veo3.1-lite-image-to-video",
       "category": "Image to Video",
       "resolutionMentions": [],
+      "apiPayloadKeys": [],
       "title": "Veo 3.1 Lite Image to Video: AI Image-to-Video Generator",
       "defaultCostUsd": 0.3,
       "pricingDescriptor": "Price varies by resolution",
@@ -4949,6 +5025,7 @@
       "headingRaw": "veo3.1-lite-text-to-video",
       "category": "Text to Video",
       "resolutionMentions": [],
+      "apiPayloadKeys": [],
       "title": "Veo 3.1 Lite Text to Video: AI Video Generator",
       "defaultCostUsd": 0.3,
       "pricingDescriptor": "Price varies by resolution",
@@ -5054,6 +5131,7 @@
       "resolutionMentions": [
         "4K"
       ],
+      "apiPayloadKeys": [],
       "title": "Veo 3.1 4K Video: AI Video Generator",
       "defaultCostUsd": 0.78,
       "pricingDescriptor": "Flat rate per run",
@@ -5106,6 +5184,7 @@
       "headingRaw": "veo3.1-extend-video",
       "category": "Text to Video",
       "resolutionMentions": [],
+      "apiPayloadKeys": [],
       "title": "Veo 3.1 Extend Video: AI Video Generator",
       "defaultCostUsd": 0.6,
       "pricingDescriptor": "Price varies by resolution",
@@ -5195,6 +5274,7 @@
       "headingRaw": "veo3.1-reference-to-video",
       "category": "Image to Video",
       "resolutionMentions": [],
+      "apiPayloadKeys": [],
       "title": "Veo 3.1 Reference to Video: AI Image-to-Video Generator",
       "defaultCostUsd": 0.6,
       "pricingDescriptor": "Price varies by resolution",
@@ -5304,6 +5384,7 @@
       "headingRaw": "veo3.1-fast-text-to-video",
       "category": "Text to Video",
       "resolutionMentions": [],
+      "apiPayloadKeys": [],
       "title": "Veo 3.1 Fast Text to Video: AI Video Generator",
       "defaultCostUsd": 0.6,
       "pricingDescriptor": "Price varies by resolution",
@@ -5407,6 +5488,7 @@
       "headingRaw": "veo3.1-fast-image-to-video",
       "category": "Image to Video",
       "resolutionMentions": [],
+      "apiPayloadKeys": [],
       "title": "Veo 3.1 Fast Image to Video: AI Image-to-Video Generator",
       "defaultCostUsd": 0.6,
       "pricingDescriptor": "Price varies by resolution",
@@ -5522,6 +5604,7 @@
       "headingRaw": "veo3.1-text-to-video",
       "category": "Text to Video",
       "resolutionMentions": [],
+      "apiPayloadKeys": [],
       "title": "Veo 3.1 Text to Video: AI Video Generator",
       "defaultCostUsd": 2.5,
       "pricingDescriptor": "Price varies by resolution",
@@ -5625,6 +5708,7 @@
       "headingRaw": "veo3.1-image-to-video",
       "category": "Image to Video",
       "resolutionMentions": [],
+      "apiPayloadKeys": [],
       "title": "Veo 3.1 Image to Video: AI Image-to-Video Generator",
       "defaultCostUsd": 2.5,
       "pricingDescriptor": "Price varies by resolution",
@@ -5740,6 +5824,7 @@
       "headingRaw": "veo3-fast-image-to-video",
       "category": "Image to Video",
       "resolutionMentions": [],
+      "apiPayloadKeys": [],
       "title": "Veo 3 Fast Image to Video: AI Image-to-Video Generator",
       "defaultCostUsd": 0.6,
       "pricingDescriptor": "Flat rate per run",
@@ -5804,6 +5889,7 @@
       "headingRaw": "veo3-fast-text-to-video",
       "category": "Text to Video",
       "resolutionMentions": [],
+      "apiPayloadKeys": [],
       "title": "Veo 3 Fast Text to Video: AI Video Generator",
       "defaultCostUsd": 0.6,
       "pricingDescriptor": "Flat rate per run",
@@ -5862,6 +5948,7 @@
       "headingRaw": "veo3-text-to-video",
       "category": "Text to Video",
       "resolutionMentions": [],
+      "apiPayloadKeys": [],
       "title": "Veo 3 Text to Video: AI Video Generator",
       "defaultCostUsd": 2.5,
       "pricingDescriptor": "Flat rate per run",
@@ -5920,6 +6007,7 @@
       "headingRaw": "veo3-image-to-video",
       "category": "Image to Video",
       "resolutionMentions": [],
+      "apiPayloadKeys": [],
       "title": "Veo 3 Image to Video: AI Image-to-Video Generator",
       "defaultCostUsd": 2.5,
       "pricingDescriptor": "Flat rate per run",
@@ -5986,6 +6074,7 @@
       "resolutionMentions": [
         "1080p"
       ],
+      "apiPayloadKeys": [],
       "title": "Kling 3.0 Turbo Pro Image to Video: AI Image-to-Video Generator",
       "defaultCostUsd": 0.7,
       "pricingDescriptor": "Price varies by duration ($0.14/sec)",
@@ -6088,6 +6177,7 @@
       "resolutionMentions": [
         "1080p"
       ],
+      "apiPayloadKeys": [],
       "title": "Kling 3.0 Turbo Pro Text to Video: AI Video Generator",
       "defaultCostUsd": 0.7,
       "pricingDescriptor": "Price varies by duration ($0.14/sec)",
@@ -6190,6 +6280,7 @@
       "resolutionMentions": [
         "720p"
       ],
+      "apiPayloadKeys": [],
       "title": "Kling 3.0 Turbo Standard Image to Video: AI Image-to-Video Generator",
       "defaultCostUsd": 0.56,
       "pricingDescriptor": "Price varies by duration ($0.112/sec)",
@@ -6292,6 +6383,7 @@
       "resolutionMentions": [
         "4K"
       ],
+      "apiPayloadKeys": [],
       "title": "Kling 3 Omni 4K Image to Video: AI Image-to-Video Generator",
       "defaultCostUsd": 2.678,
       "pricingDescriptor": "Price varies by duration ($0.536/sec)",
@@ -6402,6 +6494,7 @@
       "resolutionMentions": [
         "4K"
       ],
+      "apiPayloadKeys": [],
       "title": "Kling 3 Omni 4K Text to Video: AI Video Generator",
       "defaultCostUsd": 2.678,
       "pricingDescriptor": "Price varies by duration ($0.536/sec)",
@@ -6504,6 +6597,7 @@
       "resolutionMentions": [
         "1080p"
       ],
+      "apiPayloadKeys": [],
       "title": "Kling 3 Omni Pro Image to Video: AI Image-to-Video Generator",
       "defaultCostUsd": 0.56,
       "pricingDescriptor": "Price varies by duration and audio",
@@ -6640,6 +6734,7 @@
       "resolutionMentions": [
         "720p"
       ],
+      "apiPayloadKeys": [],
       "title": "Kling 3 Omni Standard Image to Video: AI Image-to-Video Generator",
       "defaultCostUsd": 0.42,
       "pricingDescriptor": "Price varies by duration and audio",
@@ -6774,6 +6869,7 @@
       "headingRaw": "kling-v2.6-std-motion-control",
       "category": "Video to Video",
       "resolutionMentions": [],
+      "apiPayloadKeys": [],
       "title": "Kling 2.6 Standard Motion Control: AI Video Editor",
       "defaultCostUsd": 0.45,
       "pricingDescriptor": "Price is ~$0.09/sec of input video",
@@ -6895,6 +6991,7 @@
       "headingRaw": "kling-v2.6-pro-motion-control",
       "category": "Video to Video",
       "resolutionMentions": [],
+      "apiPayloadKeys": [],
       "title": "Kling 2.6 Pro Motion Control: AI Video Editor",
       "defaultCostUsd": 0.725,
       "pricingDescriptor": "Price is $0.145/sec of input video",
@@ -7016,6 +7113,7 @@
       "headingRaw": "kling-o1-video-edit-fast",
       "category": "Video to Video",
       "resolutionMentions": [],
+      "apiPayloadKeys": [],
       "title": "Kling O1 Video Edit Fast: AI Video Editor",
       "defaultCostUsd": 0.585,
       "pricingDescriptor": "Price is $0.117/sec of input video",
@@ -7143,6 +7241,7 @@
       "headingRaw": "kling-v2.5-turbo-std-i2v",
       "category": "Image to Video",
       "resolutionMentions": [],
+      "apiPayloadKeys": [],
       "title": "Kling 2.5 Standard: AI Image-to-Video Generator",
       "defaultCostUsd": 0.28,
       "pricingDescriptor": "Price varies by duration",
@@ -7233,6 +7332,7 @@
       "headingRaw": "openai-sora-2-pro-storyboard",
       "category": "Text to Video",
       "resolutionMentions": [],
+      "apiPayloadKeys": [],
       "title": "OpenAI Sora 2 Pro Storyboard: AI Video Generator",
       "defaultCostUsd": 1.5,
       "pricingDescriptor": "Price varies by duration",
@@ -7336,6 +7436,7 @@
       "headingRaw": "openai-sora-2-pro-text-to-video",
       "category": "Text to Video",
       "resolutionMentions": [],
+      "apiPayloadKeys": [],
       "title": "OpenAI Sora 2 Pro Text to Video: AI Video Generator",
       "defaultCostUsd": 2.4,
       "pricingDescriptor": "Price varies by resolution and duration",
@@ -7485,6 +7586,7 @@
       "headingRaw": "openai-sora-2-pro-image-to-video",
       "category": "Image to Video",
       "resolutionMentions": [],
+      "apiPayloadKeys": [],
       "title": "OpenAI Sora 2 Pro Image to Video: AI Image-to-Video Generator",
       "defaultCostUsd": 2.4,
       "pricingDescriptor": "Price varies by resolution and duration",
@@ -7640,6 +7742,7 @@
       "headingRaw": "openai-sora-2-image-to-video",
       "category": "Image to Video",
       "resolutionMentions": [],
+      "apiPayloadKeys": [],
       "title": "OpenAI Sora 2 Image to Video: AI Image-to-Video Generator",
       "defaultCostUsd": 0.8,
       "pricingDescriptor": "Price varies by duration ($0.10/sec)",
@@ -7763,6 +7866,7 @@
       "headingRaw": "openai-sora-2-text-to-video",
       "category": "Text to Video",
       "resolutionMentions": [],
+      "apiPayloadKeys": [],
       "title": "OpenAI Sora 2 Text to Video: AI Video Generator",
       "defaultCostUsd": 0.8,
       "pricingDescriptor": "Price varies by duration ($0.10/sec)",
@@ -7880,6 +7984,7 @@
       "headingRaw": "grok-imagine-video-1-5-preview",
       "category": "Image to Video",
       "resolutionMentions": [],
+      "apiPayloadKeys": [],
       "title": "Grok Imagine Video 1.5 Preview: AI Image-to-Video Generator",
       "defaultCostUsd": 0.64,
       "pricingDescriptor": "Price varies by resolution and duration",
@@ -8029,6 +8134,7 @@
       "headingRaw": "grok-imagine-extend",
       "category": "Text to Video",
       "resolutionMentions": [],
+      "apiPayloadKeys": [],
       "title": "Grok Imagine Extend Video: AI Video Generator",
       "defaultCostUsd": 0.15,
       "pricingDescriptor": "Price varies by resolution and extend count",
@@ -8162,6 +8268,7 @@
       "headingRaw": "grok-imagine-text-to-video",
       "category": "Text to Video",
       "resolutionMentions": [],
+      "apiPayloadKeys": [],
       "title": "Grok Imagine Text to Video: AI Video Generator",
       "defaultCostUsd": 0.15,
       "pricingDescriptor": "Price varies by resolution and duration",
@@ -8311,6 +8418,7 @@
       "headingRaw": "grok-imagine-image-to-video",
       "category": "Image to Video",
       "resolutionMentions": [],
+      "apiPayloadKeys": [],
       "title": "Grok Imagine Image to Video: AI Image-to-Video Generator",
       "defaultCostUsd": 0.15,
       "pricingDescriptor": "Price varies by resolution and duration",
@@ -8460,6 +8568,7 @@
       "headingRaw": "gpt-image-2-text-to-image",
       "category": "Text to Image",
       "resolutionMentions": [],
+      "apiPayloadKeys": [],
       "title": "OpenAI GPT Image 2 Text to Image: AI Image Generator",
       "defaultCostUsd": 0.09,
       "pricingDescriptor": "Price varies by quality and resolution",
