@@ -61,6 +61,50 @@ async function handleGenerationSubmission(req) {
   });
   if (existing) return NextResponse.json({ success: true, creationId: existing.id, variants: existing.variants, idempotent: true });
 
+  /*
+   * REFRESH-DUPLICATE GUARD
+   *
+   * The idempotencyKey above only catches a retry of the *same* POST, because the
+   * client mints a fresh UUID per click. A page reload therefore defeats it
+   * entirely: the in-memory quote is lost, auto-preflight mints a NEW quote with
+   * a NEW key, and pressing Generate again starts a second, separately-billed
+   * generation of the identical request. The user sees one video's worth of work
+   * and pays twice.
+   *
+   * The request fingerprint is stable across that whole sequence -- it is a hash
+   * of the normalised request, computed server-side at preflight -- so it can
+   * recognise the resubmission that the key cannot.
+   *
+   * Deliberately scoped to creations that are still IN FLIGHT. A finished or
+   * failed generation must not block an identical re-run: wanting the same prompt
+   * again is a legitimate, common action, and the whole point of a generative
+   * model is that the same input yields a different output. Only work that is
+   * already running is treated as "you already asked for this".
+   */
+  if (quote.requestFingerprint) {
+    const inFlightDuplicate = await prisma.creation.findFirst({
+      where: {
+        workspaceId: quote.workspaceId,
+        userId: session.user.id,
+        status: { in: ["QUEUED", "PROCESSING"] },
+        quote: { requestFingerprint: quote.requestFingerprint },
+      },
+      include: { variants: true },
+      orderBy: { createdAt: "desc" },
+    });
+    if (inFlightDuplicate) {
+      return NextResponse.json({
+        success: true,
+        creationId: inFlightDuplicate.id,
+        variants: inFlightDuplicate.variants,
+        idempotent: true,
+        // Distinguishable from a plain key-match so the client can re-attach to
+        // the running generation instead of reporting a fresh submission.
+        deduplicatedBy: "REQUEST_FINGERPRINT",
+      });
+    }
+  }
+
   if (quote.consumedAt) {
     return NextResponse.json({ success: false, code: "QUOTE_ALREADY_CONSUMED", error: "This preflight quote has already been consumed" }, { status: 409 });
   }

@@ -16,7 +16,22 @@ test("eleven contract-proven image models are staging-only and provider-contract
   assert.equal(getImageModel("muapi.seedream-5-pro-t2i").endpoint, null);
   assert.equal(getImageModel("muapi.grok-imagine-t2i").providerCapabilities.output.expectedCount, 1);
   const staging = listImageModels({ DOOLPHIN_ENV: "staging", VERCEL_ENV: "preview" });
-  assert.equal(staging.filter((model) => model.available).length, 11);
+
+  // Image generation is restricted to the ONE image model the pricing document
+  // covers: OpenAI GPT Image 2 text-to-image. Every other definition stays in the
+  // registry so its id still resolves (a disabled model must report "not enabled"
+  // rather than "unknown"), but only the documented one may spend money.
+  const available = staging.filter((model) => model.available);
+  assert.deepEqual(
+    available.map((model) => model.id),
+    ["muapi.gpt-image-2-t2i"],
+    "only the pricing-document image model may be generatable",
+  );
+
+  // Notably NOT enabled: the GPT Image 2 edit endpoint. The document specifies
+  // only text-to-image, and enabling a model whose price surface is unverified is
+  // how unpriced spend happens.
+  assert.equal(staging.find((model) => model.id === "muapi.gpt-image-2-i2i").available, false);
   assert.equal(staging.find((model) => model.id === "muapi.seedream-5-pro-t2i").available, false);
   assert.equal(staging.find((model) => model.id === "muapi.grok-imagine-image-2").available, false);
   assert.equal(listImageModels({ VERCEL_ENV: "preview" }).every((model) => model.available === false), true);
