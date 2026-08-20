@@ -1,0 +1,92 @@
+/*
+ * Legal document typography — Terms, Privacy, Refund Policy.
+ *
+ * Long-form reading, so this diverges from the marketing pages on purpose: a
+ * single narrow measure, generous line height, and clear section hierarchy. Same
+ * brand tokens as everything else (cream canvas, ink text, Instrument Serif
+ * display), inherited from .landing-page in ../landing.css.
+ *
+ * These pages are read by people deciding whether to trust us with a payment.
+ * Legibility is the whole design goal.
+ */
+
+.legal-document {
+  width: min(760px, calc(100% - 48px));
+  margin: 0 auto;
+  padding: 76px 0 40px;
+}
+
+.legal-document h1 {
+  margin: 16px 0 40px;
+  font: 400 clamp(38px, 5.4vw, 66px) / 0.9 "Instrument Serif", Georgia, serif;
+  letter-spacing: -0.055em;
+}
+
+.legal-document h2 {
+  margin: 52px 0 0;
+  padding-top: 22px;
+  border-top: 1px solid var(--line);
+  font: 400 clamp(25px, 2.9vw, 33px) / 1.14 "Instrument Serif", Georgia, serif;
+  letter-spacing: -0.04em;
+}
+
+.legal-document h3 {
+  margin: 34px 0 0;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+}
+
+.legal-document p {
+  margin: 17px 0 0;
+  font-size: 15.5px;
+  line-height: 1.68;
+  color: #34332e;
+}
+
+/* The opening block (last-updated line and preamble) sits above the first
+   section rule and reads as lead-in copy. */
+.legal-document h1 + p {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #77746d;
+}
+
+.legal-document a {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  font-weight: 600;
+}
+
+.legal-document a:hover {
+  color: #3d3a52;
+}
+
+.legal-footer-note {
+  margin-top: 58px !important;
+  padding: 20px 22px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #f4f1e6;
+  font-size: 14px !important;
+}
+
+@media (max-width: 760px) {
+  .legal-document {
+    padding-top: 52px;
+  }
+
+  .legal-document h1 {
+    margin-bottom: 28px;
+  }
+
+  .legal-document h2 {
+    margin-top: 40px;
+  }
+
+  .legal-document p {
+    font-size: 15px;
+  }
+}

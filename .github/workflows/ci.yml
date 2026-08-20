@@ -61,6 +61,57 @@ jobs:
       # carries `if: always()` from here down so one failure does not hide the
       # others — a single run should tell you everything that is wrong, not just
       # the first thing.
+      # Reports which required secrets are configured WITHOUT ever printing a
+      # value. GitHub refuses to expose secret names over the API without admin
+      # scope, so this is the only safe way to confirm the integration
+      # credentials are actually in place before tests depend on them.
+      - name: Secret presence check
+        if: always()
+        env:
+          MUAPI_API_KEY: ${{ secrets.MUAPI_API_KEY }}
+          POLAR_SANDBOX_ACCESS_TOKEN: ${{ secrets.POLAR_SANDBOX_ACCESS_TOKEN }}
+          POLAR_SANDBOX_WEBHOOK_SECRET: ${{ secrets.POLAR_SANDBOX_WEBHOOK_SECRET }}
+          POLAR_SANDBOX_PRODUCT_EXPLORER: ${{ secrets.POLAR_SANDBOX_PRODUCT_EXPLORER }}
+          POLAR_SANDBOX_PRODUCT_STARTER_MONTHLY: ${{ secrets.POLAR_SANDBOX_PRODUCT_STARTER_MONTHLY }}
+          POLAR_SANDBOX_PRODUCT_STARTER_ANNUAL: ${{ secrets.POLAR_SANDBOX_PRODUCT_STARTER_ANNUAL }}
+          POLAR_SANDBOX_PRODUCT_GROWTH_MONTHLY: ${{ secrets.POLAR_SANDBOX_PRODUCT_GROWTH_MONTHLY }}
+          POLAR_SANDBOX_PRODUCT_GROWTH_ANNUAL: ${{ secrets.POLAR_SANDBOX_PRODUCT_GROWTH_ANNUAL }}
+          POLAR_SANDBOX_PRODUCT_AGENCY_MONTHLY: ${{ secrets.POLAR_SANDBOX_PRODUCT_AGENCY_MONTHLY }}
+          POLAR_SANDBOX_PRODUCT_AGENCY_ANNUAL: ${{ secrets.POLAR_SANDBOX_PRODUCT_AGENCY_ANNUAL }}
+          TEST_SUPABASE_URL: ${{ secrets.TEST_SUPABASE_URL }}
+          TEST_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.TEST_SUPABASE_PUBLISHABLE_KEY }}
+          TEST_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.TEST_SUPABASE_SERVICE_ROLE_KEY }}
+          TEST_DATABASE_URL: ${{ secrets.TEST_DATABASE_URL }}
+          TEST_DIRECT_URL: ${{ secrets.TEST_DIRECT_URL }}
+        run: |
+          missing=0
+          for name in MUAPI_API_KEY \
+            POLAR_SANDBOX_ACCESS_TOKEN POLAR_SANDBOX_WEBHOOK_SECRET \
+            POLAR_SANDBOX_PRODUCT_EXPLORER \
+            POLAR_SANDBOX_PRODUCT_STARTER_MONTHLY POLAR_SANDBOX_PRODUCT_STARTER_ANNUAL \
+            POLAR_SANDBOX_PRODUCT_GROWTH_MONTHLY POLAR_SANDBOX_PRODUCT_GROWTH_ANNUAL \
+            POLAR_SANDBOX_PRODUCT_AGENCY_MONTHLY POLAR_SANDBOX_PRODUCT_AGENCY_ANNUAL \
+            TEST_SUPABASE_URL TEST_SUPABASE_PUBLISHABLE_KEY TEST_SUPABASE_SERVICE_ROLE_KEY \
+            TEST_DATABASE_URL TEST_DIRECT_URL; do
+            if [ -n "${!name}" ]; then
+              echo "  present  $name"
+            else
+              echo "  MISSING  $name"
+              missing=$((missing+1))
+            fi
+          done
+          echo "----"
+          echo "missing: $missing"
+          # Reported, never enforced. The rest of the pipeline must stay green for
+          # contributors and forks that legitimately have no integration secrets.
+          exit 0
+
+      # The launch gate for billing. Fails while any legal document still contains
+      # unapproved placeholder copy, which is what must never reach a payment page.
+      - name: Legal document guard
+        if: always()
+        run: node scripts/check-legal-placeholders.mjs
+
       - name: Prisma schema validate
         if: always()
         run: npx prisma validate

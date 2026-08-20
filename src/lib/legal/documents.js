@@ -1,9 +1,38 @@
 import crypto from "crypto";
-export const LEGAL_PLACEHOLDER = /\[(?:Effective Date|Last Updated Date|Full Legal Entity Name)\]|PENDING_APPROVED_LEGAL_COPY/;
+import { TERMS_CONTENT } from "./terms.js";
+import { PRIVACY_CONTENT } from "./privacy.js";
+import { REFUND_CONTENT } from "./refund.js";
+
+/**
+ * Guard against unapproved legal copy reaching production.
+ *
+ * scripts/check-legal-placeholders.mjs exits non-zero while any document still
+ * matches this pattern, which is what previously — and correctly — blocked
+ * production billing: the Refund Policy was the literal string
+ * PENDING_APPROVED_LEGAL_COPY.
+ *
+ * All three documents are now approved copy for Doolphin Pvt Ltd. Keep the guard.
+ * If a document is ever revised back to a draft, restore the placeholder rather
+ * than shipping half-written terms, and bump the version (see below).
+ */
+export const LEGAL_PLACEHOLDER = /\[(?:Effective Date|Last Updated Date|Full Legal Entity Name|Legal Entity Name|Registered Address|Support Email|Privacy Email|Billing Email|Grievance Email|Full Name)\]|PENDING_APPROVED_LEGAL_COPY/;
+
+/**
+ * `version` is the consent identifier recorded against a user in LegalConsent
+ * (as `legal_terms_v1` / `legal_privacy_v1`, see src/lib/auth/verification-flow.js).
+ *
+ * These remain v1 because this is the FIRST approved text — the previous v1 was
+ * explicitly marked as unapproved draft/placeholder copy that the launch guard
+ * refused to ship, so no user has consented to a different approved version.
+ * Any future material revision MUST increment the version and update the consent
+ * list, otherwise existing consent records would silently appear to cover terms
+ * the user never saw.
+ */
 export const LEGAL_DOCUMENTS = {
-  terms: { title: "Doolphin Terms of Service", version: "v1", content: `Effective Date: [Effective Date]\n\nLast Updated: [Last Updated Date]\n\nThese Terms of Service are between you and [Full Legal Entity Name], operating Doolphin. By creating an account, purchasing a subscription, accessing Doolphin, or using the Services, you agree to these Terms and our Privacy Policy.\n\nDoolphin provides AI-powered media creation. You are responsible for reviewing output and for holding all rights, permissions, and consents for material you submit. AI output can be inaccurate, non-unique, or unsuitable for a particular purpose.`, },
-  privacy: { title: "Doolphin Privacy Policy", version: "v1", content: `Effective Date: [Effective Date]\n\nLast Updated: [Last Updated Date]\n\nDoolphin processes account information, billing information, User Content, generated Output, communications, and technical and usage information to provide, secure, and improve the Services. Doolphin does not use private User Content to train its own generative AI models.\n\nAI functionality may use specialist third-party providers only as necessary to fulfil a requested generation. Uploaded files and output may be retained temporarily for processing, delivery, security, and lawful recordkeeping.`, },
-  refund: { title: "Doolphin Refund Policy", version: "v1", content: "PENDING_APPROVED_LEGAL_COPY" },
+  terms: { title: "Doolphin Terms of Service", version: "v1", content: TERMS_CONTENT },
+  privacy: { title: "Doolphin Privacy Policy", version: "v1", content: PRIVACY_CONTENT },
+  refund: { title: "Doolphin Refund and Cancellation Policy", version: "v1", content: REFUND_CONTENT },
 };
+
 export const legalHash = (key) => crypto.createHash("sha256").update(LEGAL_DOCUMENTS[key].content).digest("hex");
 export const hasUnresolvedLegalPlaceholders = () => Object.values(LEGAL_DOCUMENTS).some((doc) => LEGAL_PLACEHOLDER.test(doc.content));
