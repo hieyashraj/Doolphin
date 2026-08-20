@@ -12,6 +12,7 @@ import { mapValidatedStudioWorkflowToNormalizedInvocation } from "@/lib/models/b
 import { resolveTrustedApplicationOrigin } from "@/lib/models/bridges/applicationOrigin.js";
 import { prepareExecutionPlan } from "@/lib/models/execution/prepareExecutionPlan.js";
 import { ERROR_CODES } from "@/lib/models/errors.js";
+import { assertRequestWithinPlan } from "@/lib/entitlements/planCapabilities.js";
 import { assertProviderAssetsAreFetchable } from "@/lib/generation/assetReachability.js";
 
 function safeModelSnapshot(model) {
@@ -32,7 +33,10 @@ function safeModelSnapshot(model) {
 }
 
 async function handlePreflight(req) {
-  let session; try { const { appUser } = await requireActivatedAccount(); session = { user: { id: appUser.id } }; } catch (error) { return NextResponse.json({ success: false, code: error.code || "UNAUTHORIZED", error: "Activation required" }, { status: error.status || 401 }); }
+  // The buyer's plan is captured here so its capability caps can be enforced
+  // further down, once the request has been normalised and its resolution and
+  // duration are known.
+  let session; let planCode = null; try { const { appUser, entitlement } = await requireActivatedAccount(); session = { user: { id: appUser.id } }; planCode = entitlement?.planCode ?? null; } catch (error) { return NextResponse.json({ success: false, code: error.code || "UNAUTHORIZED", error: "Activation required" }, { status: error.status || 401 }); }
 
   let body;
   try {
@@ -107,6 +111,37 @@ async function handlePreflight(req) {
   }
 
   const { request, model, estimatedSpeechSeconds } = validation;
+
+  /*
+   * Plan capability caps.
+   *
+   * Checked here -- after contract validation, before any provider call -- so a
+   * rejected request costs nothing and the message can name the actual limit.
+   *
+   * This is a product boundary, not a financial one: the margin invariant never
+   * depended on it, and an unaffordable request is already refused at credit
+   * reservation. Enforcing it is what makes the pricing page's tiering true.
+   */
+  const planCheck = assertRequestWithinPlan({
+    planCode,
+    resolution: request.settings?.resolution ?? null,
+    durationSeconds: request.settings?.durationSeconds ?? null,
+  });
+  if (!planCheck.ok) {
+    return NextResponse.json({
+      success: false,
+      code: planCheck.code,
+      error: planCheck.reason,
+      // Enough detail for the UI to offer an upgrade or preselect a permitted
+      // option, rather than just showing a refusal.
+      planName: planCheck.planName,
+      maxResolution: planCheck.maxResolution ?? null,
+      maxDurationSeconds: planCheck.maxDurationSeconds ?? null,
+      allowedResolutions: planCheck.allowedResolutions ?? null,
+      upgradeRequired: true,
+    }, { status: 402 });
+  }
+
   const compiled = compileCanonicalPrompt(request);
   const webhookBase = process.env.WEBHOOK_URL || process.env.NEXTAUTH_URL;
   if (!webhookBase?.startsWith("https://") && process.env.NODE_ENV === "production") {
