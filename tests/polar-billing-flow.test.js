@@ -248,31 +248,60 @@ function mockHeader(id) {
   return { get: (k) => (k === "webhook-id" ? id : null) };
 }
 
-test("ENVIRONMENT RESOLVER: rejects contradictory & missing environments (fails closed)", () => {
-  const origPolar = process.env.POLAR_ENV;
-  const origDoolphin = process.env.DOOLPHIN_ENV;
-  const origVercel = process.env.VERCEL_ENV;
+test("ENVIRONMENT RESOLVER: auto-detects tier from VERCEL_ENV, accepts either naming, and fails closed", () => {
+  // Snapshot and clear every variable the resolver reads so the cases are hermetic.
+  const snapshot = Object.fromEntries(
+    Object.keys(process.env)
+      .filter((k) => k.startsWith("POLAR") || k === "VERCEL_ENV" || k === "DOOLPHIN_ENV")
+      .map((k) => [k, process.env[k]])
+  );
+  // Re-scan every call so a var set by one case cannot leak into the next.
+  const reset = () => {
+    for (const k of Object.keys(process.env)) {
+      if (k.startsWith("POLAR") || k === "VERCEL_ENV" || k === "DOOLPHIN_ENV") delete process.env[k];
+    }
+  };
 
-  delete process.env.POLAR_ENV;
-  delete process.env.DOOLPHIN_ENV;
-  delete process.env.VERCEL_ENV;
+  // 1. No credentials at all -> fail closed, never silently "on".
+  reset();
+  assert.throws(() => getPolarConfig(), /credentials incomplete/);
 
-  assert.throws(() => getPolarConfig(), /Ambiguous or unconfigured/);
+  // 2. Non-production (no VERCEL_ENV) + tier-specific sandbox creds -> sandbox,
+  //    with NO DOOLPHIN_ENV / POLAR_ENV flags required.
+  reset();
+  process.env.POLAR_SANDBOX_ACCESS_TOKEN = "polar_sbx_tok";
+  process.env.POLAR_SANDBOX_WEBHOOK_SECRET = "whsec_sbx";
+  let cfg = getPolarConfig();
+  assert.equal(cfg.env, "sandbox");
+  assert.equal(cfg.baseUrl, "https://sandbox-api.polar.sh");
 
-  // Contradictory: DOOLPHIN_ENV=staging + POLAR_ENV=production
-  process.env.DOOLPHIN_ENV = "staging";
-  process.env.POLAR_ENV = "production";
-  assert.throws(() => getPolarConfig(), /Ambiguous or unconfigured/);
+  // 3. The generic POLAR_* names work too (whatever the user already added).
+  reset();
+  process.env.POLAR_ACCESS_TOKEN = "polar_generic_tok";
+  process.env.POLAR_WEBHOOK_SECRET = "whsec_generic";
+  cfg = getPolarConfig();
+  assert.equal(cfg.env, "sandbox");
+  assert.equal(cfg.token, "polar_generic_tok");
 
-  // Contradictory: DOOLPHIN_ENV=production + VERCEL_ENV=preview
-  process.env.DOOLPHIN_ENV = "production";
-  process.env.POLAR_ENV = "production";
-  process.env.VERCEL_ENV = "preview";
-  assert.throws(() => getPolarConfig(), /Ambiguous or unconfigured/);
+  // 4. Production deployment with ONLY sandbox creds -> still fails closed, so
+  //    sandbox billing can never run on the live domain.
+  reset();
+  process.env.VERCEL_ENV = "production";
+  process.env.POLAR_SANDBOX_ACCESS_TOKEN = "polar_sbx_tok";
+  process.env.POLAR_SANDBOX_WEBHOOK_SECRET = "whsec_sbx";
+  assert.throws(() => getPolarConfig(), /credentials incomplete/);
 
-  if (origPolar) process.env.POLAR_ENV = origPolar; else delete process.env.POLAR_ENV;
-  if (origDoolphin) process.env.DOOLPHIN_ENV = origDoolphin; else delete process.env.DOOLPHIN_ENV;
-  if (origVercel) process.env.VERCEL_ENV = origVercel; else delete process.env.VERCEL_ENV;
+  // 5. Production with production creds -> live config.
+  reset();
+  process.env.VERCEL_ENV = "production";
+  process.env.POLAR_PRODUCTION_ACCESS_TOKEN = "polar_prod_tok";
+  process.env.POLAR_PRODUCTION_WEBHOOK_SECRET = "whsec_prod";
+  cfg = getPolarConfig();
+  assert.equal(cfg.env, "production");
+  assert.equal(cfg.baseUrl, "https://api.polar.sh");
+
+  reset();
+  for (const [k, v] of Object.entries(snapshot)) if (v !== undefined) process.env[k] = v;
 });
 
 test("METADATA FINANCIAL FALLBACK REMOVAL (4 Explicit Scenarios)", async () => {
