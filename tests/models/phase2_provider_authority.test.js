@@ -273,14 +273,13 @@ test("Phase 2 Provider Authority: Cost estimation uses canonical model.toProvide
 
   // Prove provider cost ($0.32) was fed into pricingIntegration.js commercial pricing
   assert.equal(quote.providerCostMicroUsd, "320000");
-  // CREDIT UNIT: pricing revision 2026-08-credit-rescale-v2 rescaled the credit from
-  // $0.021 to $0.005 of cost allowance, so the same $0.325 fully-loaded cost now
-  // quotes 4.2x more credits. Previously asserted 20.
+  // CREDIT UNIT: revision 2026-08-credit-value-v3, 1 credit = $0.025 of cost
+  // allowance. The same $0.325 fully-loaded cost quotes:
   //   $0.32 provider + $0.005 infra = 325_000 microUSD
-  //   ceil(325_000 / 5_000) = 65 -> rounded up to a multiple of 5 = 70 credits
-  assert.equal(quote.totalCredits, 70);
+  //   ceil(325_000 / 25_000) = 13 -> rounded up to a multiple of 5 = 15 credits
+  assert.equal(quote.totalCredits, 15);
   assert.ok(
-    quote.totalCredits * 5_000 >= Number(quote.fullyLoadedCostMicroUsd),
+    quote.totalCredits * 25_000 >= Number(quote.fullyLoadedCostMicroUsd),
     "credits quoted must always cover the fully-loaded cost at the ceiling"
   );
 });

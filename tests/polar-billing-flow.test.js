@@ -9,17 +9,17 @@ const { annualPeriods, materializeAnnualGrantSchedule, processDueGrantSchedules 
 const { PLANS } = await import("../src/lib/entitlements/pricing.js");
 
 /**
- * CREDIT AMOUNTS IN THIS SUITE — pricing revision 2026-08-credit-rescale-v2.
+ * CREDIT AMOUNTS IN THIS SUITE — pricing revision 2026-08-credit-value-v3.
  *
- * The credit UNIT was deliberately rescaled from $0.021 to $0.005 of fully-loaded
- * cost allowance (PRICING_REVISION.maxFullyLoadedCostPerCreditMicroUsd = 5_000 in
- * src/lib/entitlements/pricing.js). Identical economics, 4.2x more credits per
- * dollar, so every plan allowance grew: STARTER 700 -> 2,500, GROWTH 1,900 -> 7,000,
- * AGENCY 4,300 -> 16,000, EXPLORER 50 -> 200+.
+ * Grant amounts are read from PLANS[code].credits (see below), so this suite
+ * follows the catalog automatically across a repricing. At v3 the allowances are
+ * STARTER 500, GROWTH 1,300, AGENCY 3,000, EXPLORER 40 — 1 credit = $0.025 of
+ * fully-loaded cost (PRICING_REVISION.maxFullyLoadedCostPerCreditMicroUsd = 25_000).
  *
- * Commit 7758eb4 rewrote src/lib/entitlements/plan-catalog.js but left this file
- * asserting the pre-rescale allowances (100 seeded + 700 = 800, etc.), so the
- * balance assertions were stale — not evidence of a grant bug.
+ * The SEEDED_BALANCE below is a MOCK's arbitrary starting balance used to test
+ * grant DELTAS; it is not the production seed (a real new workspace starts at 0,
+ * see CreditEscrowService). What this suite proves is the grant lifecycle, not
+ * the seed value.
  *
  * WHY THE ALLOWANCE IS NOW READ FROM THE CATALOG RATHER THAN RE-TYPED HERE:
  * this suite's subject is the GRANT LIFECYCLE — that a webhook grants the plan the

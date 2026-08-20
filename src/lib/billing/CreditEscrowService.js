@@ -84,12 +84,19 @@ export class CreditEscrowService {
         },
       });
 
+      // A new workspace starts with ZERO spendable credits. Credits are only
+      // ever created by a purchase or a plan grant, so revenue is always booked
+      // before generation capacity exists — the app cannot give away paid work.
+      // This previously seeded 100 free credits (~$2.50 of generation under the
+      // v3 unit) on every workspace, which contradicted the "no free tier" model
+      // and eroded margin on every account. The schema column default is
+      // irrelevant here because these values are always set explicitly.
       const creditAccount = await tx.creditAccount.create({
         data: {
           workspaceId: workspace.id,
-          availableCredits: 100,
+          availableCredits: 0,
           reservedCredits: 0,
-          lifetimeIssuedCredits: 100,
+          lifetimeIssuedCredits: 0,
         },
       });
 

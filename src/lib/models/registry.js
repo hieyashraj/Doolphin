@@ -108,7 +108,7 @@ export async function getModel(modelId, { fetchImpl, env = process.env, forceRef
       businessPolicy: {
         targetContributionMarginBps: 3000,
         variableInfraCostMicroUsd: 10000n,
-        minimumCredits: 5,
+        minimumCredits: 1,
       },
       toProviderPayload(input) {
         return { prompt: input.prompt };

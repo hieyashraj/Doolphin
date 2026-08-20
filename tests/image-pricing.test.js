@@ -4,12 +4,10 @@ import { getImageModel } from "../src/lib/generation-models/imageRegistry.js";
 import { calculateImageQuote } from "../src/lib/generation-models/imagePricing.js";
 import { PRICING_REVISION } from "../src/lib/entitlements/pricing.js";
 
-// Credit expectations below are stated at revision 2026-08-credit-rescale-v2
-// ($0.005 of fully-loaded cost per credit). They previously encoded the retired
-// $0.021/credit scale, which made every assertion 4.2x too low — the engine was
-// right and these numbers were stale. Rather than hardcode a magic total, each
-// case also asserts the invariant that credits always COVER the loaded cost, so a
-// future rescale cannot silently make a generation loss-making.
+// Credit expectations below are stated at revision 2026-08-credit-value-v3
+// ($0.025 of fully-loaded cost per credit). Rather than hardcode a magic total,
+// each case also asserts the invariant that credits always COVER the loaded cost,
+// so a future rescale cannot silently make a generation loss-making.
 const CEILING = Number(PRICING_REVISION.maxFullyLoadedCostPerCreditMicroUsd);
 
 function assertCoversCost(quote) {
@@ -26,16 +24,16 @@ test("image quotes include the approved one-cent delivery reserve and round upwa
   assert.equal(quote.estimatedProviderCostMicroUsd, "30000");
   assert.equal(quote.internalCostReserveMicroUsd, "10000");
   assert.equal(quote.fullyLoadedCostMicroUsd, "40000");
-  // 40000 / 5000 = 8 raw credits, rounded up to the nearest 5.
-  assert.equal(quote.totalCredits, 10);
+  // 40000 / 25000 = 2 raw credits, rounded up to the nearest 5.
+  assert.equal(quote.totalCredits, 5);
   assertCoversCost(quote);
 });
 
-test("Nano Banana Pro 4K is conservatively quoted at forty credits", () => {
+test("Nano Banana Pro 4K is conservatively quoted at ten credits", () => {
   const quote = calculateImageQuote(getImageModel("muapi.nano-banana-pro-t2i"), { outputResolution: "4K" });
   assert.equal(quote.estimatedProviderCostMicroUsd, "180000");
-  // 180000 provider + 10000 reserve = 190000 -> 38 raw -> 40.
-  assert.equal(quote.totalCredits, 40);
+  // 180000 provider + 10000 reserve = 190000 -> ceil(/25000) = 8 -> round to 10.
+  assert.equal(quote.totalCredits, 10);
   assertCoversCost(quote);
 });
 
@@ -45,8 +43,8 @@ test("Seedream v4 keeps one atomic charge while delivery reserve tracks requeste
   assert.equal(quote.estimatedProviderCostMicroUsd, "40000");
   assert.equal(quote.internalCostReserveMicroUsd, "40000");
   assert.equal(quote.expectedOutputCount, 4);
-  // Provider bills once for 1-4 outputs, but delivery cost scales: 80000 -> 16 -> 20.
-  assert.equal(quote.totalCredits, 20);
+  // Provider bills once for 1-4 outputs, but delivery cost scales: 80000 -> ceil(/25000)=4 -> 5.
+  assert.equal(quote.totalCredits, 5);
   assertCoversCost(quote);
 });
 

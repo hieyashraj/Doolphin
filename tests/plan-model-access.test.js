@@ -71,13 +71,13 @@ test("an explicit catalog family value is honoured even when the id is opaque", 
 // ---------------------------------------------------------------------------
 
 test("advertised videos-per-plan is floored and consistent with the credit allowance", () => {
-  assert.equal(STANDARD_VIDEO_CREDITS, 155, "a standard 5s 720p Seedance 2 Omni Fast generation costs 155 credits");
-  assert.equal(standardVideosFor(220), 1);
-  assert.equal(standardVideosFor(2500), 16);
-  assert.equal(standardVideosFor(7000), 45);
-  assert.equal(standardVideosFor(16000), 103);
-  // Never round up: 309 credits is one video, not two.
-  assert.equal(standardVideosFor(309), 1);
+  assert.equal(STANDARD_VIDEO_CREDITS, 35, "a standard 5s 720p Seedance 2 Omni Fast generation costs 35 credits");
+  assert.equal(standardVideosFor(40), 1);
+  assert.equal(standardVideosFor(500), 14);
+  assert.equal(standardVideosFor(1300), 37);
+  assert.equal(standardVideosFor(3000), 85);
+  // Never round up: 69 credits is one video, not two.
+  assert.equal(standardVideosFor(69), 1);
 });
 
 test("no plan advertises seats, workspaces, or a resolution or duration ceiling", () => {

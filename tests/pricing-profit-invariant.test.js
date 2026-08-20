@@ -53,7 +53,7 @@ test("INVARIANT: for ANY provider cost, credits charged always cover cost at tar
   // far beyond the most expensive real generation (30s 4K Seedance ~ $15).
   // This is what makes the guarantee model-agnostic and future-model-proof.
   const costsMicroUsd = [
-    1n, 5n, 999n, 1_000n, 4_999n, 5_000n, 5_001n,
+    1n, 5n, 999n, 1_000n, 4_999n, 5_000n, 5_001n, 24_999n, 25_000n, 25_001n,
     48_380n,        // 1s Seedance 2 Omni
     241_900n,       // 5s Seedance 2 Omni
     514_000n,       // 5s Seedance 2.5 480p
@@ -216,9 +216,9 @@ test("payment processing fees never exceed plan price (no negative-revenue plan)
 
   // The subtler and more dangerous trap: a competitor-style "$1 for 90 credits"
   // offer. Polar's fee does NOT exceed $1 (fee = $0.55, net = $0.45), so it
-  // looks viable — but $0.45 across 90 credits is exactly $0.005/credit, which
-  // equals the cost ceiling and therefore yields ZERO margin. It must fail the
-  // floor check. This is why Explorer is priced at $2.99/200cr, not $1/90cr.
+  // looks viable — but $0.45 across 90 credits is $0.005/credit, far below the
+  // $0.025 cost ceiling, so it is deeply loss-making. It must fail the floor
+  // check. This is why Explorer is priced at $2.99/40cr, not $1/90cr.
   const dollarPlanPerCredit = netRevenuePerCreditMicroUsd({ code: "HYPOTHETICAL_1_DOLLAR", priceMicroUsd: 1_000_000, credits: 90, termMonths: 1 });
   assert.ok(
     dollarPlanPerCredit < NET_FLOOR,
@@ -251,16 +251,30 @@ test("plan catalog and pricing engine agree, and all purchasable codes exist", (
 });
 
 test("credit values reflect the rescaled unit (regression guard against silent reversion)", () => {
-  assert.equal(COST_CEILING, 5_000n, "cost ceiling must be $0.005/credit for revision 2026-08-credit-rescale-v2");
-  assert.equal(PRICING_REVISION.id, "2026-08-credit-rescale-v2");
-  // Explorer is 220, not 200: raised to the largest allowance that still clears
-  // the revenue floor once Polar's fixed $0.50 fee is taken off a $2.99 charge.
-  // 320 was tried and reverted — it netted 7314 microUSD/credit against the
-  // 10500 floor. The floor test above is what proves this number is safe.
-  assert.equal(PLAN_BY_CODE.EXPLORER.credits, 220);
-  assert.equal(PLAN_BY_CODE.STARTER_MONTHLY.credits, 2500);
-  assert.equal(PLAN_BY_CODE.GROWTH_MONTHLY.credits, 7000);
-  assert.equal(PLAN_BY_CODE.AGENCY_MONTHLY.credits, 16000);
+  assert.equal(COST_CEILING, 25_000n, "cost ceiling must be $0.025/credit for revision 2026-08-credit-value-v3");
+  assert.equal(PRICING_REVISION.id, "2026-08-credit-value-v3");
+  // v3 credit counts: enlarged 5x from v2 so plan totals read like the category
+  // (Agency 3,000 = Higgsfield's top tier) and a standard video is 35 credits.
+  // Explorer is 40 — the largest allowance that still clears the $0.052 revenue
+  // floor once Polar's fixed $0.50 fee is taken off $2.99. The floor test above
+  // is what proves these numbers are safe; this pins them against silent drift.
+  assert.equal(PLAN_BY_CODE.EXPLORER.credits, 40);
+  assert.equal(PLAN_BY_CODE.STARTER_MONTHLY.credits, 500);
+  assert.equal(PLAN_BY_CODE.GROWTH_MONTHLY.credits, 1300);
+  assert.equal(PLAN_BY_CODE.AGENCY_MONTHLY.credits, 3000);
+});
+
+test("PROFIT GUARD: a new workspace is seeded with zero spendable credits", () => {
+  // Credits must only ever come from a purchase or a plan grant, so revenue is
+  // always booked before generation capacity exists. A regression here (seeding
+  // free credits on account creation) gives away paid work on every signup.
+  const src = fs.readFileSync(new URL("../src/lib/billing/CreditEscrowService.js", import.meta.url), "utf8");
+  assert.match(src, /availableCredits: 0/, "new credit account must seed availableCredits: 0");
+  assert.match(src, /lifetimeIssuedCredits: 0/, "new credit account must seed lifetimeIssuedCredits: 0");
+  assert.ok(
+    !/availableCredits: [1-9]/.test(src),
+    "a new workspace must not be seeded with any free spendable credits"
+  );
 });
 
 // ---------------------------------------------------------------------------

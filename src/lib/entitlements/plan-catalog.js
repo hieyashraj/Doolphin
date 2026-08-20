@@ -16,8 +16,11 @@
 // actually do while pretending to be a restriction. Both are gone rather than
 // implemented: the product is stronger if every paying plan can use everything.
 //
-// CREDIT VALUES: revision 2026-08-credit-rescale-v2. 1 credit represents
-// $0.005 of fully-loaded (provider + variable infra) cost allowance. See
+// CREDIT VALUES: revision 2026-08-credit-value-v3. 1 credit represents
+// $0.025 of fully-loaded (provider + variable infra) cost allowance, i.e. about
+// $0.06 of customer list value. The unit was enlarged 5x from v2 purely so the
+// numbers read like the category (Starter 500, Agency 3,000) instead of the
+// 5-digit counts a $0.005 unit produced — identical economics. See
 // src/lib/entitlements/pricing.js for the profit invariant these must satisfy,
 // tests/pricing-profit-invariant.test.js for the executable proof, and
 // scripts/analyze-plan-economics.mjs to print margins and videos-per-plan.
@@ -30,8 +33,8 @@
 // Worst-case margin (customer burns 100% of credits on the most expensive
 // generation the cost ceiling permits), after Polar's 5% + $0.50 fee, over the
 // FULL billing term. Printed by scripts/analyze-plan-economics.mjs:
-//   Explorer 53.0% | Starter 53.8% | Growth 53.1% | Agency 52.8%
-//   Starter annual 43.2% | Growth annual 41.7% | Agency annual 41.2%
+//   Explorer 57.3% | Starter 53.8% | Growth 56.4% | Agency 55.8%
+//   Starter annual 43.2% | Growth annual 45.8% | Agency annual 44.9%
 //
 // `videoSlots` is the number of video generations a workspace may have IN FLIGHT
 // at once. It is an ENFORCED runtime limit: assertVideoSlotAvailable in
@@ -46,8 +49,8 @@
  *
  * Derivation, all of it verifiable: MuAPI's catalog base for that model is
  * $0.75, the model definition reserves $0.020 of variable infra, and
- * calculateRequiredCredits converts $0.770 at $0.005/credit to 154 credits,
- * rounded up to the nearest 5 = 155.
+ * calculateRequiredCredits converts $0.770 at the $0.025/credit ceiling to 31
+ * credits, rounded up to the nearest 5 = 35.
  *
  * This exists as ONE exported constant because the pricing page previously
  * hardcoded 30 credits per video and the feature bullets independently claimed
@@ -59,7 +62,7 @@
  * multiple outputs cost more. The authoritative number is always the live quote
  * shown on the generate button before anything is charged.
  */
-export const STANDARD_VIDEO_CREDITS = 155;
+export const STANDARD_VIDEO_CREDITS = 35;
 
 /** How many standard videos a credit allowance buys, floored — never rounded up. */
 export function standardVideosFor(credits) {
@@ -88,17 +91,16 @@ export const RESTRICTED_MODEL_FAMILIES = Object.freeze({
 export const APPROVED_PLANS = Object.freeze([
   // Explorer's allowance is capped by Polar's FIXED $0.50 fee, not by generosity.
   // On a $2.99 charge the 5% + $0.50 fee takes ~22%, leaving $2.34 net, so the
-  // most credits that still clear the $0.0105 revenue floor is 222. 220 is the
-  // round number under that. Raising it to 320 (a nicer "2 videos" story) was
-  // tried and rejected: it netted $0.0073/credit, breaching the floor and cutting
-  // worst-case margin to 31%. The floor is not negotiable for a nicer headline.
-  { code: "EXPLORER", name: "Explorer", price: "$2.99", priceMicroUsd: 2_990_000, credits: 220, interval: "ONE_TIME", cadence: "One-time", termMonths: 1, videoSlots: 1 },
-  { code: "STARTER_MONTHLY", name: "Starter", price: "$29/month", priceMicroUsd: 29_000_000, credits: 2500, interval: "MONTHLY", cadence: "Monthly", termMonths: 1, videoSlots: 1 },
-  { code: "STARTER_ANNUAL", name: "Starter", price: "$278.40/year", priceMicroUsd: 278_400_000, credits: 2500, interval: "ANNUAL", cadence: "2,500 credits granted monthly", termMonths: 12, videoSlots: 1 },
-  { code: "GROWTH_MONTHLY", name: "Growth", price: "$79/month", priceMicroUsd: 79_000_000, credits: 7000, interval: "MONTHLY", cadence: "Monthly", termMonths: 1, videoSlots: 4 },
-  { code: "GROWTH_ANNUAL", name: "Growth", price: "$758.40/year", priceMicroUsd: 758_400_000, credits: 7000, interval: "ANNUAL", cadence: "7,000 credits granted monthly", termMonths: 12, videoSlots: 4 },
-  { code: "AGENCY_MONTHLY", name: "Agency", price: "$179/month", priceMicroUsd: 179_000_000, credits: 16000, interval: "MONTHLY", cadence: "Monthly", termMonths: 1, videoSlots: 4 },
-  { code: "AGENCY_ANNUAL", name: "Agency", price: "$1,718.40/year", priceMicroUsd: 1_718_400_000, credits: 16000, interval: "ANNUAL", cadence: "16,000 credits granted monthly", termMonths: 12, videoSlots: 4 },
+  // most credits that still clear the $0.052 revenue floor is 45. 40 is the round
+  // number under that, with headroom. The floor is not negotiable for a nicer
+  // headline — a bigger Explorer allowance was rejected in v2 for breaching it.
+  { code: "EXPLORER", name: "Explorer", price: "$2.99", priceMicroUsd: 2_990_000, credits: 40, interval: "ONE_TIME", cadence: "One-time", termMonths: 1, videoSlots: 1 },
+  { code: "STARTER_MONTHLY", name: "Starter", price: "$29/month", priceMicroUsd: 29_000_000, credits: 500, interval: "MONTHLY", cadence: "Monthly", termMonths: 1, videoSlots: 1 },
+  { code: "STARTER_ANNUAL", name: "Starter", price: "$278.40/year", priceMicroUsd: 278_400_000, credits: 500, interval: "ANNUAL", cadence: "500 credits granted monthly", termMonths: 12, videoSlots: 1 },
+  { code: "GROWTH_MONTHLY", name: "Growth", price: "$79/month", priceMicroUsd: 79_000_000, credits: 1300, interval: "MONTHLY", cadence: "Monthly", termMonths: 1, videoSlots: 4 },
+  { code: "GROWTH_ANNUAL", name: "Growth", price: "$758.40/year", priceMicroUsd: 758_400_000, credits: 1300, interval: "ANNUAL", cadence: "1,300 credits granted monthly", termMonths: 12, videoSlots: 4 },
+  { code: "AGENCY_MONTHLY", name: "Agency", price: "$179/month", priceMicroUsd: 179_000_000, credits: 3000, interval: "MONTHLY", cadence: "Monthly", termMonths: 1, videoSlots: 4 },
+  { code: "AGENCY_ANNUAL", name: "Agency", price: "$1,718.40/year", priceMicroUsd: 1_718_400_000, credits: 3000, interval: "ANNUAL", cadence: "3,000 credits granted monthly", termMonths: 12, videoSlots: 4 },
 ]);
 
 export const PLAN_BY_CODE = Object.freeze(Object.fromEntries(APPROVED_PLANS.map((plan) => [plan.code, plan])));
@@ -158,7 +160,7 @@ export const PLAN_FEATURES = Object.freeze({
   Explorer: Object.freeze({
     inherits: null,
     items: Object.freeze([
-      { label: "220 credits", detail: "one standard video plus a few images" },
+      { label: "40 credits", detail: "about one standard video" },
       { label: "1 video generating at a time" },
       { label: "Every studio", detail: "Video, Product, App and Image" },
       { label: "Full commercial rights to everything you make" },
@@ -169,7 +171,7 @@ export const PLAN_FEATURES = Object.freeze({
   Starter: Object.freeze({
     inherits: null,
     items: Object.freeze([
-      { label: "2,500 credits a month", detail: "about 16 standard videos" },
+      { label: "500 credits a month", detail: "about 14 standard videos" },
       { label: "Every AI model", detail: "including Seedance 2.5 — nothing held back" },
       { label: "Any resolution and clip length the model supports", detail: "no plan-level cap" },
       { label: "All four studios", detail: "Video, Product, App and Image" },
@@ -182,14 +184,14 @@ export const PLAN_FEATURES = Object.freeze({
   Growth: Object.freeze({
     inherits: "Starter",
     items: Object.freeze([
-      { label: "7,000 credits a month", detail: "about 45 standard videos" },
+      { label: "1,300 credits a month", detail: "about 37 standard videos" },
       { label: "4 videos generating at once", detail: "4x the throughput" },
     ]),
   }),
   Agency: Object.freeze({
     inherits: "Growth",
     items: Object.freeze([
-      { label: "16,000 credits a month", detail: "about 103 standard videos" },
+      { label: "3,000 credits a month", detail: "about 85 standard videos" },
       { label: "Priority support" },
     ]),
   }),
