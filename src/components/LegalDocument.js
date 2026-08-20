@@ -37,25 +37,34 @@ export default function LegalDocument({ documentKey, document: doc }) {
       </nav>
 
       <article className="legal-document">
-        <p className="eyebrow">Legal</p>
-        <h1>{doc.title}</h1>
+        <header className="legal-hero">
+          <p className="eyebrow">Legal · Doolphin</p>
+          <h1>{doc.title}</h1>
+          <span className="legal-hero-rule" aria-hidden="true" />
+        </header>
 
-        {blocks.map((line, index) => {
-          if (line.startsWith("### ")) {
-            return <h3 key={index}>{line.slice(4)}</h3>;
-          }
-          if (line.startsWith("## ")) {
-            return <h2 key={index}>{line.slice(3)}</h2>;
-          }
-          return <p key={index}><Emphasis text={line} /></p>;
-        })}
+        <div className="legal-body">
+          {blocks.map((line, index) => {
+            if (line.startsWith("### ")) {
+              return <h3 key={index}>{line.slice(4)}</h3>;
+            }
+            if (line.startsWith("## ")) {
+              return <h2 key={index}>{line.slice(3)}</h2>;
+            }
+            return <p key={index}><Emphasis text={line} /></p>;
+          })}
 
-        <p className="legal-footer-note">
-          Questions about this document? Email{" "}
-          <a href="mailto:support@doolphin.co">support@doolphin.co</a>. See also our{" "}
-          <Link href="/terms">Terms</Link>, <Link href="/privacy">Privacy Policy</Link> and{" "}
-          <Link href="/refund-policy">Refund Policy</Link>.
-        </p>
+          <p className="legal-footer-note">
+            Questions about this document? Email{" "}
+            <a href="mailto:support@doolphin.co">support@doolphin.co</a>. See also our{" "}
+            <Link href="/terms">Terms</Link>, <Link href="/privacy">Privacy Policy</Link> and{" "}
+            <Link href="/refund-policy">Refund Policy</Link>.
+          </p>
+
+          <p className="legal-back">
+            <Link href="/" aria-label="Back to Doolphin home">← Back to home</Link>
+          </p>
+        </div>
       </article>
 
       <footer className="landing-footer">

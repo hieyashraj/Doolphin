@@ -1,3 +1,6 @@
+"use client";
+
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import "./landing.css";
 
@@ -28,7 +31,23 @@ function VideoCard({ video, className = "", priority = false }) {
   </figure>;
 }
 
+// Stable trio used for SSR + first client render to avoid hydration mismatch.
+const HERO_DEFAULT = [videos[5], videos[0], videos[6]];
+
 export default function HomePage() {
+  // Start from the deterministic trio, then shuffle client-side after mount so
+  // every visit/refresh feels fresh without breaking hydration.
+  const [heroTrio, setHeroTrio] = useState(HERO_DEFAULT);
+
+  useEffect(() => {
+    const shuffled = [...videos];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    setHeroTrio(shuffled.slice(0, 3));
+  }, []);
+
   return <main className="landing-page">
     <nav className="landing-nav" aria-label="Primary navigation">
       <Link className="wordmark" href="/" aria-label="Doolphin home"><span className="wordmark-mark">d</span>Doolphin</Link>
@@ -36,14 +55,18 @@ export default function HomePage() {
     </nav>
 
     <section className="hero-section" aria-labelledby="hero-title">
-      <p className="eyebrow">Doolphin AI studio <span>✦</span> Make it move</p>
+      <div className="hero-announce">
+        <span className="hero-announce-dot" aria-hidden="true"></span>
+        <span className="hero-announce-label">Seedance 2.5 available now</span>
+        <span className="hero-announce-accent" aria-hidden="true">✦</span>
+      </div>
       <h1 id="hero-title">AI Video Generator.<br /><em>Studio-Grade Quality.</em></h1>
       <p className="hero-copy">From prompt to high quality video in seconds. World-class AI Models and Avatars. Bring crazy ideas to life.</p>
       <Link className="signup-button hero-button" href="/sign-up">Sign up <span aria-hidden="true">↗</span></Link>
       <div className="hero-collage" aria-label="A selection of Doolphin-generated videos">
-        <VideoCard video={videos[5]} className="hero-video hero-video-left" />
-        <VideoCard video={videos[0]} className="hero-video hero-video-main" priority />
-        <VideoCard video={videos[6]} className="hero-video hero-video-right" />
+        <VideoCard key={heroTrio[0].src} video={heroTrio[0]} className="hero-video hero-video-left" />
+        <VideoCard key={heroTrio[1].src} video={heroTrio[1]} className="hero-video hero-video-main" priority />
+        <VideoCard key={heroTrio[2].src} video={heroTrio[2]} className="hero-video hero-video-right" />
         <p className="collage-note">Scroll-stopping<br />starts here <span>↘</span></p>
       </div>
     </section>

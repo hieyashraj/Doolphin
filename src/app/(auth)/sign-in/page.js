@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { FiArrowRight, FiLock, FiMail } from "react-icons/fi";
 import { createClient } from "@/lib/supabase/browser";
+import "../auth.css";
 
 export default function SignInPage() {
   const [email, setEmail] = useState("");
@@ -84,7 +85,9 @@ export default function SignInPage() {
   const field = "w-full rounded-xl border border-[#111111]/15 bg-[#FAF8ED] py-3 pl-10 pr-3 text-base outline-none focus:border-[#111111] focus:ring-2 focus:ring-[#111111]/15 disabled:opacity-60";
 
   return (
-    <main className="min-h-screen bg-[#FAF8ED] px-4 py-10 sm:grid sm:place-items-center">
+    <main className="auth-page">
+      <div className="auth-shell has-panel">
+      <div className="auth-card-col">
       <section className="w-full max-w-md rounded-[28px] border border-[#111111]/15 bg-white p-6 shadow-xl sm:p-8">
         <Link href="/" className="font-serif text-2xl font-bold">Doolphin</Link>
         <p className="mt-8 text-xs font-bold tracking-[.16em] text-[#77746D]">WELCOME BACK</p>
@@ -120,6 +123,18 @@ export default function SignInPage() {
           <Link className="font-semibold underline" href="/sign-up">Create account</Link>
         </p>
       </section>
+      </div>
+      <aside className="auth-panel" aria-hidden="true">
+        <p className="auth-panel-eyebrow">Doolphin Studio</p>
+        <p className="auth-panel-wordmark" style={{ marginTop: "12px" }}><span className="auth-panel-mark">d</span>Doolphin</p>
+        <h2 className="auth-panel-headline">Pick up right<br />where you left off.</h2>
+        <p className="auth-panel-sub">Your scenes, avatars, and renders are waiting. Sign in and keep the idea moving.</p>
+        <div className="auth-panel-media">
+          <video autoPlay muted loop playsInline poster="/avatars/Shyla E1.png"><source src="/explore/Explore 01.mp4" type="video/mp4" /></video>
+        </div>
+        <p className="auth-panel-caption">AI video for ideas that deserve to move</p>
+      </aside>
+      </div>
     </main>
   );
 }

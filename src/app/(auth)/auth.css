@@ -1,0 +1,150 @@
+/*
+ * Shared auth layout — sign-in, verify-email, forgot-password, reset-password.
+ *
+ * Brand system: cream canvas (#FAF8ED), ink borders/text (#111111), lavender
+ * accent (#E6D9FF, hover #DBCBFF), Instrument Serif display + Plus Jakarta Sans
+ * body. Signature look is white rounded cards with a solid 1.5px ink border and
+ * a HARD offset shadow, plus a lavender decorative panel on desktop.
+ *
+ * On mobile every page collapses to a single centered card; the decorative
+ * panel is hidden so the form is never pushed below the fold. The card markup
+ * itself keeps its existing Tailwind classes — these rules only add the shell
+ * and the panel that Tailwind can't express as cleanly.
+ */
+
+.auth-page {
+  min-height: 100vh;
+  background: #faf8ed;
+  padding: 40px 16px;
+  display: grid;
+  place-items: center;
+}
+
+.auth-shell {
+  width: 100%;
+  max-width: 460px;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 28px;
+  align-items: stretch;
+}
+
+/* The card column keeps the form centered and capped at a comfortable measure. */
+.auth-card-col {
+  display: flex;
+  justify-content: center;
+}
+
+.auth-card-col > * {
+  width: 100%;
+}
+
+/* Decorative brand panel — hidden on small screens. */
+.auth-panel {
+  display: none;
+}
+
+.auth-panel-eyebrow {
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  font-size: 11px;
+  font-weight: 750;
+  color: #4a3d6b;
+}
+
+.auth-panel-wordmark {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font: 700 26px/1 "Plus Jakarta Sans", sans-serif;
+  letter-spacing: -0.07em;
+  color: #111111;
+}
+
+.auth-panel-wordmark .auth-panel-mark {
+  width: 28px;
+  height: 28px;
+  display: inline-grid;
+  place-items: center;
+  border: 1.5px solid #111111;
+  border-radius: 50%;
+  font-family: "Instrument Serif", Georgia, serif;
+  font-size: 27px;
+  font-style: italic;
+  letter-spacing: -0.1em;
+}
+
+.auth-panel-headline {
+  margin: 22px 0 0;
+  font: 400 clamp(30px, 3.2vw, 42px) / 1.02 "Instrument Serif", Georgia, serif;
+  letter-spacing: -0.04em;
+  color: #111111;
+}
+
+.auth-panel-sub {
+  margin: 14px 0 0;
+  max-width: 34ch;
+  font-size: 14.5px;
+  line-height: 1.55;
+  color: #3d3a52;
+}
+
+.auth-panel-media {
+  margin-top: 26px;
+  border: 1.5px solid #111111;
+  border-radius: 20px;
+  overflow: hidden;
+  background: #111111;
+  box-shadow: 6px 6px 0 rgba(17, 17, 17, 0.9);
+  aspect-ratio: 16 / 11;
+}
+
+.auth-panel-media video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.auth-panel-caption {
+  margin: 16px 0 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  font-weight: 650;
+  color: #3d3a52;
+}
+
+.auth-panel-caption::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #111111;
+  box-shadow: 0 0 0 3px rgba(17, 17, 17, 0.12);
+}
+
+@media (min-width: 900px) {
+  .auth-shell.has-panel {
+    max-width: 1000px;
+    grid-template-columns: 1.02fr 0.98fr;
+    gap: 44px;
+  }
+
+  .auth-shell.has-panel .auth-card-col {
+    justify-content: flex-start;
+  }
+
+  .auth-panel {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 40px;
+    border: 1.5px solid #111111;
+    border-radius: 28px;
+    background: #e6d9ff;
+    box-shadow: 8px 8px 0 #111111;
+  }
+}

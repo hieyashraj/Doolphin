@@ -16,10 +16,100 @@
   padding-bottom: 10px;
 }
 
+/* ------------------------------------------------------- nav account ------ */
+
+/* Shown in place of Log in / Sign up once the viewer is authenticated: a
+   circular initial avatar (the brand lavender + ink border used across the
+   site) that opens a small account menu. Same primitives as .signup-button —
+   ink hairline border and the hard offset shadow — so it reads as part of the
+   same nav, not a bolted-on widget. */
+.pricing-account {
+  position: relative;
+  display: inline-flex;
+}
+
+.account-avatar {
+  display: inline-grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  padding: 0;
+  border: 1.5px solid var(--ink);
+  border-radius: 50%;
+  background: var(--lavender);
+  cursor: pointer;
+  font: 750 16px/1 "Plus Jakarta Sans", sans-serif;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+  transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+
+.account-avatar:hover,
+.account-avatar[aria-expanded="true"] {
+  background: #dbcaff;
+  box-shadow: 3px 3px 0 var(--ink);
+  transform: translate(-1px, -1px);
+}
+
+.account-menu {
+  position: absolute;
+  top: calc(100% + 12px);
+  right: 0;
+  z-index: 20;
+  min-width: 220px;
+  max-width: 280px;
+  padding: 8px;
+  border: 1.5px solid var(--ink);
+  border-radius: 14px;
+  background: #fffdf8;
+  box-shadow: 3px 3px 0 var(--ink);
+}
+
+.account-menu-email {
+  margin: 0;
+  padding: 8px 10px 10px;
+  border-bottom: 1px solid var(--line);
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: #4d4c45;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-menu-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 6px;
+  padding: 10px 10px;
+  border: 0;
+  border-radius: 10px;
+  background: none;
+  cursor: pointer;
+  text-align: left;
+  font: 700 13.5px/1 "Plus Jakarta Sans", sans-serif;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+  transition: background 0.16s ease;
+}
+
+.account-menu-item:hover {
+  background: #f2efe5;
+}
+
+.account-menu-item svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
 /* ---------------------------------------------------------------- hero ---- */
 
 .pricing-hero {
-  padding: 96px 24px 0;
+  padding: 52px 24px 0;
   text-align: center;
   /* The same ambient lavender wash used by the in-app canvas, so signing in does
      not feel like changing products. */
@@ -29,16 +119,16 @@
 }
 
 .pricing-hero h1 {
-  font: 400 clamp(52px, 7.4vw, 104px) / 0.86 "Instrument Serif", Georgia, serif;
+  font: 400 clamp(44px, 5.6vw, 74px) / 0.9 "Instrument Serif", Georgia, serif;
   letter-spacing: -0.062em;
-  margin: 18px 0 0;
+  margin: 12px 0 0;
 }
 
 .pricing-hero > p {
-  max-width: 486px;
-  margin: 26px auto 0;
-  font-size: 17px;
-  line-height: 1.48;
+  max-width: 470px;
+  margin: 14px auto 0;
+  font-size: 16px;
+  line-height: 1.46;
   letter-spacing: -0.02em;
   color: #3f3e38;
 }
@@ -49,7 +139,7 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  margin: 34px auto 0;
+  margin: 22px auto 0;
   padding: 5px;
   border: 1px solid var(--line);
   border-radius: 999px;
@@ -113,7 +203,7 @@
 
 .plan-grid {
   width: min(1180px, calc(100% - 48px));
-  margin: 64px auto 0;
+  margin: 40px auto 0;
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 18px;
@@ -584,11 +674,11 @@
 
 @media (max-width: 760px) {
   .pricing-hero {
-    padding-top: 68px;
+    padding-top: 44px;
   }
 
   .pricing-hero h1 {
-    font-size: clamp(44px, 13vw, 68px);
+    font-size: clamp(42px, 12vw, 62px);
   }
 
   .pricing-hero > p {
@@ -597,7 +687,11 @@
   }
 
   .plan-grid {
-    margin-top: 44px;
+    margin-top: 30px;
+  }
+
+  .account-menu {
+    min-width: 200px;
   }
 
   .faq-section {
@@ -621,8 +715,15 @@
 @media (prefers-reduced-motion: reduce) {
   .plan-card,
   .plan-cta,
-  .faq-chevron {
+  .faq-chevron,
+  .account-avatar,
+  .account-menu-item {
     transition: none;
+  }
+
+  .account-avatar:hover,
+  .account-avatar[aria-expanded="true"] {
+    transform: none;
   }
 
   .plan-card:hover {

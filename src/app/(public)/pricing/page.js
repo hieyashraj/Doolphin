@@ -2,8 +2,10 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
+import { FiLogOut } from "react-icons/fi";
+import { createClient } from "@/lib/supabase/browser";
 import {
   ANNUAL_DISCOUNT_PERCENT,
   PLAN_BY_CODE,
@@ -43,14 +45,76 @@ function CheckIcon() {
   );
 }
 
-function PricingNav() {
+function PricingNav({ authenticated, email, onSignOut }) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const accountRef = useRef(null);
+
+  // The account dropdown is a lightweight menu, so it closes on the two gestures
+  // users expect from one — a click anywhere outside it, or Escape — rather than
+  // pulling in a headless-menu dependency for a single control.
+  useEffect(() => {
+    if (!menuOpen) return undefined;
+    const handlePointerDown = (event) => {
+      if (accountRef.current && !accountRef.current.contains(event.target)) {
+        setMenuOpen(false);
+      }
+    };
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") setMenuOpen(false);
+    };
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [menuOpen]);
+
+  // Close the menu if the viewer signs out mid-session or auth state changes.
+  useEffect(() => {
+    if (!authenticated) setMenuOpen(false);
+  }, [authenticated]);
+
+  const initial = (email || "").trim().charAt(0).toUpperCase() || "•";
+
   return (
     <nav className="landing-nav" aria-label="Primary navigation">
       <Link className="wordmark" href="/" aria-label="Doolphin home"><span className="wordmark-mark">d</span>Doolphin</Link>
       <div className="nav-links">
         <Link href="/pricing" aria-current="page">Pricing</Link>
-        <Link href="/sign-in">Log in</Link>
-        <Link className="signup-button" href="/sign-up">Sign up <span aria-hidden="true">↗</span></Link>
+        {authenticated ? (
+          <div className="pricing-account" ref={accountRef}>
+            <button
+              type="button"
+              className="account-avatar"
+              aria-haspopup="menu"
+              aria-expanded={menuOpen}
+              aria-label="Account menu"
+              onClick={() => setMenuOpen((open) => !open)}
+            >
+              {initial}
+            </button>
+            {menuOpen && (
+              <div className="account-menu" role="menu" aria-label="Account">
+                {email && <p className="account-menu-email" title={email}>{email}</p>}
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="account-menu-item"
+                  onClick={() => { setMenuOpen(false); onSignOut(); }}
+                >
+                  <FiLogOut aria-hidden="true" />
+                  <span>Log out</span>
+                </button>
+              </div>
+            )}
+          </div>
+        ) : (
+          <>
+            <Link href="/sign-in">Log in</Link>
+            <Link className="signup-button" href="/sign-up">Sign up <span aria-hidden="true">↗</span></Link>
+          </>
+        )}
       </div>
     </nav>
   );
@@ -240,6 +304,7 @@ function PricingContent() {
   const [error, setError] = useState("");
   const [openQuestion, setOpenQuestion] = useState(null);
   const [viewer, setViewer] = useState(null);
+  const [accountEmail, setAccountEmail] = useState("");
 
   const returningFromCheckout = params.get("checkout") === "complete";
   const [activationPending, setActivationPending] = useState(returningFromCheckout);
@@ -252,6 +317,29 @@ function PricingContent() {
       .catch(() => {});
     return () => { cancelled = true; };
   }, []);
+
+  // The nav's account control needs the viewer's email to label the avatar and
+  // the dropdown. /api/billing/trial-eligibility above does NOT return it, and
+  // /api/account only answers for a fully activated subscriber (it 402s for a
+  // signed-in non-subscriber, which is a common pricing visitor). The Supabase
+  // session is the one identity source available for every authenticated viewer,
+  // and we already load its client here for sign-out, so we read the email from
+  // it once we know the viewer is signed in.
+  useEffect(() => {
+    if (!viewer?.authenticated) { setAccountEmail(""); return undefined; }
+    let cancelled = false;
+    createClient().auth.getUser()
+      .then(({ data }) => { if (!cancelled && data?.user?.email) setAccountEmail(data.user.email); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [viewer?.authenticated]);
+
+  const handleSignOut = useCallback(async () => {
+    try {
+      await createClient().auth.signOut();
+    } catch {}
+    router.replace("/sign-in");
+  }, [router]);
 
   /**
    * POST-CHECKOUT ACTIVATION LAG.
@@ -364,7 +452,11 @@ function PricingContent() {
 
   return (
     <main className="landing-page pricing-page">
-      <PricingNav />
+      <PricingNav
+        authenticated={Boolean(viewer?.authenticated)}
+        email={accountEmail}
+        onSignOut={handleSignOut}
+      />
 
       <section className="pricing-hero" aria-labelledby="pricing-title">
         <p className="eyebrow">Plans <span>✦</span> Simple, universal credits</p>
