@@ -4,10 +4,18 @@ export const seedance2OmniReferenceFastDefinition = {
     endpoint: "https://api.muapi.ai/api/v1/seedance-2-omni-reference-no-video-fast",
     category: "video-generation",
     description: "ByteDance Seedance 2 Omni Reference Fast (No-Video) model for UGC video ads.",
+    // Reconciled against MuAPI's live GET /api/v1/models response
+    // (src/lib/models/catalog/muapi-live-catalog.json): $0.75, dynamic_pricing=true.
+    //
+    // This previously declared `amount: 0.04838, strategy: "per_second"`. That
+    // per-second rate was not published by MuAPI — MuAPI exposes no per-second
+    // rates at all — and the strategy marker risked a duration multiplication on
+    // top of an already-total price. This value is a REPRESENTATIVE BASE for
+    // cross-check and display only; the billed figure always comes from the
+    // estimate-cost endpoint below.
     cost: {
-      amount: 0.04838,
-      currency: "USD",
-      strategy: "per_second"
+      amount: 0.75,
+      currency: "USD"
     },
     dynamicPricing: true,
     estimateEndpoint: "https://api.muapi.ai/api/v1/models/seedance-2-omni-reference-no-video-fast/estimate-cost",

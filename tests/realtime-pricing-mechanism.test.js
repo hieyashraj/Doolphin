@@ -47,12 +47,38 @@ function dynamicModel() {
       endpoint: "https://api.muapi.ai/api/v1/veo3.1-fast-image-to-video",
       dynamicPricing: true,
       estimateEndpoint: "https://api.muapi.ai/api/v1/models/veo3.1-fast-image-to-video/estimate-cost",
-      cost: { amount: 0.15, currency: "USD", strategy: "per_second" },
+      // Matches MuAPI's live catalog: $0.60 representative base, dynamic. No
+      // `strategy` marker — MuAPI's cost_strategy is an opaque identifier and
+      // must never be parsed as a billing basis.
+      cost: { amount: 0.6, currency: "USD" },
     },
     productPolicy: { id: "muapi.veo3.1-fast-i2v", displayName: "Veo 3.1 Fast I2V" },
     businessPolicy: { targetContributionMarginBps: 3000, variableInfraCostMicroUsd: 20000n, minimumCredits: 45 },
     toProviderPayload(input) {
       return { prompt: input.prompt, duration: input.duration, aspect_ratio: input.aspectRatio };
+    },
+  };
+}
+
+/**
+ * A genuinely fixed-price model, per MuAPI's live catalog:
+ * seedance-2.1-image-to-video is dynamic_pricing=false at exactly $0.40, with
+ * estimate_endpoint null. This is the ONLY shape that may be billed without
+ * calling the provider.
+ */
+function fixedPriceModel() {
+  return {
+    providerSpec: {
+      providerModelId: "seedance-2.1-image-to-video",
+      endpoint: "https://api.muapi.ai/api/v1/seedance-2.1-image-to-video",
+      dynamicPricing: false,
+      estimateEndpoint: null,
+      cost: { amount: 0.4, currency: "USD" },
+    },
+    productPolicy: { id: "muapi.seedance-2.1-i2v", displayName: "Seedance 2.1 I2V" },
+    businessPolicy: { targetContributionMarginBps: 3000, variableInfraCostMicroUsd: 20000n, minimumCredits: 45 },
+    toProviderPayload(input) {
+      return { prompt: input.prompt, duration: input.duration };
     },
   };
 }
@@ -94,8 +120,25 @@ maybeTest("real-time: the credit charge is derived from the provider's reported 
 
 maybeTest("real-time: a DIFFERENT provider price yields a proportionally different charge", async () => {
   // Same model, same request shape, but provider reports a higher price (e.g. a
-  // 4K tier or a mid-flight MuAPI price change). Doolphin must follow it, with
-  // no code change and no redeploy.
+  // longer duration or a mid-flight MuAPI price change). Doolphin must follow it,
+  // with no code change and no redeploy.
+  const { fetchImpl } = mockEstimateResponder({ cost: 2.0 });
+  const quote = await estimateAuthoritativeModelCost({
+    modelDefinition: dynamicModel(),
+    normalizedInput: baseInput,
+    fetchImpl,
+    env: SANDBOX_ENV,
+  });
+  assert.equal(quote.priced, true, `expected a priced quote, got: ${quote.reason || "no reason"}`);
+  // $2.00 + $0.02 = $2.02 -> ceil(2_020_000/5_000)=404 -> round to 405
+  assert.equal(quote.quotedCredits, 405);
+});
+
+maybeTest("real-time: an implausibly high provider price is refused, not passed to the customer", async () => {
+  // veo3.1-fast-image-to-video is $0.60 in MuAPI's catalog. A quote of $4.80 is
+  // 8x that — far outside the drift band — which is the signature of a units bug
+  // rather than a real price. Charging a customer 965 credits on the strength of
+  // an unvalidated number is exactly what the guard exists to prevent.
   const { fetchImpl } = mockEstimateResponder({ cost: 4.8 });
   const quote = await estimateAuthoritativeModelCost({
     modelDefinition: dynamicModel(),
@@ -103,9 +146,8 @@ maybeTest("real-time: a DIFFERENT provider price yields a proportionally differe
     fetchImpl,
     env: SANDBOX_ENV,
   });
-  assert.equal(quote.priced, true);
-  // $4.80 + $0.02 = $4.82 -> ceil(4_820_000/5_000)=964 -> round to 965
-  assert.equal(quote.quotedCredits, 965);
+  assert.equal(quote.priced, false, "an 8x outlier must not be billed");
+  assert.equal(quote.code, "PROVIDER_COST_DRIFT_HIGH");
 });
 
 maybeTest("real-time: alternate provider field names for cost are all honoured", async () => {
@@ -220,56 +262,97 @@ maybeTest("FAIL CLOSED: dynamic model without an estimate endpoint cannot be sol
 });
 
 // ---------------------------------------------------------------------------
-// CLAIM 1d: the fixed-price fallback respects per-second billing
+// CLAIM 1d: the fixed-price path bills MuAPI's exact price, and only that
+//
+// MuAPI's contract: dynamic_pricing=false means `cost` IS the exact price per
+// call and estimate_endpoint is null. There are no per-second rates to
+// reconstruct — where price varies with duration or resolution, MuAPI marks the
+// model dynamic and resolves it server-side.
 // ---------------------------------------------------------------------------
 
-maybeTest("fixed-price fallback: per_second is multiplied by duration (the screenshot case)", async () => {
-  const model = dynamicModel();
-  model.providerSpec.dynamicPricing = false; // force the hardcoded path
-  model.providerSpec.cost = { amount: 0.15, currency: "USD", strategy: "per_second" };
+maybeTest("fixed price: MuAPI's exact per-call cost is billed, with no network call", async () => {
+  const model = fixedPriceModel();
 
-  // $0.15/sec must reproduce MuAPI's own published table: 5s/8s/10s.
-  const expected = [[5, 0.75], [8, 1.2], [10, 1.5]];
-  for (const [duration, expectedUsd] of expected) {
+  // Duration must NOT change the charge: for a fixed-price model the catalog
+  // price is already the total. Multiplying it would overcharge the customer.
+  for (const duration of [4, 8, 10]) {
     const quote = await estimateAuthoritativeModelCost({
       modelDefinition: model,
       normalizedInput: { ...baseInput, duration },
       fetchImpl: async () => { throw new Error("fixed pricing must not call the network"); },
       env: SANDBOX_ENV,
     });
-    assert.equal(quote.priced, true, `duration ${duration}s should price`);
+    assert.equal(quote.priced, true, `expected a price, got: ${quote.reason || "no reason"}`);
+    assert.equal(quote.isDynamic, false);
     assert.ok(
-      Math.abs(quote.providerCostUsd - expectedUsd) < 1e-9,
-      `${duration}s at $0.15/sec must cost $${expectedUsd}, got $${quote.providerCostUsd}`
+      Math.abs(quote.providerCostUsd - 0.4) < 1e-9,
+      `must bill MuAPI's exact $0.40, got $${quote.providerCostUsd}`
     );
-    assert.equal(quote.billedDurationSeconds, duration, "billing basis must be auditable");
+    // $0.40 + $0.02 infra = $0.42 -> ceil(420_000/5_000)=84 -> round to 85
+    assert.equal(quote.quotedCredits, 85, `duration ${duration}s must not change a fixed price`);
+    assert.equal(quote.billedDurationSeconds, null, "a fixed price has no duration basis");
   }
 });
 
-maybeTest("fixed-price fallback: per_second without a duration fails closed", async () => {
-  const model = dynamicModel();
-  model.providerSpec.dynamicPricing = false;
-  model.providerSpec.cost = { amount: 0.15, currency: "USD", strategy: "per_second" };
-  for (const duration of [undefined, null, 0, -5, NaN]) {
-    const quote = await estimateAuthoritativeModelCost({
-      modelDefinition: model,
-      normalizedInput: { ...baseInput, duration },
-      fetchImpl: async () => { throw new Error("must not be called"); },
-      env: SANDBOX_ENV,
-    });
-    assert.equal(quote.priced, false, `duration ${String(duration)} must not price`);
-    assert.match(quote.reason, /prices per second but no positive duration/);
-  }
-});
-
-maybeTest("fixed-price fallback: an unknown strategy fails closed rather than assuming flat", async () => {
-  const model = dynamicModel();
-  model.providerSpec.dynamicPricing = false;
-  model.providerSpec.cost = { amount: 0.15, currency: "USD", strategy: "per_megapixel_hour" };
+maybeTest("fixed price: the billed figure is cross-checked against MuAPI's catalog", async () => {
   const quote = await estimateAuthoritativeModelCost({
-    modelDefinition: model, normalizedInput: baseInput,
-    fetchImpl: async () => { throw new Error("must not be called"); }, env: SANDBOX_ENV,
+    modelDefinition: fixedPriceModel(),
+    normalizedInput: baseInput,
+    fetchImpl: async () => { throw new Error("must not be called"); },
+    env: SANDBOX_ENV,
+  });
+  assert.equal(quote.catalogCrossChecked, true, "the fixed path must prove it verified the price");
+  assert.equal(quote.catalogCostUsd, 0.4);
+});
+
+maybeTest("FAIL CLOSED: a dynamically priced model can never be flat-billed", async () => {
+  // The highest-severity pricing bug: declaring a dynamic model as fixed means
+  // Doolphin bills a constant for a model MuAPI varies per request, with no
+  // provider call to correct it. veo3.1-fast-image-to-video is dynamic in the
+  // catalog, so forcing it down the fixed path must be refused.
+  const model = dynamicModel();
+  model.providerSpec.dynamicPricing = false;
+
+  const quote = await estimateAuthoritativeModelCost({
+    modelDefinition: model,
+    normalizedInput: baseInput,
+    fetchImpl: async () => { throw new Error("must not be called"); },
+    env: SANDBOX_ENV,
+  });
+  assert.equal(quote.priced, false, "flat-billing a dynamic model must be refused");
+  assert.match(quote.reason, /dynamic_pricing=true/);
+  assert.match(quote.reason, /Refusing to flat-bill a dynamically priced model/);
+});
+
+maybeTest("FAIL CLOSED: a hand-typed fixed cost that disagrees with MuAPI is refused", async () => {
+  // The transcription-error class: someone types $0.35 for a model MuAPI prices
+  // at exactly $0.40, and we silently absorb $0.05 on every single generation.
+  const model = fixedPriceModel();
+  model.providerSpec.cost = { amount: 0.35, currency: "USD" };
+
+  const quote = await estimateAuthoritativeModelCost({
+    modelDefinition: model,
+    normalizedInput: baseInput,
+    fetchImpl: async () => { throw new Error("must not be called"); },
+    env: SANDBOX_ENV,
   });
   assert.equal(quote.priced, false);
-  assert.match(quote.reason, /unrecognised cost strategy/);
+  assert.match(quote.reason, /catalog states the exact fixed price is \$0\.4000/);
+});
+
+maybeTest("FAIL CLOSED: a leftover per-unit rate marker is refused, never multiplied", async () => {
+  // MuAPI publishes no per-second rates, so such a marker can only be a
+  // mis-authored leftover. Honouring it would multiply an already-total price;
+  // ignoring it would risk billing a per-unit rate as a total. Refuse both.
+  const model = fixedPriceModel();
+  model.providerSpec.cost = { amount: 0.4, currency: "USD", strategy: "per_second" };
+
+  const quote = await estimateAuthoritativeModelCost({
+    modelDefinition: model,
+    normalizedInput: baseInput,
+    fetchImpl: async () => { throw new Error("must not be called"); },
+    env: SANDBOX_ENV,
+  });
+  assert.equal(quote.priced, false);
+  assert.match(quote.reason, /duration-scaling billing basis/);
 });

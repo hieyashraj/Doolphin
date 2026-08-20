@@ -4,10 +4,15 @@ export const seedanceSpicyVideoExtendDefinition = {
     endpoint: "/api/v1/seedance-2.5-spicy-video-extend-480p",
     category: "video-extend",
     description: "ByteDance Seedance 2.5 Spicy 480p video continuation & extension model.",
+    // Reconciled against MuAPI's live GET /api/v1/models response
+    // (src/lib/models/catalog/muapi-live-catalog.json): $0.935, dynamic_pricing=true.
+    //
+    // This previously declared `amount: 0.08, strategy: "per_second"`, a rate
+    // MuAPI does not publish. REPRESENTATIVE BASE only — never billed; the exact
+    // charge comes from the estimate-cost endpoint below.
     cost: {
-      amount: 0.08,
-      currency: "USD",
-      strategy: "per_second"
+      amount: 0.935,
+      currency: "USD"
     },
     dynamicPricing: true,
     estimateEndpoint: "https://api.muapi.ai/api/v1/models/seedance-2.5-spicy-video-extend-480p/estimate-cost",

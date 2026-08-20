@@ -97,11 +97,55 @@ export function calculateRequiredCredits(costs) {
  * Net revenue per credit for a specific plan, after Polar's fee. Exposed so the
  * proof tests can verify every plan independently clears the floor.
  */
-export function netRevenuePerCreditMicroUsd(plan) {
-  const priceMicroUsd = BigInt(plan.priceMicroUsd);
+/**
+ * Total credits a single purchase of this plan actually grants.
+ *
+ * An annual plan is charged ONCE but grants `credits` every month for the whole
+ * term (materializeAnnualGrantSchedule creates 12 periods of `credits` each), so
+ * the term total is `credits * termMonths`. Using a single month's allowance as
+ * the denominator for an annual price overstates revenue per credit by 12x.
+ *
+ * `termMonths` is required rather than defaulted: silently assuming 1 is exactly
+ * the mistake this function exists to prevent.
+ */
+export function creditsGrantedOverTerm(plan) {
   const credits = BigInt(plan.credits);
   if (credits <= 0n) throw new Error(`Plan '${plan.code}' has non-positive credits`);
+
+  const termMonths = BigInt(plan.termMonths ?? 0);
+  if (termMonths <= 0n) {
+    throw new Error(
+      `Plan '${plan.code}' does not declare termMonths. Revenue per credit cannot be computed without knowing how many times the credit allowance is granted for a single charge.`
+    );
+  }
+  return credits * termMonths;
+}
+
+/**
+ * Net revenue per credit, after payment processing, across the whole billing
+ * term. This is the figure that must clear the cost ceiling with margin.
+ */
+export function netRevenuePerCreditMicroUsd(plan) {
+  const priceMicroUsd = BigInt(plan.priceMicroUsd);
+  const credits = creditsGrantedOverTerm(plan);
   const processingFee = (priceMicroUsd * BigInt(PRICING_REVISION.polarTransactionFeeBps)) / 10_000n + PRICING_REVISION.polarFixedFeeMicroUsd;
   if (processingFee >= priceMicroUsd) throw new Error(`Plan '${plan.code}' price does not cover payment processing fees`);
   return (priceMicroUsd - processingFee) / credits;
+}
+
+/**
+ * Worst-case contribution margin in basis points: the user burns 100% of the
+ * credits their plan grants, entirely on generations that cost the maximum the
+ * cost ceiling allows.
+ *
+ * This is the HARD business invariant. Unlike the per-credit revenue floor
+ * (which monthly plans clear comfortably and annual plans intentionally do not,
+ * because annual trades per-credit revenue for prepayment), this must hold for
+ * every purchasable plan without exception.
+ */
+export function worstCaseContributionMarginBps(plan) {
+  const netPerCredit = netRevenuePerCreditMicroUsd(plan);
+  const ceiling = PRICING_REVISION.maxFullyLoadedCostPerCreditMicroUsd;
+  if (netPerCredit <= ceiling) return 0;
+  return Number(((netPerCredit - ceiling) * 10_000n) / netPerCredit);
 }

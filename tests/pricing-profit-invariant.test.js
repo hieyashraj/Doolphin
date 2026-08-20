@@ -6,6 +6,8 @@ import {
   PLANS,
   calculateRequiredCredits,
   netRevenuePerCreditMicroUsd,
+  creditsGrantedOverTerm,
+  worstCaseContributionMarginBps,
 } from "../src/lib/entitlements/pricing.js";
 import { APPROVED_PLANS, PURCHASE_PLAN_CODES, PLAN_BY_CODE } from "../src/lib/entitlements/plan-catalog.js";
 
@@ -107,29 +109,94 @@ test("INVARIANT: zero cost never yields negative or fractional credits", () => {
 // 2. EVERY PLAN MUST INDEPENDENTLY CLEAR THE FLOOR
 // ---------------------------------------------------------------------------
 
-test("EVERY plan's net revenue per credit clears the declared floor", () => {
+test("every plan declares how many times a single charge grants its credit allowance", () => {
+  // Without termMonths, revenue per credit is not computable, and the previous
+  // version of these tests silently divided an ANNUAL price by ONE month's
+  // allowance — overstating annual revenue per credit by 12x and passing on a
+  // number that did not exist. Requiring the field makes that failure loud.
   for (const plan of APPROVED_PLANS) {
-    const perCredit = netRevenuePerCreditMicroUsd(plan);
     assert.ok(
-      perCredit >= NET_FLOOR,
-      `plan ${plan.code} nets ${perCredit} microUSD/credit, BELOW floor ${NET_FLOOR} — margin regression`
+      Number.isInteger(plan.termMonths) && plan.termMonths >= 1,
+      `plan ${plan.code} must declare termMonths`
+    );
+    const expected = plan.interval === "ANNUAL" ? 12 : 1;
+    assert.equal(plan.termMonths, expected, `plan ${plan.code}: ${plan.interval} implies ${expected} grant period(s)`);
+    assert.equal(
+      creditsGrantedOverTerm(plan),
+      BigInt(plan.credits) * BigInt(plan.termMonths),
+      `plan ${plan.code}: term credits must be allowance x periods`
     );
   }
 });
 
-test("EVERY plan remains profitable when the user burns 100% of credits at the cost ceiling", () => {
+test("HARD INVARIANT: every plan stays profitable at the target margin even if 100% of credits are burned at the cost ceiling", () => {
+  // This is the invariant that actually matters: whatever model the customer
+  // picks, and however completely they drain the plan, the plan still earns.
+  // Measured over the FULL billing term, so annual prepayment cannot flatter it.
   for (const plan of APPROVED_PLANS) {
-    const priceMicroUsd = BigInt(plan.priceMicroUsd);
-    const fee = (priceMicroUsd * BigInt(PRICING_REVISION.polarTransactionFeeBps)) / 10_000n + PRICING_REVISION.polarFixedFeeMicroUsd;
-    const net = priceMicroUsd - fee;
-    const worstCost = BigInt(plan.credits) * COST_CEILING;
+    const netPerCredit = netRevenuePerCreditMicroUsd(plan);
+    const termCredits = creditsGrantedOverTerm(plan);
 
-    assert.ok(net > worstCost, `plan ${plan.code}: net ${net} <= worst-case cost ${worstCost} — LOSS-MAKING`);
+    assert.ok(
+      netPerCredit > COST_CEILING,
+      `plan ${plan.code}: nets ${netPerCredit} microUSD/credit against a ${COST_CEILING} ceiling — LOSS-MAKING`
+    );
 
-    const marginBps = Number(((net - worstCost) * 10_000n) / priceMicroUsd);
+    const marginBps = worstCaseContributionMarginBps(plan);
     assert.ok(
       marginBps >= TARGET_MARGIN_BPS,
-      `plan ${plan.code} worst-case margin ${marginBps}bps below target ${TARGET_MARGIN_BPS}bps`
+      `plan ${plan.code} worst-case margin ${marginBps}bps below target ${TARGET_MARGIN_BPS}bps ` +
+        `(${termCredits} credits over ${plan.termMonths} month(s))`
+    );
+  }
+});
+
+test("recurring-cadence plans clear the per-credit revenue floor; annual is knowingly thinner", () => {
+  // The $10,500/credit floor is the pricing target for a plan billed at its
+  // headline rate. Annual plans deliberately sit BELOW it: a 20% prepayment
+  // discount necessarily buys credits more cheaply. That is a priced business
+  // decision, not a regression — but it must be stated explicitly rather than
+  // hidden behind a denominator error, and it is still bounded by the hard
+  // margin invariant above.
+  for (const plan of APPROVED_PLANS) {
+    const perCredit = netRevenuePerCreditMicroUsd(plan);
+
+    if (plan.interval === "ANNUAL") {
+      assert.ok(
+        perCredit < NET_FLOOR,
+        `plan ${plan.code} nets ${perCredit}/credit — if annual now clears the floor, the discount or the floor changed; re-derive both`
+      );
+      // Bound how thin the discount may make it. Beyond ~20% below the floor the
+      // annual discount would be eating into the margin rather than the markup.
+      assert.ok(
+        perCredit >= (NET_FLOOR * 80n) / 100n,
+        `plan ${plan.code} nets ${perCredit}/credit, more than 20% below the ${NET_FLOOR} floor — annual discount is too deep`
+      );
+    } else {
+      assert.ok(
+        perCredit >= NET_FLOOR,
+        `plan ${plan.code} nets ${perCredit} microUSD/credit, BELOW floor ${NET_FLOOR} — margin regression`
+      );
+    }
+  }
+});
+
+test("annual is never cheaper per credit than paying monthly would be irrational to sell", () => {
+  // Sanity-check the discount direction and size: annual must be cheaper per
+  // credit than monthly (otherwise nobody buys it) but not by so much that it
+  // undercuts the business (guarded above).
+  for (const [monthlyCode, annualCode] of [
+    ["STARTER_MONTHLY", "STARTER_ANNUAL"],
+    ["GROWTH_MONTHLY", "GROWTH_ANNUAL"],
+    ["AGENCY_MONTHLY", "AGENCY_ANNUAL"],
+  ]) {
+    const monthly = netRevenuePerCreditMicroUsd(PLAN_BY_CODE[monthlyCode]);
+    const annual = netRevenuePerCreditMicroUsd(PLAN_BY_CODE[annualCode]);
+    assert.ok(annual < monthly, `${annualCode} must net less per credit than ${monthlyCode}`);
+    const discountBps = Number(((monthly - annual) * 10_000n) / monthly);
+    assert.ok(
+      discountBps > 1000 && discountBps < 3000,
+      `${annualCode} effective per-credit discount is ${discountBps}bps; expected a ~20% annual discount`
     );
   }
 });
@@ -142,7 +209,7 @@ test("payment processing fees never exceed plan price (no negative-revenue plan)
 
   // A price so low that Polar's fixed $0.50 fee exceeds it entirely must throw.
   assert.throws(
-    () => netRevenuePerCreditMicroUsd({ code: "HYPOTHETICAL_40_CENTS", priceMicroUsd: 400_000, credits: 10 }),
+    () => netRevenuePerCreditMicroUsd({ code: "HYPOTHETICAL_40_CENTS", priceMicroUsd: 400_000, credits: 10, termMonths: 1 }),
     /does not cover payment processing/,
     "a sub-$0.53 plan must be rejected outright: Polar's fixed fee exceeds the price"
   );
@@ -152,7 +219,7 @@ test("payment processing fees never exceed plan price (no negative-revenue plan)
   // looks viable — but $0.45 across 90 credits is exactly $0.005/credit, which
   // equals the cost ceiling and therefore yields ZERO margin. It must fail the
   // floor check. This is why Explorer is priced at $2.99/200cr, not $1/90cr.
-  const dollarPlanPerCredit = netRevenuePerCreditMicroUsd({ code: "HYPOTHETICAL_1_DOLLAR", priceMicroUsd: 1_000_000, credits: 90 });
+  const dollarPlanPerCredit = netRevenuePerCreditMicroUsd({ code: "HYPOTHETICAL_1_DOLLAR", priceMicroUsd: 1_000_000, credits: 90, termMonths: 1 });
   assert.ok(
     dollarPlanPerCredit < NET_FLOOR,
     "a $1/90-credit plan must fall below the margin floor and never be shipped"

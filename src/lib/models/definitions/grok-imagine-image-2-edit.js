@@ -4,13 +4,20 @@ export const grokImagineImage2EditDefinition = {
     endpoint: "/api/v1/grok-imagine-image-2-edit",
     category: "image-edit",
     description: "Grok Imagine 2.0 image editing operation requiring a prior request_id.",
+    // Cost and pricing mode reconciled against MuAPI's live GET /api/v1/models
+    // response (see src/lib/models/catalog/muapi-live-catalog.json). The catalog
+    // marks this model dynamic_pricing=true, so $0.05 is a REPRESENTATIVE BASE
+    // for display/cross-check only and is never billed. The exact charge comes
+    // from the estimate-cost endpoint.
+    //
+    // This previously declared dynamicPricing:false, which meant Doolphin
+    // flat-billed $0.05 for a model whose real price MuAPI varies per request.
     cost: {
       amount: 0.05,
-      currency: "USD",
-      strategy: "fixed_cost"
+      currency: "USD"
     },
-    dynamicPricing: false,
-    estimateEndpoint: null,
+    dynamicPricing: true,
+    estimateEndpoint: "https://api.muapi.ai/api/v1/models/grok-imagine-image-2-edit/estimate-cost",
     inputSchema: {
       type: "object",
       required: ["prompt", "request_id"],
