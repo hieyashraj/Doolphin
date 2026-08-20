@@ -8,8 +8,17 @@
 //   VERCEL_ENV === "production"   ->  LIVE Polar   (https://api.polar.sh)
 //   anything else (preview/dev)   ->  SANDBOX Polar (https://sandbox-api.polar.sh)
 //
-// This makes it structurally impossible to run sandbox billing on the live
-// domain, or live billing on a preview — without anyone remembering a flag.
+// TEST-ON-YOUR-REAL-DOMAIN ESCAPE HATCH:
+// Preview deployments get a NEW url on every push, which is impossible to pin a
+// Polar webhook to. To validate the full sandbox flow on your STABLE production
+// URL (so one registered webhook keeps working), set POLAR_TEST_MODE=true. It
+// forces the SANDBOX tier even on the production deployment.
+//
+//   * It can only ever select TEST billing, so it can NEVER take real money.
+//   * Polar shows a visible "test mode" banner on the checkout while it is on.
+//   * REMOVE IT (and add your POLAR_PRODUCTION_* keys) before charging real
+//     customers, or every "purchase" on your live site will be a free test order.
+//   A warning is logged on every production request while it is enabled.
 //
 // CREDENTIALS are read tier-first with a generic fallback, so whichever names you
 // already added to Vercel are picked up:
@@ -18,8 +27,7 @@
 //
 // If the resolved tier is missing an access token or webhook secret, it FAILS
 // CLOSED (throws) — checkout refuses rather than guessing. A wrong-tier token
-// (e.g. a sandbox token on the live domain) can only ever fail the Polar API
-// call; it can never silently mischarge.
+// can only ever fail the Polar API call; it can never silently mischarge.
 
 const PLAN_CODES = [
   "EXPLORER",
@@ -31,10 +39,22 @@ const PLAN_CODES = [
   "AGENCY_ANNUAL",
 ];
 
+function isTruthyFlag(value) {
+  return /^(1|true|yes|on)$/i.test((value || "").trim());
+}
+
 export function getPolarConfig() {
   const env = process.env;
-  const isProduction = env.VERCEL_ENV === "production";
+  const forceSandbox = isTruthyFlag(env.POLAR_TEST_MODE);
+  const onProductionDeploy = env.VERCEL_ENV === "production";
+  const isProduction = onProductionDeploy && !forceSandbox;
   const tier = isProduction ? "PRODUCTION" : "SANDBOX";
+
+  // Loud breadcrumb: forcing test billing on the live deployment is intentional
+  // for validation but must not be left on for real customers.
+  if (forceSandbox && onProductionDeploy) {
+    console.warn("[polar] POLAR_TEST_MODE is ON: the production deployment is using SANDBOX billing. Remove POLAR_TEST_MODE before charging real customers.");
+  }
 
   // Tier-specific name first, then the generic POLAR_* name.
   const pick = (suffix) => env[`POLAR_${tier}_${suffix}`] || env[`POLAR_${suffix}`] || null;
