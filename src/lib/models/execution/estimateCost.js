@@ -3,6 +3,11 @@ import { calculateCommercialCreditQuote, parseUsdToMicroUsdConservatively } from
 import { canonicalJsonSerialize } from "./prepareExecutionPlan.js";
 import { ERROR_CODES } from "../errors.js";
 import { assertLiveCostWithinVerifiedBand, assertStaticCostMatchesCatalog } from "../verifiedCosts.js";
+import {
+  assertLiveCostWithinDocumentedCeiling,
+  assertModelCostIsBoundable,
+  getDocumentedCeilingUsd,
+} from "../documentedCostSurface.js";
 
 const DEFAULT_ESTIMATE_TIMEOUT_MS = 3000;
 
@@ -24,6 +29,38 @@ export async function estimateAuthoritativeModelCost({
   }
 
   const { providerSpec, businessPolicy } = modelDefinition;
+  const providerModelId = providerSpec.providerModelId || providerSpec.provider_model_id;
+
+  // ADMISSION GATE — runs before any pricing work, including the network call.
+  //
+  // Some models cannot have a maximum cost at all. The pricing document shows
+  // two shapes:
+  //
+  //   * billed on the duration of user-supplied media, e.g.
+  //     kling-v2.6-pro-motion-control at "$0.145/sec of input video", or
+  //     seedance-2.5-omni-reference billed on "output + every reference video's
+  //     duration" across up to 10 clips. Nothing in the request bounds those
+  //     durations, so a caller can point at a 10-minute file and multiply the
+  //     bill arbitrarily. That is a user-controllable spend amplifier.
+  //
+  //   * price-varying parameters whose prices the document omits, so a provider
+  //     figure cannot be cross-checked against anything.
+  //
+  // Both are refused here rather than mitigated downstream. An estimate could be
+  // obtained for them, but it would be a number with no independent bound, and
+  // the whole point of this layer is that no unvalidated figure reaches a
+  // customer's balance.
+  const boundable = assertModelCostIsBoundable({ providerModelId });
+  if (!boundable.ok) {
+    return {
+      priced: false,
+      code: ERROR_CODES.MODEL_COST_NOT_BOUNDABLE,
+      reason: boundable.reason,
+      pricingClass: boundable.pricingClass,
+      unboundedEvidence: boundable.evidence ?? [],
+      providerModelId,
+    };
+  }
 
   // Primary pricing-mode signal: dynamic_pricing boolean
   const isDynamic = Boolean(providerSpec.dynamicPricing ?? providerSpec.dynamic_pricing);
@@ -102,6 +139,25 @@ export async function estimateAuthoritativeModelCost({
         reason: staticCheck.reason,
         catalogCostUsd: staticCheck.catalogCostUsd,
         catalogPricingMode: staticCheck.catalogPricingMode,
+      };
+    }
+
+    // Second, independent cross-check: does the hardcoded figure sit inside the
+    // published price surface? assertStaticCostMatchesCatalog above compares
+    // against the provider catalog's DEFAULT cost, which says nothing about the
+    // maximum. A definition claiming a flat $0.30 for a model documented up to
+    // $1.50 would pass that check and still under-bill every non-default request.
+    const staticCeilingCheck = assertLiveCostWithinDocumentedCeiling({
+      providerModelId,
+      liveCostUsd: unitCostUsd,
+    });
+    if (!staticCeilingCheck.ok) {
+      return {
+        priced: false,
+        code: staticCeilingCheck.code,
+        reason: staticCeilingCheck.reason,
+        liveCostUsd: staticCeilingCheck.liveCostUsd,
+        documentedCeilingUsd: staticCeilingCheck.ceilingUsd,
       };
     }
 
@@ -220,11 +276,21 @@ export async function estimateAuthoritativeModelCost({
     const referenceDurationSeconds =
       Number(durationSchema?.default) || Number(durationSchema?.minimum) || null;
 
+    // When the pricing document records a real maximum for this model, it
+    // supersedes the snapshot's heuristic upper bound. The heuristic multiplies a
+    // DEFAULT cost by a fixed multiple, which misjudges both directions: a
+    // legitimate 4k render of veo3.1-lite costs 5x its 720p default and would be
+    // rejected, while a model with a genuinely narrow price surface gets a band
+    // 4x wider than reality. Passing the documented ceiling replaces guesswork
+    // with the published number.
+    const documentedCeilingUsd = getDocumentedCeilingUsd(providerModelId);
+
     const drift = assertLiveCostWithinVerifiedBand({
-      providerModelId: providerSpec.providerModelId || providerSpec.provider_model_id,
+      providerModelId,
       liveCostUsd: providerCostUsd,
       requestedDurationSeconds: Number(normalizedInput?.duration) || null,
       referenceDurationSeconds,
+      documentedCeilingUsd,
     });
     if (!drift.ok) {
       return {
@@ -233,6 +299,23 @@ export async function estimateAuthoritativeModelCost({
         reason: drift.reason,
         liveCostUsd: drift.liveCostUsd,
         verifiedCostUsd: drift.verifiedCostUsd,
+      };
+    }
+
+    // Upper bound from the pricing document itself. Independent of the snapshot
+    // band above: that one guards against the snapshot drifting, this one
+    // guards against the provider exceeding its own published price surface.
+    const ceilingCheck = assertLiveCostWithinDocumentedCeiling({
+      providerModelId,
+      liveCostUsd: providerCostUsd,
+    });
+    if (!ceilingCheck.ok) {
+      return {
+        priced: false,
+        code: ceilingCheck.code,
+        reason: ceilingCheck.reason,
+        liveCostUsd: ceilingCheck.liveCostUsd,
+        documentedCeilingUsd: ceilingCheck.ceilingUsd,
       };
     }
 
@@ -252,6 +335,11 @@ export async function estimateAuthoritativeModelCost({
       // "verified in band" from "no snapshot available".
       verifiedCostCrossChecked: drift.checked === true,
       verifiedCostUsd: drift.verifiedCostUsd ?? null,
+      // Whether the published price surface bounded this quote, and what the
+      // bound was. Distinguishes "within a documented maximum" from "no
+      // documented maximum exists for this model".
+      documentedCeilingCrossChecked: ceilingCheck.checked === true,
+      documentedCeilingUsd: ceilingCheck.ceilingUsd ?? null,
       estimatedAt: new Date().toISOString(),
     };
   } catch (error) {

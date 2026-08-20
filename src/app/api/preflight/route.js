@@ -11,6 +11,7 @@ import { R2StorageService } from "@/lib/storage/r2StorageService";
 import { mapValidatedStudioWorkflowToNormalizedInvocation } from "@/lib/models/bridges/studioWorkflowBridge.js";
 import { resolveTrustedApplicationOrigin } from "@/lib/models/bridges/applicationOrigin.js";
 import { prepareExecutionPlan } from "@/lib/models/execution/prepareExecutionPlan.js";
+import { ERROR_CODES } from "@/lib/models/errors.js";
 import { assertProviderAssetsAreFetchable } from "@/lib/generation/assetReachability.js";
 
 function safeModelSnapshot(model) {
@@ -270,11 +271,19 @@ async function handlePreflight(req) {
         },
       });
   } catch (planError) {
+    // 503 tells the client "transient, retry later", which is right for a
+    // provider outage but wrong for a model we will never sell. An unboundable
+    // cost is a property of the requested model, so it is a 422: the request
+    // itself is unacceptable and retrying it unchanged cannot help.
+    const isPermanentRefusal = planError.code === ERROR_CODES.MODEL_COST_NOT_BOUNDABLE;
     return NextResponse.json({
       success: false,
       code: planError.code || "PREFLIGHT_FAILED",
       error: planError.message || "Model Platform preflight execution plan generation failed",
-    }, { status: 503 });
+      ...(isPermanentRefusal
+        ? { retryable: false, pricingClass: planError.details?.pricingClass ?? null }
+        : {}),
+    }, { status: isPermanentRefusal ? 422 : 503 });
   }
 }
 

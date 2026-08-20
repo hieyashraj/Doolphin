@@ -192,6 +192,25 @@ export async function prepareExecutionPlan({
   });
 
   if (!unitPricingQuote.priced) {
+    // A model whose maximum cost cannot be bounded is a permanent condition, not
+    // a transient pricing outage. Collapsing it into PRICING_UNAVAILABLE would
+    // tell the caller to retry something that can never succeed, and would hide
+    // a deliberate commercial refusal behind what looks like provider flakiness.
+    if (unitPricingQuote.code === ERROR_CODES.MODEL_COST_NOT_BOUNDABLE) {
+      throw new ModelPlatformError(
+        ERROR_CODES.MODEL_COST_NOT_BOUNDABLE,
+        `Model '${modelDefinition.productPolicy.id}' cannot be sold: ${unitPricingQuote.reason}`,
+        {
+          reason: unitPricingQuote.reason,
+          code: unitPricingQuote.code,
+          pricingClass: unitPricingQuote.pricingClass ?? null,
+          unboundedEvidence: unitPricingQuote.unboundedEvidence ?? [],
+          providerModelId: unitPricingQuote.providerModelId ?? null,
+          retryable: false,
+        }
+      );
+    }
+
     throw new ModelPlatformError(
       ERROR_CODES.PRICING_UNAVAILABLE,
       `Authoritative pricing unavailable for model '${modelDefinition.productPolicy.id}': ${unitPricingQuote.reason}`,

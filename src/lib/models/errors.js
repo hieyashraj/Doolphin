@@ -13,6 +13,13 @@ export const ERROR_CODES = Object.freeze({
   INVALID_MODEL_INPUT: "INVALID_MODEL_INPUT",
   PROVIDER_SPEC_UNAVAILABLE: "PROVIDER_SPEC_UNAVAILABLE",
   PRICING_UNAVAILABLE: "PRICING_UNAVAILABLE",
+  /**
+   * The model's maximum cost cannot be bounded before dispatch, so it must not
+   * be sold. Distinct from PRICING_UNAVAILABLE because that signals a transient
+   * outage worth retrying, whereas this is a permanent property of the model:
+   * retrying changes nothing, and the caller should not be told to try again.
+   */
+  MODEL_COST_NOT_BOUNDABLE: "MODEL_COST_NOT_BOUNDABLE",
   INVALID_PREPARED_PLAN: "INVALID_PREPARED_PLAN",
   PROVIDER_AUTH_UNAVAILABLE: "PROVIDER_AUTH_UNAVAILABLE",
   PROVIDER_REQUEST_FAILED: "PROVIDER_REQUEST_FAILED",
