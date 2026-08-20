@@ -43,7 +43,15 @@ test("all auth primary actions have named busy states and disable repeat submiss
   for (const page of pages) {
     assert.match(page, /disabled=\{/);
     assert.match(page, /aria-busy/);
-    assert.match(page, /text-white/);
+    // The primary CTA must render a visible label. The original guard required a
+    // literal `text-white`, but a utility class can be overridden by the cream
+    // theme — which is exactly what left the verify-email button black with an
+    // invisible label. The branded `.auth-primary-btn` forces #FFF text with
+    // !important (see globals.css), a stronger guarantee, so either satisfies it.
+    assert.ok(
+      /text-white/.test(page) || /auth-primary-btn/.test(page),
+      "each auth page's primary CTA must guarantee visible label text (text-white or auth-primary-btn)"
+    );
   }
   assert.match(pages[0], /Creating account…/); assert.match(pages[1], /Signing in…/); assert.match(pages[2], /Verifying…/); assert.match(pages[2], /Sending…/); assert.match(pages[3], /Sending…/);
 });
