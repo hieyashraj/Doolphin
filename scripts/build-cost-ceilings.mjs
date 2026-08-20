@@ -22,6 +22,99 @@ const catalogByName = new Map(catalog.models.map((m) => [m.name, m]));
 const toMicroUsd = (usd) =>
   usd === null || usd === undefined ? null : Math.ceil(Number(usd) * 1_000_000);
 
+/**
+ * Product policy: no single input or reference video may exceed this many
+ * seconds.
+ *
+ * Models billed on user-supplied media duration have no inherent maximum cost.
+ * Capping the input length converts that open-ended exposure into an arithmetic
+ * bound, which is what makes them sellable at all.
+ */
+const INPUT_VIDEO_CAP_SECONDS = 15;
+
+/**
+ * The published fraction applied to input duration on surcharge-billed models:
+ * "an additional 30% surcharge applies per second of combined input video
+ * duration". Taken from the document, not assumed.
+ */
+const PUBLISHED_INPUT_SURCHARGE_FRACTION = 0.3;
+
+/**
+ * Worst-case cost for a model billed on user-supplied media duration, once the
+ * input cap is applied.
+ *
+ * Computed per billing shape because the shapes are genuinely different, and
+ * applying one formula to all of them mis-prices most:
+ *
+ *   input-rate           cost = rate x input_duration
+ *                        (the tabulated "Duration" IS the input length here)
+ *   combined-duration    cost = discounted_rate x (output + sum(input durations))
+ *   input-surcharge      cost = rate x output + 0.3 x rate x sum(input durations)
+ *   reference-surcharge  cost = rate x output + <UNPUBLISHED surcharge>
+ *
+ * The last shape returns unboundable: the document says a surcharge applies but
+ * never states its size, and inventing a number is exactly what must not happen.
+ */
+function deriveInputCappedCeiling(doc, referenceClipLimit) {
+  const kind = doc.ceiling.unboundedKind;
+  const rates = (doc.perSecondRates ?? []).map((r) => r.rateUsdPerSecond);
+  const maxRate = rates.length ? Math.max(...rates) : null;
+  const referenceRate = doc.ceiling.referenceRateUsdPerSecond ?? null;
+  const outputMax = doc.duration?.maxSeconds ?? null;
+  const clips = referenceClipLimit || 1;
+
+  if (kind === "input-rate") {
+    if (maxRate === null) {
+      return { boundable: false, reason: "no per-second rate is published for this model" };
+    }
+    return {
+      boundable: true,
+      ceilingUsd: maxRate * INPUT_VIDEO_CAP_SECONDS,
+      formula: `$${maxRate}/sec x ${INPUT_VIDEO_CAP_SECONDS}s capped input`,
+    };
+  }
+
+  if (kind === "combined-duration") {
+    const rate = referenceRate ?? maxRate;
+    if (rate === null || outputMax === null) {
+      return { boundable: false, reason: "no rate or output duration ceiling is published" };
+    }
+    const billedSeconds = outputMax + clips * INPUT_VIDEO_CAP_SECONDS;
+    return {
+      boundable: true,
+      ceilingUsd: rate * billedSeconds,
+      formula: `$${rate}/sec x (${outputMax}s output + ${clips} x ${INPUT_VIDEO_CAP_SECONDS}s capped reference)`,
+    };
+  }
+
+  if (kind === "input-surcharge") {
+    if (maxRate === null || outputMax === null) {
+      return { boundable: false, reason: "no output rate or duration ceiling is published" };
+    }
+    const outputCost = maxRate * outputMax;
+    const surcharge =
+      PUBLISHED_INPUT_SURCHARGE_FRACTION * maxRate * clips * INPUT_VIDEO_CAP_SECONDS;
+    return {
+      boundable: true,
+      ceilingUsd: outputCost + surcharge,
+      formula:
+        `$${maxRate}/sec x ${outputMax}s output + ${PUBLISHED_INPUT_SURCHARGE_FRACTION} x $${maxRate}/sec ` +
+        `x ${clips} x ${INPUT_VIDEO_CAP_SECONDS}s capped input`,
+    };
+  }
+
+  if (kind === "reference-surcharge") {
+    return {
+      boundable: false,
+      reason:
+        'the document states "a small surcharge per reference video clip" but never states its ' +
+        "amount, so no arithmetic bound exists even with an input cap",
+    };
+  }
+
+  return { boundable: false, reason: `unrecognised billing shape '${kind}'` };
+}
+
 const models = {};
 
 for (const doc of docs.models) {
@@ -39,8 +132,75 @@ for (const doc of docs.models) {
   const docSaysVaries = ceiling.pricingClass !== "flat";
   const priceVaries = catalogSaysDynamic === null ? docSaysVaries : catalogSaysDynamic || docSaysVaries;
 
+  const referenceClipLimit = doc.referenceLimits?.videos ?? null;
+  const inputPolicy =
+    ceiling.pricingClass === "unbounded"
+      ? deriveInputCappedCeiling(doc, referenceClipLimit)
+      : { boundable: true, ceilingUsd: ceiling.ceilingUsd, formula: "not billed on input duration" };
+
+  /*
+   * Customer-facing availability.
+   *
+   * COMING_SOON covers two different internal situations that look identical to
+   * a user -- "we cannot sell this yet" -- but are recorded separately because
+   * the remedies differ:
+   *
+   *   indeterminate       the model is an unreleased early-access build and the
+   *                       document publishes no price surface for it
+   *   unboundable input   the model is released, but its surcharge amount is
+   *                       never stated, so its cost cannot be bounded
+   *
+   * Everything else is AVAILABLE, including input-billed models, because the
+   * input cap gives them a real ceiling.
+   */
+  let availability = "AVAILABLE";
+  let comingSoonReason = null;
+  if (ceiling.pricingClass === "indeterminate") {
+    availability = "COMING_SOON";
+    comingSoonReason = "UNRELEASED_NO_PUBLISHED_PRICING";
+  } else if (ceiling.pricingClass === "unbounded" && !inputPolicy.boundable) {
+    availability = "COMING_SOON";
+    comingSoonReason = "COST_NOT_BOUNDABLE";
+  }
+
+  // The effective ceiling used for billing guards: for input-billed models the
+  // capped figure, otherwise the published one.
+  const effectiveCeilingUsd =
+    ceiling.pricingClass === "unbounded" && inputPolicy.boundable
+      ? inputPolicy.ceilingUsd
+      : ceiling.ceilingUsd;
+
   models[doc.name] = {
     category: doc.category || null,
+    availability,
+    comingSoonReason,
+    // Seedance 2.5 is the newest family and is surfaced with a NEW tag.
+    isNew: /^seedance-2\.5/.test(doc.name),
+    // The provider catalog declares the family ("kling-v2.6", "veo3.1",
+    // "seedance-2.5"); deriving it from the slug instead produces variant names
+    // rather than families, which would fragment the grouped selector.
+    family: cat?.family ?? null,
+    groupOf: cat?.group_of ?? null,
+    inputVideoPolicy: {
+      capSeconds: INPUT_VIDEO_CAP_SECONDS,
+      applies: ceiling.pricingClass === "unbounded",
+      boundable: inputPolicy.boundable,
+      reason: inputPolicy.reason ?? null,
+      formula: inputPolicy.formula ?? null,
+      referenceClipLimit,
+      /*
+       * The clip count the ceiling formula was actually computed with.
+       *
+       * Emitted explicitly so the runtime check and the arithmetic cannot drift:
+       * a model that documents no reference LIST still takes one input video, and
+       * the formula defaults to 1 for it. If the runtime skipped the count check
+       * when the document was silent, two capped clips would bill 30s against a
+       * ceiling derived from 15s.
+       */
+      billedClipLimit: ceiling.pricingClass === "unbounded" ? referenceClipLimit || 1 : null,
+    },
+    effectiveCeilingUsd,
+    effectiveCeilingMicroUsd: toMicroUsd(effectiveCeilingUsd),
     // Price at the model's DEFAULT parameters. Never a billing basis.
     defaultCostUsd: doc.defaultCostUsd,
     defaultCostMicroUsd: toMicroUsd(doc.defaultCostUsd),

@@ -987,6 +987,14 @@
         {
           "rateUsdPerSecond": 0.25,
           "context": "Video starting at $0.60 per video (5s, basic quality), scaling at $0.12/sec for basic and $0.25/sec for high quality across 5–15 second durations. Prompt Text prompt describing t"
+        },
+        {
+          "rateUsdPerSecond": 0.08,
+          "context": "ovided images are used as general style/subject references. Choose Quality: Select basic ($0.08/sec) for fast generation or high ($0.15/sec) for cinema-grade output with richer mot"
+        },
+        {
+          "rateUsdPerSecond": 0.15,
+          "context": "subject references. Choose Quality: Select basic ($0.08/sec) for fast generation or high ($0.15/sec) for cinema-grade output with richer motion detail. Set Duration: Choose 5, 10,"
         }
       ],
       "competitorRates": [
@@ -1153,11 +1161,11 @@
       "perSecondRates": [
         {
           "rateUsdPerSecond": 0.15,
-          "context": "@image9. Aspect Ratio - Duration (seconds) Video duration in seconds. Quality high=$0.15/sec, basic=$0.12/sec"
+          "context": "@image9. Aspect Ratio - Duration (seconds) Video duration in seconds. Quality high=$0.15/sec, basic=$0.12/sec Implementation Guide Developer documentation Prepare your im"
         },
         {
           "rateUsdPerSecond": 0.12,
-          "context": "t Ratio - Duration (seconds) Video duration in seconds. Quality high=$0.15/sec, basic=$0.12/sec"
+          "context": "t Ratio - Duration (seconds) Video duration in seconds. Quality high=$0.15/sec, basic=$0.12/sec Implementation Guide Developer documentation Prepare your image and upload it"
         }
       ],
       "competitorRates": [],
@@ -1566,7 +1574,24 @@
           ]
         }
       ],
-      "perSecondRates": [],
+      "perSecondRates": [
+        {
+          "rateUsdPerSecond": 0.21,
+          "context": "elect Duration: Pick output video length (4–15s). Select Quality Settings: Choose basic ($0.21/sec output + $0.063/sec per input video second) for faster, cost-effective rendering"
+        },
+        {
+          "rateUsdPerSecond": 0.063,
+          "context": "k output video length (4–15s). Select Quality Settings: Choose basic ($0.21/sec output + $0.063/sec per input video second) for faster, cost-effective rendering, or high ($0.30/se"
+        },
+        {
+          "rateUsdPerSecond": 0.3,
+          "context": "utput + $0.063/sec per input video second) for faster, cost-effective rendering, or high ($0.30/sec output + $0.09/sec per input video second) for maximum visual fidelity. Input so"
+        },
+        {
+          "rateUsdPerSecond": 0.09,
+          "context": "per input video second) for faster, cost-effective rendering, or high ($0.30/sec output + $0.09/sec per input video second) for maximum visual fidelity. Input source video incurs a"
+        }
+      ],
       "competitorRates": [],
       "duration": {
         "minSeconds": 4,
@@ -1579,8 +1604,8 @@
         "audios": 3
       },
       "ceiling": {
-        "ceilingUsd": 3,
-        "ceilingBasis": "cost-table-max",
+        "ceilingUsd": 4.5,
+        "ceilingBasis": "max(cost-table-max, per-second-rate x max-duration)",
         "pricingClass": "unbounded",
         "staticallyBillable": false,
         "unbounded": true,
@@ -1601,6 +1626,7 @@
         ],
         "notes": [
           "table max $3",
+          "$0.3/sec x 15s",
           "UNBOUNDED (input-surcharge): cost scales with the duration of user-supplied media across up to 1 reference clips",
           "  evidence [input-surcharge]: \"Select Quality Settings: Choose basic ($0.21/sec output + $0.063/sec per input video second) for faster, cost-effective rendering, or high ($0.30/sec output + $0.09/sec per input video second) for maximum visual fidelity\""
         ]
@@ -1735,6 +1761,14 @@
         {
           "rateUsdPerSecond": 0.25,
           "context": "xtend starting at $0.60 per video (5s, basic quality), scaling at $0.12/sec for basic and $0.25/sec for high quality across 5–15 second durations. Request Id Request ID of the or"
+        },
+        {
+          "rateUsdPerSecond": 0.12,
+          "context": "pty, the model intelligently continues the existing scene. Choose Quality: Select basic ($0.12/sec) for drafts or high ($0.25/sec) for cinema-grade output. Set Duration: Choose 5"
+        },
+        {
+          "rateUsdPerSecond": 0.25,
+          "context": "ntinues the existing scene. Choose Quality: Select basic ($0.12/sec) for drafts or high ($0.25/sec) for cinema-grade output. Set Duration: Choose 5, 10, or 15 seconds for the ext"
         }
       ],
       "competitorRates": [
@@ -1926,6 +1960,14 @@
         {
           "rateUsdPerSecond": 0.21,
           "context": "igh) / $1.05 per 5s (basic) muapiapp prices SD 2.0 VIP Extend at $0.30/sec for high and $0.21/sec for basic, plus a small surcharge per reference video clip. Request Id Request"
+        },
+        {
+          "rateUsdPerSecond": 0.21,
+          "context": "pty, the model intelligently continues the existing scene. Choose Quality: Select basic ($0.21/sec) for drafts or high ($0.30/sec) for cinema-grade output. Set Duration: Choose 4"
+        },
+        {
+          "rateUsdPerSecond": 0.3,
+          "context": "ntinues the existing scene. Choose Quality: Select basic ($0.21/sec) for drafts or high ($0.30/sec) for cinema-grade output. Set Duration: Choose 4–15 seconds for the extended se"
         }
       ],
       "competitorRates": [],
@@ -2103,6 +2145,14 @@
         {
           "rateUsdPerSecond": 0.4725,
           "context": ".3625 per 5s (basic) muapiapp prices SD 2.0 VIP Extend 1080p at $0.675/sec for high and $0.4725/sec for basic, plus a small surcharge per reference video clip. Request Id Reque"
+        },
+        {
+          "rateUsdPerSecond": 0.675,
+          "context": "mpty, the model intelligently continues the existing scene. Choose Quality: Select high ($0.675/sec) for full 1080p output, or basic ($0.4725/sec). Set Duration: Choose 4–15 seco"
+        },
+        {
+          "rateUsdPerSecond": 0.4725,
+          "context": "xisting scene. Choose Quality: Select high ($0.675/sec) for full 1080p output, or basic ($0.4725/sec). Set Duration: Choose 4–15 seconds for the extended segment. Submit and Pol"
         }
       ],
       "competitorRates": [],
@@ -8020,11 +8070,11 @@
       "perSecondRates": [
         {
           "rateUsdPerSecond": 0.025,
-          "context": "ion Output video resolution. Duration (seconds) Video duration in seconds (6–30). Cost: $0.025/s at 480p, $0.05/s at 720p."
+          "context": "ion Output video resolution. Duration (seconds) Video duration in seconds (6–30). Cost: $0.025/s at 480p, $0.05/s at 720p. Implementation Guide Developer documentation How to"
         },
         {
           "rateUsdPerSecond": 0.05,
-          "context": "esolution. Duration (seconds) Video duration in seconds (6–30). Cost: $0.025/s at 480p, $0.05/s at 720p."
+          "context": "esolution. Duration (seconds) Video duration in seconds (6–30). Cost: $0.025/s at 480p, $0.05/s at 720p. Implementation Guide Developer documentation How to Use Grok Imagine P"
         }
       ],
       "competitorRates": [],
@@ -8168,11 +8218,11 @@
       "perSecondRates": [
         {
           "rateUsdPerSecond": 0.025,
-          "context": "ion Output video resolution. Duration (seconds) Video duration in seconds (6–30). Cost: $0.025/s at 480p, $0.05/s at 720p."
+          "context": "ion Output video resolution. Duration (seconds) Video duration in seconds (6–30). Cost: $0.025/s at 480p, $0.05/s at 720p. Implementation Guide Developer documentation How to"
         },
         {
           "rateUsdPerSecond": 0.05,
-          "context": "esolution. Duration (seconds) Video duration in seconds (6–30). Cost: $0.025/s at 480p, $0.05/s at 720p."
+          "context": "esolution. Duration (seconds) Video duration in seconds (6–30). Cost: $0.025/s at 480p, $0.05/s at 720p. Implementation Guide Developer documentation How to Use Grok Imagine P"
         }
       ],
       "competitorRates": [],

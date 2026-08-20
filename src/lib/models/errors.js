@@ -20,6 +20,12 @@ export const ERROR_CODES = Object.freeze({
    * retrying changes nothing, and the caller should not be told to try again.
    */
   MODEL_COST_NOT_BOUNDABLE: "MODEL_COST_NOT_BOUNDABLE",
+  /**
+   * The model is real and priced but not released for sale yet. Distinct from
+   * MODEL_COST_NOT_BOUNDABLE because it is a product state the UI should surface
+   * as "coming soon", not a safety refusal.
+   */
+  MODEL_COMING_SOON: "MODEL_COMING_SOON",
   INVALID_PREPARED_PLAN: "INVALID_PREPARED_PLAN",
   PROVIDER_AUTH_UNAVAILABLE: "PROVIDER_AUTH_UNAVAILABLE",
   PROVIDER_REQUEST_FAILED: "PROVIDER_REQUEST_FAILED",

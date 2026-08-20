@@ -14,6 +14,10 @@ import {
   getDocumentedDefaultCostUsd,
   getDocumentedEntry,
   getDocumentedPricingClass,
+  getInputVideoPolicy,
+  getModelAvailability,
+  getPublishedCeilingUsd,
+  INPUT_VIDEO_CAP_SECONDS,
   listDocumentedModelIds,
   resolveDocumentedCostUsd,
 } from "../src/lib/models/documentedCostSurface.js";
@@ -138,10 +142,141 @@ test("the most expensive documented render is $51.00, not the $9.35 previously a
 // 3. Unbounded models are refused, with evidence
 // ---------------------------------------------------------------------------
 
-test("models billed on user-supplied media duration are refused, because no request bounds their cost", () => {
+test("models billed on user-supplied media duration are refused unless every input is measured and within the cap", () => {
   // These are billed on the length of a video behind a URL the caller chose.
-  // Nothing in the payload limits it, so a caller could point at a 10-minute
-  // file and multiply the bill. Blocked at admission rather than mitigated.
+  // A 15s per-input policy cap turns that open-ended exposure into arithmetic,
+  // so they are sellable -- but only when the cap is VERIFIED. An unmeasured
+  // duration is treated exactly like an over-cap one, because an input we cannot
+  // measure is an input we cannot price.
+  const INPUT_BILLED = [
+    "seedance-2-omni-reference",
+    "seedance-2-video-edit",
+    "seedance-2.5-omni-reference",
+    "seedance-2.5-omni-reference-480p",
+    "seedance-2.5-omni-reference-1080p",
+    "seedance-2.5-omni-reference-4k",
+    "seedance-2.5-video-edit",
+    "kling-v2.6-pro-motion-control",
+    "kling-v2.6-std-motion-control",
+    "kling-o1-video-edit-fast",
+  ];
+
+  for (const id of INPUT_BILLED) {
+    assert.equal(getDocumentedPricingClass(id), "unbounded", `${id} bills on input duration`);
+    assert.equal(getModelAvailability(id), "AVAILABLE", `${id} is sellable under the cap`);
+
+    // No durations supplied at all -> cannot be priced.
+    const unmeasured = assertModelCostIsBoundable({ providerModelId: id });
+    assert.equal(unmeasured.ok, false, `${id} must refuse when no durations are supplied`);
+    assert.equal(unmeasured.code, "INPUT_VIDEO_DURATION_UNKNOWN");
+
+    // A single input at exactly the cap is allowed.
+    const atCap = assertModelCostIsBoundable({
+      providerModelId: id,
+      inputVideoDurationsSeconds: [INPUT_VIDEO_CAP_SECONDS],
+    });
+    assert.equal(atCap.ok, true, `${id} must allow one input at exactly the cap`);
+    assert.equal(atCap.inputCapEnforced, true);
+
+    // One second over is refused.
+    const overCap = assertModelCostIsBoundable({
+      providerModelId: id,
+      inputVideoDurationsSeconds: [INPUT_VIDEO_CAP_SECONDS + 1],
+    });
+    assert.equal(overCap.ok, false, `${id} must refuse an over-cap input`);
+    assert.equal(overCap.code, "INPUT_VIDEO_TOO_LONG");
+
+    // A null duration is refused, not silently treated as zero.
+    const nullDuration = assertModelCostIsBoundable({
+      providerModelId: id,
+      inputVideoDurationsSeconds: [null],
+    });
+    assert.equal(nullDuration.ok, false, `${id} must refuse an unmeasured input`);
+    assert.equal(nullDuration.code, "INPUT_VIDEO_DURATION_UNKNOWN");
+  }
+});
+
+test("more input clips than the ceiling arithmetic assumed is refused", () => {
+  // The ceiling for an input-billed model is computed as rate x clips x cap. If
+  // the runtime allowed more clips than that arithmetic assumed, the real bill
+  // would exceed the bound: two 15s clips on a single-input model bill 30s
+  // against a ceiling derived from 15s.
+  const single = assertModelCostIsBoundable({
+    providerModelId: "kling-v2.6-pro-motion-control",
+    inputVideoDurationsSeconds: [15, 15],
+  });
+  assert.equal(single.ok, false);
+  assert.equal(single.code, "TOO_MANY_INPUT_VIDEOS");
+
+  // A model that documents 10 reference clips still accepts 10.
+  const ten = assertModelCostIsBoundable({
+    providerModelId: "seedance-2.5-omni-reference",
+    inputVideoDurationsSeconds: Array(10).fill(INPUT_VIDEO_CAP_SECONDS),
+  });
+  assert.equal(ten.ok, true);
+  assert.equal(
+    assertModelCostIsBoundable({
+      providerModelId: "seedance-2.5-omni-reference",
+      inputVideoDurationsSeconds: Array(11).fill(1),
+    }).code,
+    "TOO_MANY_INPUT_VIDEOS",
+  );
+});
+
+test("the capped ceiling includes the input contribution, not just the output", () => {
+  // Returning the published (output-only) figure would set the billing guard
+  // BELOW what the provider can legitimately charge once input is included,
+  // rejecting valid requests and understating the worst case in margin proofs.
+  const id = "kling-v2.6-pro-motion-control";
+  assert.equal(getPublishedCeilingUsd(id), 8.7, "published figure is output-side only");
+  assert.ok(
+    Math.abs(getDocumentedCeilingUsd(id) - 0.145 * INPUT_VIDEO_CAP_SECONDS) < 1e-9,
+    `capped ceiling should be $0.145/sec x ${INPUT_VIDEO_CAP_SECONDS}s, got ${getDocumentedCeilingUsd(id)}`,
+  );
+
+  const policy = getInputVideoPolicy(id);
+  assert.equal(policy.applies, true);
+  assert.equal(policy.capSeconds, INPUT_VIDEO_CAP_SECONDS);
+  assert.equal(policy.boundable, true);
+});
+
+test("models the document never prices are shown as coming soon, not silently dropped", () => {
+  // Two distinct situations, both unsellable, recorded separately because the
+  // remedies differ: an unreleased early-access build with no published pricing,
+  // versus a released model whose surcharge amount is never stated.
+  const COMING_SOON = {
+    "seedance-2.5-spicy-text-to-video-4k": "UNRELEASED_NO_PUBLISHED_PRICING",
+    "seedance-2.5-spicy-image-to-video": "UNRELEASED_NO_PUBLISHED_PRICING",
+    "seedance-2-vip-extend": "COST_NOT_BOUNDABLE",
+    "seedance-2-vip-extend-1080p": "COST_NOT_BOUNDABLE",
+  };
+
+  for (const [id, reason] of Object.entries(COMING_SOON)) {
+    assert.equal(getModelAvailability(id), "COMING_SOON", id);
+    const verdict = assertModelCostIsBoundable({
+      providerModelId: id,
+      inputVideoDurationsSeconds: [5],
+    });
+    assert.equal(verdict.ok, false, `${id} must not be generatable`);
+    assert.equal(verdict.code, "MODEL_COMING_SOON");
+    assert.equal(verdict.comingSoonReason, reason);
+  }
+
+  // Exactly nine, so silently promoting one to sellable fails here.
+  const all = listDocumentedModelIds().filter((id) => getModelAvailability(id) === "COMING_SOON");
+  assert.equal(all.length, 9, `coming-soon set changed: ${all.join(", ")}`);
+});
+
+test("a surcharge whose amount the document never states cannot be bounded by the cap", () => {
+  // "plus a small surcharge per reference video clip" -- no number anywhere. The
+  // cap bounds the duration but not an unstated surcharge, so no arithmetic bound
+  // exists and the model stays unsellable rather than being given a guessed one.
+  const policy = getInputVideoPolicy("seedance-2-vip-extend");
+  assert.equal(policy.boundable, false);
+  assert.match(policy.reason, /never states its amount/);
+});
+
+test("legacy: the unbounded set is still exactly twelve models", () => {
   const UNBOUNDED = [
     "seedance-2-omni-reference",
     "seedance-2-video-edit",
@@ -159,12 +294,14 @@ test("models billed on user-supplied media duration are refused, because no requ
 
   for (const id of UNBOUNDED) {
     assert.equal(getDocumentedPricingClass(id), "unbounded", `${id} should be classed unbounded`);
-    const verdict = assertModelCostIsBoundable({ providerModelId: id });
-    assert.equal(verdict.ok, false, `${id} must be refused`);
-    assert.equal(verdict.code, "MODEL_COST_UNBOUNDED");
-    // The refusal must cite the document, not merely assert a conclusion.
-    assert.ok(verdict.evidence.length > 0, `${id} refusal must carry documented evidence`);
-    assert.match(verdict.reason, /user-supplied media/);
+    // Each must carry the document sentence that proves it bills on input
+    // duration, so the classification is auditable rather than asserted.
+    const entry = getDocumentedEntry(id);
+    assert.ok(
+      (entry.unboundedEvidence ?? []).length > 0,
+      `${id} must carry documented evidence for its billing shape`,
+    );
+    assert.ok(entry.inputVideoPolicy.applies, `${id} must be under the input-duration policy`);
   }
 
   assert.equal(
@@ -183,10 +320,21 @@ test("kling-v2.6-pro-motion-control is caught even though its catalog cost looks
   assert.equal(entry.ceilingUsd, 8.7);
   assert.ok(entry.ceilingUsd / entry.catalogCostUsd >= 59, "the 60x gap must remain recorded");
 
-  const verdict = assertModelCostIsBoundable({ providerModelId: "kling-v2.6-pro-motion-control" });
-  assert.equal(verdict.ok, false);
-  assert.equal(verdict.evidence[0].rule, "input-rate");
-  assert.match(verdict.evidence[0].quote, /\$0\.145\/sec of input video/);
+  // The documented evidence for its billing shape must survive on the entry, so
+  // the classification remains auditable now that the model is sellable.
+  const evidence = getDocumentedEntry("kling-v2.6-pro-motion-control").unboundedEvidence;
+  assert.equal(evidence[0].rule, "input-rate");
+  assert.match(evidence[0].quote, /\$0\.145\/sec of input video/);
+
+  // Sellable under the cap, and the guard bills against the capped ceiling
+  // ($2.175) rather than the misleading $0.145 catalog figure.
+  const verdict = assertModelCostIsBoundable({
+    providerModelId: "kling-v2.6-pro-motion-control",
+    inputVideoDurationsSeconds: [10],
+  });
+  assert.equal(verdict.ok, true);
+  assert.equal(verdict.inputCapEnforced, true);
+  assert.ok(getDocumentedCeilingUsd("kling-v2.6-pro-motion-control") > entry.catalogCostUsd * 14);
 });
 
 // ---------------------------------------------------------------------------
@@ -208,7 +356,11 @@ test("models whose price surface the document omits are refused rather than gues
     assert.equal(getDocumentedPricingClass(id), "indeterminate", id);
     const verdict = assertModelCostIsBoundable({ providerModelId: id });
     assert.equal(verdict.ok, false, `${id} must be refused`);
-    assert.equal(verdict.code, "MODEL_COST_INDETERMINATE");
+    // Surfaced as a product state rather than a safety refusal: these are
+    // unreleased early-access builds, so "coming soon" is both accurate and
+    // more useful to the user than an internal pricing error.
+    assert.equal(verdict.code, "MODEL_COMING_SOON");
+    assert.equal(verdict.comingSoonReason, "UNRELEASED_NO_PUBLISHED_PRICING");
   }
 });
 
@@ -356,7 +508,7 @@ test("an indeterminate model carries no ceiling at all, so nothing can be bounde
   // They remain refused at admission, so no quote is ever produced for them.
   assert.equal(
     assertModelCostIsBoundable({ providerModelId: "seedance-2.5-spicy-image-to-video" }).code,
-    "MODEL_COST_INDETERMINATE",
+    "MODEL_COMING_SOON",
   );
 });
 

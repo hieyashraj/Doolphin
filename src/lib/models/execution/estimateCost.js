@@ -16,6 +16,11 @@ export async function estimateAuthoritativeModelCost({
   normalizedInput,
   alreadyPreparedPayload,
   alreadyPreparedPayloadJson,
+  /**
+   * Measured durations, in seconds, of every video the user supplied. Models
+   * billed per second of input video cannot be priced without these.
+   */
+  inputVideoDurationsSeconds = null,
   fetchImpl = fetch,
   env = process.env,
   timeoutMs = DEFAULT_ESTIMATE_TIMEOUT_MS,
@@ -50,13 +55,25 @@ export async function estimateAuthoritativeModelCost({
   // obtained for them, but it would be a number with no independent bound, and
   // the whole point of this layer is that no unvalidated figure reaches a
   // customer's balance.
-  const boundable = assertModelCostIsBoundable({ providerModelId });
+  const boundable = assertModelCostIsBoundable({
+    providerModelId,
+    inputVideoDurationsSeconds,
+  });
   if (!boundable.ok) {
     return {
       priced: false,
-      code: ERROR_CODES.MODEL_COST_NOT_BOUNDABLE,
+      // A model that is merely not released yet is reported distinctly from one
+      // whose cost cannot be bounded: the first is a product state the UI should
+      // present as "coming soon", the second is a refusal to risk money.
+      code:
+        boundable.code === "MODEL_COMING_SOON"
+          ? ERROR_CODES.MODEL_COMING_SOON
+          : ERROR_CODES.MODEL_COST_NOT_BOUNDABLE,
+      detailCode: boundable.code,
       reason: boundable.reason,
       pricingClass: boundable.pricingClass,
+      comingSoonReason: boundable.comingSoonReason ?? null,
+      capSeconds: boundable.capSeconds ?? null,
       unboundedEvidence: boundable.evidence ?? [],
       providerModelId,
     };

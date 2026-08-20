@@ -177,10 +177,37 @@ async function handlePreflight(req) {
       }
 
       const modelId = body.modelId || model.id || "seedance-2";
+
+      /*
+       * Measured durations of every VIDEO the user supplied.
+       *
+       * Some models are billed per second of input video, so their cost is a
+       * function of these numbers rather than of anything in the request body.
+       * The durations come from media validation at upload time (already copied
+       * onto each asset above), never from client-supplied metadata, because a
+       * client-declared duration is exactly what an attacker would understate to
+       * get a long video priced as a short one.
+       *
+       * A video asset with no measured duration yields null, which the pricing
+       * guard treats as unpriceable and refuses -- deliberately, since an
+       * unmeasured input cannot be bounded.
+       */
+      const inputVideoDurationsSeconds = (request.assets || [])
+        .filter((asset) => {
+          const mime = String(asset.detectedMimeType || asset.mimeType || "");
+          return mime.startsWith("video/");
+        })
+        .map((asset) =>
+          asset.durationMs === null || asset.durationMs === undefined
+            ? null
+            : Number(asset.durationMs) / 1000,
+        );
+
       const plan = await prepareExecutionPlan({
         modelId,
         normalizedInput,
         outputCount,
+        inputVideoDurationsSeconds,
         env: process.env,
       });
 
@@ -275,13 +302,23 @@ async function handlePreflight(req) {
     // provider outage but wrong for a model we will never sell. An unboundable
     // cost is a property of the requested model, so it is a 422: the request
     // itself is unacceptable and retrying it unchanged cannot help.
-    const isPermanentRefusal = planError.code === ERROR_CODES.MODEL_COST_NOT_BOUNDABLE;
+    const isPermanentRefusal =
+      planError.code === ERROR_CODES.MODEL_COST_NOT_BOUNDABLE ||
+      planError.code === ERROR_CODES.MODEL_COMING_SOON;
     return NextResponse.json({
       success: false,
       code: planError.code || "PREFLIGHT_FAILED",
       error: planError.message || "Model Platform preflight execution plan generation failed",
       ...(isPermanentRefusal
-        ? { retryable: false, pricingClass: planError.details?.pricingClass ?? null }
+        ? {
+            retryable: false,
+            detailCode: planError.details?.detailCode ?? null,
+            pricingClass: planError.details?.pricingClass ?? null,
+            comingSoonReason: planError.details?.comingSoonReason ?? null,
+            // Surfaced so the UI can tell the user the actual limit rather than
+            // "something went wrong".
+            capSeconds: planError.details?.capSeconds ?? null,
+          }
         : {}),
     }, { status: isPermanentRefusal ? 422 : 503 });
   }

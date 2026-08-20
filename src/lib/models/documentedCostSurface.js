@@ -43,6 +43,19 @@ import ceilings from "./catalog/muapi-cost-ceilings.json" with { type: "json" };
 export const DOCUMENTED_COST_REVISION = ceilings.revision;
 export const DOCUMENTED_COST_PROVENANCE = Object.freeze({ ...ceilings.provenance });
 
+/**
+ * Product policy: no single input or reference video may exceed this duration.
+ *
+ * This is what makes input-billed models sellable. Their cost is a function of
+ * the length of a video the user supplies, which is otherwise unbounded; capping
+ * it converts open-ended exposure into arithmetic. Enforced in
+ * `assertModelCostIsBoundable`, which refuses to price such a model unless every
+ * input video's duration is KNOWN and within the cap.
+ */
+export const INPUT_VIDEO_CAP_SECONDS = ceilings.models
+  ? Object.values(ceilings.models).find((m) => m.inputVideoPolicy)?.inputVideoPolicy?.capSeconds ?? 15
+  : 15;
+
 const MODELS = ceilings.models;
 
 const key = (providerModelId) => String(providerModelId || "");
@@ -65,9 +78,44 @@ export function listDocumentedModelIds() {
  */
 export function getDocumentedCeilingUsd(providerModelId) {
   const entry = MODELS[key(providerModelId)];
+  if (!entry) return null;
+  /*
+   * The EFFECTIVE ceiling is returned, not the raw published one.
+   *
+   * For an input-billed model the published figure covers only the output
+   * portion; the real maximum includes the capped input contribution. Returning
+   * the published number here would set the billing guard BELOW what the provider
+   * can legitimately charge, rejecting valid requests -- and would understate the
+   * worst case in the margin proofs.
+   */
+  const effective = entry.effectiveCeilingUsd;
+  if (effective !== null && effective !== undefined) return effective;
+  return entry.ceilingUsd !== null && entry.ceilingUsd !== undefined ? entry.ceilingUsd : null;
+}
+
+/** The published ceiling before the input cap is applied. Diagnostics only. */
+export function getPublishedCeilingUsd(providerModelId) {
+  const entry = MODELS[key(providerModelId)];
   return entry && entry.ceilingUsd !== null && entry.ceilingUsd !== undefined
     ? entry.ceilingUsd
     : null;
+}
+
+/** 'AVAILABLE' | 'COMING_SOON' | null when undocumented. */
+export function getModelAvailability(providerModelId) {
+  const entry = MODELS[key(providerModelId)];
+  return entry ? entry.availability : null;
+}
+
+/** True when this model's price depends on user-supplied video duration. */
+export function isInputDurationBilled(providerModelId) {
+  const entry = MODELS[key(providerModelId)];
+  return Boolean(entry?.inputVideoPolicy?.applies);
+}
+
+export function getInputVideoPolicy(providerModelId) {
+  const entry = MODELS[key(providerModelId)];
+  return entry?.inputVideoPolicy ? Object.freeze({ ...entry.inputVideoPolicy }) : null;
 }
 
 /** As above, in whole microUSD, for exact BigInt arithmetic. */
@@ -123,21 +171,27 @@ export function isDocumentedFlatPrice(providerModelId) {
  * @returns {{ok: true, pricingClass: string|null}
  *          | {ok: false, code: string, reason: string, pricingClass: string, evidence?: Array}}
  */
-export function assertModelCostIsBoundable({ providerModelId } = {}) {
+export function assertModelCostIsBoundable({
+  providerModelId,
+  inputVideoDurationsSeconds = null,
+} = {}) {
   const entry = MODELS[key(providerModelId)];
   if (!entry) return { ok: true, pricingClass: null, documented: false };
 
-  if (entry.pricingClass === "unbounded") {
-    const quotes = (entry.unboundedEvidence ?? []).map((e) => `"${e.quote}"`).join("; ");
+  // Not sellable yet. Covers unreleased early-access builds with no published
+  // pricing, and released models whose surcharge amount is never stated.
+  if (entry.availability === "COMING_SOON") {
+    const because =
+      entry.comingSoonReason === "UNRELEASED_NO_PUBLISHED_PRICING"
+        ? "it is an unreleased early-access build and no pricing has been published for it"
+        : entry.inputVideoPolicy?.reason ||
+          "its cost cannot be bounded from the published pricing";
     return {
       ok: false,
-      code: "MODEL_COST_UNBOUNDED",
-      reason:
-        `'${providerModelId}' is billed on the duration of user-supplied media (${entry.unboundedKind}), ` +
-        `so a single call has no cost ceiling derivable from the request. Documented evidence: ${quotes}. ` +
-        `Refusing to dispatch a generation whose maximum cost cannot be bounded before it runs.`,
+      code: "MODEL_COMING_SOON",
+      reason: `'${providerModelId}' is not available yet: ${because}.`,
       pricingClass: entry.pricingClass,
-      evidence: entry.unboundedEvidence ?? [],
+      comingSoonReason: entry.comingSoonReason,
       documented: true,
     };
   }
@@ -152,6 +206,93 @@ export function assertModelCostIsBoundable({ providerModelId } = {}) {
         `cross-checked. Refusing to bill an unverifiable amount.`,
       pricingClass: entry.pricingClass,
       documented: true,
+    };
+  }
+
+  /*
+   * Input-billed models are admitted ONLY under the duration cap.
+   *
+   * The cap is what turns an open-ended bill into a bounded one, so it has to be
+   * verified rather than assumed. An UNKNOWN duration is treated exactly like an
+   * over-cap one: if we cannot see how long the video is, we cannot know what the
+   * provider will charge for it, and guessing is how the original exposure
+   * happened. Fails closed.
+   */
+  if (entry.inputVideoPolicy?.applies) {
+    const cap = entry.inputVideoPolicy.capSeconds;
+
+    if (!Array.isArray(inputVideoDurationsSeconds)) {
+      return {
+        ok: false,
+        code: "INPUT_VIDEO_DURATION_UNKNOWN",
+        reason:
+          `'${providerModelId}' is billed on the duration of the video you supply, so every input ` +
+          `video must be measured before it can be priced. No durations were provided. ` +
+          `Refusing to dispatch a generation whose cost cannot be bounded.`,
+        pricingClass: entry.pricingClass,
+        capSeconds: cap,
+        documented: true,
+      };
+    }
+
+    const unmeasured = inputVideoDurationsSeconds.filter(
+      (d) => d === null || d === undefined || !Number.isFinite(Number(d)) || Number(d) <= 0,
+    );
+    if (unmeasured.length) {
+      return {
+        ok: false,
+        code: "INPUT_VIDEO_DURATION_UNKNOWN",
+        reason:
+          `'${providerModelId}' is billed per second of input video, and ${unmeasured.length} of the ` +
+          `supplied video(s) has no measured duration. Refusing to bill against an unmeasured input.`,
+        pricingClass: entry.pricingClass,
+        capSeconds: cap,
+        documented: true,
+      };
+    }
+
+    const overCap = inputVideoDurationsSeconds
+      .map((d) => Number(d))
+      .filter((d) => d > cap);
+    if (overCap.length) {
+      return {
+        ok: false,
+        code: "INPUT_VIDEO_TOO_LONG",
+        reason:
+          `'${providerModelId}' charges per second of input video, so inputs are limited to ` +
+          `${cap} seconds each. ${overCap.length} supplied video(s) exceed that ` +
+          `(longest ${Math.max(...overCap)}s). Trim the input and try again.`,
+        pricingClass: entry.pricingClass,
+        capSeconds: cap,
+        longestSuppliedSeconds: Math.max(...overCap),
+        documented: true,
+      };
+    }
+
+    // The count the ceiling arithmetic assumed. Never fall back to "unlimited":
+    // a model that documents no reference list still takes one input video, and
+    // its ceiling was computed on that basis.
+    const limit = entry.inputVideoPolicy.billedClipLimit ?? entry.inputVideoPolicy.referenceClipLimit ?? 1;
+    if (limit && inputVideoDurationsSeconds.length > limit) {
+      return {
+        ok: false,
+        code: "TOO_MANY_INPUT_VIDEOS",
+        reason:
+          `'${providerModelId}' accepts at most ${limit} reference video(s); ` +
+          `${inputVideoDurationsSeconds.length} were supplied. Each additional clip is billed, so the ` +
+          `limit is enforced rather than silently truncated.`,
+        pricingClass: entry.pricingClass,
+        referenceClipLimit: limit,
+        documented: true,
+      };
+    }
+
+    return {
+      ok: true,
+      pricingClass: entry.pricingClass,
+      documented: true,
+      inputCapEnforced: true,
+      capSeconds: cap,
     };
   }
 
@@ -265,19 +406,34 @@ export const CEILING_TOLERANCE_MULTIPLE = 1.25;
 
 export function getDocumentedCostBand(providerModelId, { toleranceMultiple = CEILING_TOLERANCE_MULTIPLE } = {}) {
   const entry = MODELS[key(providerModelId)];
-  if (!entry || entry.ceilingUsd === null || entry.ceilingUsd === undefined) return null;
+  if (!entry) return null;
 
-  // An indeterminate ceiling is a lower bound, not a maximum, so it must not be
-  // used to reject a higher live quote.
-  const trustworthyMaximum = entry.pricingClass === "flat" || entry.pricingClass === "bounded";
+  const ceilingUsd = getDocumentedCeilingUsd(providerModelId);
+  if (ceilingUsd === null) return null;
+
+  /*
+   * Which ceilings may be used to REJECT a live quote.
+   *
+   *   flat / bounded              yes -- the published surface is a real maximum
+   *   unbounded but input-capped  yes -- the cap makes the arithmetic bound real
+   *   indeterminate               no  -- the figure is one known point, not a max,
+   *                                      so rejecting above it would block valid
+   *                                      longer renders
+   */
+  const trustworthyMaximum =
+    entry.pricingClass === "flat" ||
+    entry.pricingClass === "bounded" ||
+    (entry.pricingClass === "unbounded" && entry.inputVideoPolicy?.boundable === true);
 
   return Object.freeze({
     providerModelId: key(providerModelId),
     pricingClass: entry.pricingClass,
     defaultCostUsd: entry.defaultCostUsd,
-    ceilingUsd: entry.ceilingUsd,
-    maxAcceptableUsd: trustworthyMaximum ? entry.ceilingUsd * toleranceMultiple : null,
+    publishedCeilingUsd: entry.ceilingUsd,
+    ceilingUsd,
+    maxAcceptableUsd: trustworthyMaximum ? ceilingUsd * toleranceMultiple : null,
     trustworthyMaximum,
+    inputCapSeconds: entry.inputVideoPolicy?.applies ? entry.inputVideoPolicy.capSeconds : null,
     toleranceMultiple,
   });
 }

@@ -163,6 +163,26 @@ function findConfigSchema(lines) {
   return params;
 }
 
+/**
+ * The Implementation Guide prose, which for some models is the ONLY place a
+ * per-second rate is published. seedance-2-video-edit states its whole billing
+ * formula there and nowhere else:
+ *   "basic ($0.21/sec output + $0.063/sec per input video second) ... high
+ *    ($0.30/sec output + $0.09/sec per input video second)"
+ *
+ * Safe to scan for rates because competitor prices never appear here -- they are
+ * confined to the Pricing & Value provider table -- and because the worked
+ * examples in these guides state products ("= $1.50 + $0.90 = $2.40") which carry
+ * no per-second suffix and so cannot be mistaken for rates.
+ */
+function findImplementationGuideText(lines) {
+  const start = lines.findIndex((l) => /^\s*Implementation Guide\s*$/i.test(l));
+  if (start === -1) return "";
+  let end = lines.findIndex((l, i) => i > start && /^\s*Common Questions\s*$/i.test(l));
+  if (end === -1) end = lines.length;
+  return lines.slice(start, end).join("\n");
+}
+
 /** The pricing-variance sentence that follows `Result`. */
 function findPricingDescriptor(lines) {
   const rIdx = lines.findIndex((l) => l.trim() === "Result");
@@ -680,6 +700,7 @@ for (const section of sections) {
     provider.costText,
     provider.notes,
     ...params.map((p) => `${p.label} ${p.description ?? ""}`),
+    findImplementationGuideText(lines),
   ].join(" \n ");
   const perSecondRates = findPerSecondRates(muapiRateText);
   const competitorRates = findCompetitorRates(lines);
