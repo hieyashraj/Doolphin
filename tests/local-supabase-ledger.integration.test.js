@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test, { after, before } from "node:test";
 import { createRequire } from "node:module";
+import { execFileSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { PrismaClient } from "@prisma/client";
 
 const localDatabase = process.env.DATABASE_URL?.includes("127.0.0.1:54322") && process.env.DIRECT_URL?.includes("127.0.0.1:54322");
@@ -12,6 +14,17 @@ const remoteDisposableStaging =
   process.env.DOOLPHIN_DISPOSABLE_TARGET_VERIFIED === "true";
 const integrationDatabase = localDatabase || remoteDisposableStaging;
 const integrationTest = integrationDatabase ? test : test.skip;
+
+if (remoteDisposableStaging) {
+  // Re-run the standalone verifier in-process before a Pool is ever created.
+  // The workflow's prior check is defense in depth, not the authorization that
+  // makes this test able to execute a remote TRUNCATE.
+  execFileSync(
+    process.execPath,
+    [fileURLToPath(new URL("../scripts/verify-disposable-staging-target.mjs", import.meta.url)), "--require-destructive-confirmation"],
+    { stdio: "inherit" },
+  );
+}
 
 const require = createRequire(import.meta.url);
 const { PrismaPg } = require("@prisma/adapter-pg");

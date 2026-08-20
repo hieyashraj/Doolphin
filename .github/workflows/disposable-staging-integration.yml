@@ -24,6 +24,10 @@ jobs:
     name: Verify disposable target
     runs-on: ubuntu-latest
     timeout-minutes: 3
+    # TEST_* and the approved staging project ref are environment-scoped.
+    # Applying the same protected environment here prevents a false missing-
+    # secret preflight and requires its reviewers before any destructive run.
+    environment: disposable-doolphin-staging
     env:
       # Values are injected only into the guard process. The guard prints fixed
       # PASS/REJECT codes and never prints a value, URL, hostname, or project ref.
@@ -32,6 +36,9 @@ jobs:
       TEST_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.TEST_SUPABASE_SERVICE_ROLE_KEY }}
       TEST_DATABASE_URL: ${{ secrets.TEST_DATABASE_URL }}
       TEST_DIRECT_URL: ${{ secrets.TEST_DIRECT_URL }}
+      DATABASE_URL: ${{ secrets.TEST_DATABASE_URL }}
+      DIRECT_URL: ${{ secrets.TEST_DIRECT_URL }}
+      DOOLPHIN_DISPOSABLE_STAGING_PROJECT_REF: ${{ secrets.DOOLPHIN_DISPOSABLE_STAGING_PROJECT_REF }}
       DOOLPHIN_DESTRUCTIVE_STAGING_CONFIRMATION: ${{ inputs.destructive_confirmation }}
     steps:
       - uses: actions/checkout@v4
@@ -52,6 +59,7 @@ jobs:
       TEST_SUPABASE_URL: ${{ secrets.TEST_SUPABASE_URL }}
       TEST_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.TEST_SUPABASE_PUBLISHABLE_KEY }}
       TEST_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.TEST_SUPABASE_SERVICE_ROLE_KEY }}
+      DOOLPHIN_DISPOSABLE_STAGING_PROJECT_REF: ${{ secrets.DOOLPHIN_DISPOSABLE_STAGING_PROJECT_REF }}
       RUN_REMOTE_STAGING_INTEGRATION: "1"
       DOOLPHIN_DESTRUCTIVE_STAGING_CONFIRMATION: ${{ inputs.destructive_confirmation }}
       # The application must select sandbox-only provider/billing paths if any

@@ -9,30 +9,36 @@
  *
  * This script is deliberately dependency-free and prints no secret values, URLs,
  * hostnames, usernames or project refs. It verifies all three connection paths
- * resolve to the same non-production Supabase project and rejects the known
- * Doolphin production project ref before migrations or the test process begin.
+ * resolve to the exact, explicitly configured disposable Supabase project and
+ * rejects the known Doolphin production project ref before migrations or the
+ * test process begin.
  *
  * Defence in depth:
  *   1. Required names must be non-empty.
  *   2. Supabase API URL must be HTTPS and parse to <ref>.supabase.co.
  *   3. Direct DB URL ref (db.<ref>.supabase.co) and pooled DB URL ref (normally
  *      postgres.<ref> embedded in the username) must agree with the API URL.
- *   4. Any occurrence of the known production ref in ANY connection value fails.
- *   5. Destructive mode additionally requires the exact handwritten confirmation
+ *   4. The resolved ref must equal the reviewed disposable staging project ref;
+ *      the known production ref remains denied as defence in depth.
+ *   5. In remote test mode, effective DATABASE_URL/DIRECT_URL must be exactly
+ *      the verified TEST_* values.
+ *   6. Destructive mode additionally requires the exact handwritten confirmation
  *      RESET_DOOLPHIN_STAGING, supplied only by manual workflow dispatch.
  *
- * Update PRODUCTION_PROJECT_REF only through reviewed source when production is
- * deliberately recreated. Never remove the denylist simply because a test needs
- * to pass.
+ * DOOLPHIN_DISPOSABLE_STAGING_PROJECT_REF is an environment-scoped configuration
+ * value rather than a connection secret. It must be the 20-character project
+ * ref from the designated Doolphin staging project — no other project passes.
  */
 
 const PRODUCTION_PROJECT_REF = "ezhopjyooxjnqdfjfuty";
+const PROJECT_REF_PATTERN = /^[a-z0-9]{20}$/i;
 const REQUIRED = [
   "TEST_SUPABASE_URL",
   "TEST_SUPABASE_PUBLISHABLE_KEY",
   "TEST_SUPABASE_SERVICE_ROLE_KEY",
   "TEST_DATABASE_URL",
   "TEST_DIRECT_URL",
+  "DOOLPHIN_DISPOSABLE_STAGING_PROJECT_REF",
 ];
 
 function fail(code) {
@@ -57,7 +63,7 @@ function apiProjectRef(url) {
     fail("INVALID_TEST_SUPABASE_URL_HOST");
   }
   const ref = url.hostname.slice(0, -".supabase.co".length);
-  if (!/^[a-z0-9]{20}$/i.test(ref)) fail("INVALID_TEST_SUPABASE_PROJECT_REF");
+  if (!PROJECT_REF_PATTERN.test(ref)) fail("INVALID_TEST_SUPABASE_PROJECT_REF");
   return ref;
 }
 
@@ -85,6 +91,10 @@ for (const name of REQUIRED) {
   if (!process.env[name]) fail(`MISSING_${name}`);
 }
 
+const expectedRef = process.env.DOOLPHIN_DISPOSABLE_STAGING_PROJECT_REF.toLowerCase();
+if (!PROJECT_REF_PATTERN.test(expectedRef)) fail("INVALID_DISPOSABLE_STAGING_PROJECT_REF");
+if (expectedRef === PRODUCTION_PROJECT_REF) fail("PRODUCTION_PROJECT_REF_DETECTED");
+
 // Reject by full-string search before parsing. This catches a production ref in
 // a URL path, username, password-escaped payload or malformed fallback string.
 for (const name of ["TEST_SUPABASE_URL", "TEST_DATABASE_URL", "TEST_DIRECT_URL"]) {
@@ -100,6 +110,15 @@ if (apiRef === PRODUCTION_PROJECT_REF || databaseRef === PRODUCTION_PROJECT_REF 
 }
 if (new Set([apiRef, databaseRef, directRef]).size !== 1) {
   fail("CONNECTIONS_TARGET_DIFFERENT_PROJECTS");
+}
+if (apiRef.toLowerCase() !== expectedRef) {
+  fail("UNEXPECTED_SUPABASE_PROJECT");
+}
+
+if (process.env.RUN_REMOTE_STAGING_INTEGRATION === "1") {
+  if (process.env.DATABASE_URL !== process.env.TEST_DATABASE_URL || process.env.DIRECT_URL !== process.env.TEST_DIRECT_URL) {
+    fail("EFFECTIVE_DATABASE_URL_MISMATCH");
+  }
 }
 
 if (process.argv.includes("--require-destructive-confirmation")) {
