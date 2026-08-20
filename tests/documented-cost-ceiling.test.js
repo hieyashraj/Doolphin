@@ -337,20 +337,54 @@ test("a quote above the documented ceiling plus tolerance is refused", () => {
   );
 });
 
-test("an indeterminate ceiling is a lower bound and must not reject a higher quote", () => {
-  // The document omits this model's price surface, so its recorded figure is the
-  // only price we know rather than the largest. Using it as a maximum would
-  // reject legitimate longer renders.
-  const band = getDocumentedCostBand("seedance-2.5-spicy-text-to-video-4k");
-  assert.equal(band.trustworthyMaximum, false);
-  assert.equal(band.maxAcceptableUsd, null);
+test("an indeterminate model carries no ceiling at all, so nothing can be bounded by it", () => {
+  // The document publishes no price table and no per-unit rate for these models.
+  // The playground's `Generate ($X)` figure is deliberately NOT substituted: it is
+  // the price at the playground's own default settings, so treating it as a
+  // maximum would recreate the "default mistaken for ceiling" error. The honest
+  // value is therefore null, and no quote can be judged against it.
+  for (const id of ["seedance-2.5-spicy-text-to-video-4k", "seedance-2.5-spicy-image-to-video"]) {
+    assert.equal(getDocumentedCeilingUsd(id), null, `${id} must expose no ceiling`);
+    assert.equal(getDocumentedCostBand(id), null, `${id} must expose no cost band`);
 
-  const verdict = assertLiveCostWithinDocumentedCeiling({
-    providerModelId: "seedance-2.5-spicy-text-to-video-4k",
-    liveCostUsd: 60,
-  });
-  assert.equal(verdict.ok, true);
-  assert.equal(verdict.checked, false);
+    const verdict = assertLiveCostWithinDocumentedCeiling({ providerModelId: id, liveCostUsd: 60 });
+    assert.equal(verdict.ok, true);
+    assert.equal(verdict.checked, false);
+    assert.equal(verdict.ceilingUsd, null);
+  }
+
+  // They remain refused at admission, so no quote is ever produced for them.
+  assert.equal(
+    assertModelCostIsBoundable({ providerModelId: "seedance-2.5-spicy-image-to-video" }).code,
+    "MODEL_COST_INDETERMINATE",
+  );
+});
+
+test("the playground Generate button is never used as a pricing authority", () => {
+  // Explicit regression guard for the founder's correction: `Generate ($X)` is
+  // what MuAPI's playground shows for ONE page's default inputs. Only published
+  // price tables and MuAPI's own stated rates may set a ceiling.
+  //
+  // Every indeterminate model has a non-null playground default recorded for
+  // diagnostics, and a null ceiling. If a future change reintroduces the button
+  // as a fallback, these ceilings become non-null and this fails.
+  const indeterminate = listDocumentedModelIds().filter(
+    (id) => getDocumentedPricingClass(id) === "indeterminate",
+  );
+  assert.equal(indeterminate.length, 7);
+
+  for (const id of indeterminate) {
+    assert.notEqual(
+      getDocumentedDefaultCostUsd(id),
+      null,
+      `${id} should still record its playground default for diagnostics`,
+    );
+    assert.equal(
+      getDocumentedCeilingUsd(id),
+      null,
+      `${id} ceiling must stay null: the playground default is not an authority`,
+    );
+  }
 });
 
 test("an undocumented model is not judged by this guard", () => {

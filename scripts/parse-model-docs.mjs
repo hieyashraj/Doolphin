@@ -95,12 +95,21 @@ function findCostTables(lines) {
   return tables;
 }
 
-/** Extract the `muapiapp` row from the Pricing & Value provider table. */
+/**
+ * Extract MuAPI's own row from the Pricing & Value provider table.
+ *
+ * The provider label is not written consistently: 56 rows say `muapiapp`, 3 say
+ * `muapi` and 1 says `Muapi`. Matching only the most common spelling silently
+ * dropped the price line for four models, so any `muapi*` spelling is accepted.
+ * Competitor rows (Fal.ai, Replicate) never match this prefix.
+ */
+const MUAPI_PROVIDER_ROW = /^muapi/i;
+
 function findProviderPricing(lines) {
   for (let i = 0; i < lines.length; i += 1) {
     if (!isTabRow(lines[i])) continue;
     const c = cells(lines[i]);
-    if (c[0].toLowerCase() !== "muapiapp") continue;
+    if (!MUAPI_PROVIDER_ROW.test(c[0].trim())) continue;
     const costText = c.slice(1).filter(Boolean).join(" ");
     // Notes are the following non-tab prose lines.
     const notes = [];
@@ -477,17 +486,26 @@ function deriveCeiling({
     for (const c of candidates) notes.push(c.note);
   }
 
+  /*
+   * The `Generate ($X)` figure is NOT a pricing authority.
+   *
+   * It is what the MuAPI playground renders on its button for one specific
+   * page's DEFAULT inputs and settings. It therefore describes a single point on
+   * the price surface, chosen by the playground rather than by the customer, and
+   * says nothing about the maximum. Deriving a ceiling from it would reproduce
+   * exactly the "default cost mistaken for a maximum" error this module exists
+   * to eliminate.
+   *
+   * Only the published price TABLES and MuAPI's own stated per-unit rates are
+   * treated as authoritative. When neither exists, the ceiling stays null and
+   * the model is classified `indeterminate` -- an honest "unknown" rather than a
+   * flattering number.
+   */
   if (ceiling === null && defaultCost !== null) {
-    ceiling = defaultCost;
-    basis = "flat-default-cost";
-  }
-
-  // The default cost must never exceed the derived ceiling; if it does, the
-  // price surface was read wrong and the ceiling would under-bill.
-  if (ceiling !== null && defaultCost !== null && defaultCost > ceiling) {
-    ceiling = defaultCost;
-    basis = `${basis} (raised to default cost)`;
-    notes.push(`default cost $${defaultCost} exceeded derived ceiling; using default`);
+    notes.push(
+      `playground default $${defaultCost} is NOT used as a ceiling (it is one point ` +
+        `on the price surface at the playground's own default settings)`,
+    );
   }
 
   // A reference-video-billed model can always exceed any static ceiling.
@@ -533,10 +551,18 @@ function deriveCeiling({
   if (referenceBilled) {
     pricingClass = "unbounded";
   } else if (flatRateDeclared) {
-    pricingClass = "flat";
-    const flatCandidates = [flatRateCost, defaultCost, ceiling].filter((v) => v !== null);
-    if (flatCandidates.length) ceiling = Math.max(...flatCandidates);
-    basis = "flat-rate-per-run";
+    // "Flat rate per run" is followed by a published single-column Cost table.
+    // That table is the authority; the playground button is not consulted.
+    const flatCandidates = [flatRateCost, ceiling].filter((v) => v !== null);
+    if (flatCandidates.length) {
+      ceiling = Math.max(...flatCandidates);
+      pricingClass = "flat";
+      basis = "flat-rate-per-run";
+    } else {
+      // Declared flat but no price published anywhere: unknown, not free.
+      pricingClass = "indeterminate";
+      notes.push('declared "Flat rate per run" but no published Cost table or rate');
+    }
   } else if (priceTables.length === 0 && perSecondRates.length === 0) {
     // No price surface at all in the document.
     pricingClass = variablePriceParams.length ? "indeterminate" : "flat";

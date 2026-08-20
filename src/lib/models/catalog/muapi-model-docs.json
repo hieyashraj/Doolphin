@@ -14,12 +14,19 @@
     "seedance-2.5-omni-reference-4k: UNBOUNDED (combined-duration billing on user-supplied video duration)",
     "seedance-2.5-omni-reference-1080p: UNBOUNDED (combined-duration billing on user-supplied video duration)",
     "seedance-2.5-video-edit: UNBOUNDED (combined-duration billing on user-supplied video duration)",
+    "seedance-2.5-spicy-text-to-video-1080p: could not derive a cost ceiling",
     "seedance-2.5-spicy-text-to-video-1080p: INDETERMINATE ceiling (varies by Duration) -- must not be billed statically",
+    "seedance-2.5-intl-text-to-video-1080p: could not derive a cost ceiling",
     "seedance-2.5-intl-text-to-video-1080p: INDETERMINATE ceiling (varies by Duration) -- must not be billed statically",
+    "seedance-2.5-intl-text-to-video-4k: could not derive a cost ceiling",
     "seedance-2.5-intl-text-to-video-4k: INDETERMINATE ceiling (varies by Duration) -- must not be billed statically",
+    "seedance-2.5-spicy-text-to-video-4k: could not derive a cost ceiling",
     "seedance-2.5-spicy-text-to-video-4k: INDETERMINATE ceiling (varies by Duration) -- must not be billed statically",
+    "seedance-2.5-spicy-image-to-video: could not derive a cost ceiling",
     "seedance-2.5-spicy-image-to-video: INDETERMINATE ceiling (varies by Duration, Resolution) -- must not be billed statically",
+    "seedance-2.5-intl-image-to-video-1080p: could not derive a cost ceiling",
     "seedance-2.5-intl-image-to-video-1080p: INDETERMINATE ceiling (varies by Duration) -- must not be billed statically",
+    "seedance-2.5-spicy-image-to-video-1080p: could not derive a cost ceiling",
     "seedance-2.5-spicy-image-to-video-1080p: INDETERMINATE ceiling (varies by Duration) -- must not be billed statically",
     "kling-v2.6-std-motion-control: UNBOUNDED (input-rate billing on user-supplied video duration)",
     "kling-v2.6-pro-motion-control: UNBOUNDED (input-rate billing on user-supplied video duration)",
@@ -515,7 +522,9 @@
         "variablePriceParams": [
           "Duration (seconds)"
         ],
-        "notes": []
+        "notes": [
+          "playground default $1.05 is NOT used as a ceiling (it is one point on the price surface at the playground's own default settings)"
+        ]
       },
       "providerPricing": {
         "costText": "$0.21/sec",
@@ -600,7 +609,9 @@
         "variablePriceParams": [
           "Duration (seconds)"
         ],
-        "notes": []
+        "notes": [
+          "playground default $3.375 is NOT used as a ceiling (it is one point on the price surface at the playground's own default settings)"
+        ]
       },
       "providerPricing": {
         "costText": "$3.38 per generation",
@@ -3898,8 +3909,8 @@
       },
       "referenceLimits": {},
       "ceiling": {
-        "ceilingUsd": 4.675,
-        "ceilingBasis": "flat-default-cost",
+        "ceilingUsd": null,
+        "ceilingBasis": "unknown",
         "pricingClass": "indeterminate",
         "staticallyBillable": false,
         "unbounded": false,
@@ -3913,6 +3924,7 @@
           "Duration"
         ],
         "notes": [
+          "playground default $4.675 is NOT used as a ceiling (it is one point on the price surface at the playground's own default settings)",
           "INDETERMINATE: document does not state prices for all settings this model accepts (varies by: Duration)"
         ]
       },
@@ -3969,8 +3981,8 @@
       },
       "referenceLimits": {},
       "ceiling": {
-        "ceilingUsd": 4.675,
-        "ceilingBasis": "flat-default-cost",
+        "ceilingUsd": null,
+        "ceilingBasis": "unknown",
         "pricingClass": "indeterminate",
         "staticallyBillable": false,
         "unbounded": false,
@@ -3984,6 +3996,7 @@
           "Duration"
         ],
         "notes": [
+          "playground default $4.675 is NOT used as a ceiling (it is one point on the price surface at the playground's own default settings)",
           "INDETERMINATE: document does not state prices for all settings this model accepts (varies by: Duration)"
         ]
       },
@@ -4040,8 +4053,8 @@
       },
       "referenceLimits": {},
       "ceiling": {
-        "ceilingUsd": 9.35,
-        "ceilingBasis": "flat-default-cost",
+        "ceilingUsd": null,
+        "ceilingBasis": "unknown",
         "pricingClass": "indeterminate",
         "staticallyBillable": false,
         "unbounded": false,
@@ -4055,6 +4068,7 @@
           "Duration"
         ],
         "notes": [
+          "playground default $9.35 is NOT used as a ceiling (it is one point on the price surface at the playground's own default settings)",
           "INDETERMINATE: document does not state prices for all settings this model accepts (varies by: Duration)"
         ]
       },
@@ -4111,8 +4125,8 @@
       },
       "referenceLimits": {},
       "ceiling": {
-        "ceilingUsd": 9.35,
-        "ceilingBasis": "flat-default-cost",
+        "ceilingUsd": null,
+        "ceilingBasis": "unknown",
         "pricingClass": "indeterminate",
         "staticallyBillable": false,
         "unbounded": false,
@@ -4126,6 +4140,7 @@
           "Duration"
         ],
         "notes": [
+          "playground default $9.35 is NOT used as a ceiling (it is one point on the price surface at the playground's own default settings)",
           "INDETERMINATE: document does not state prices for all settings this model accepts (varies by: Duration)"
         ]
       },
@@ -4287,8 +4302,8 @@
       },
       "referenceLimits": {},
       "ceiling": {
-        "ceilingUsd": 1.87,
-        "ceilingBasis": "flat-default-cost",
+        "ceilingUsd": null,
+        "ceilingBasis": "unknown",
         "pricingClass": "indeterminate",
         "staticallyBillable": false,
         "unbounded": false,
@@ -4303,12 +4318,13 @@
           "Resolution"
         ],
         "notes": [
+          "playground default $1.87 is NOT used as a ceiling (it is one point on the price surface at the playground's own default settings)",
           "INDETERMINATE: document does not state prices for all settings this model accepts (varies by: Duration, Resolution)"
         ]
       },
       "providerPricing": {
-        "costText": "",
-        "notes": ""
+        "costText": "$0.60 per generation",
+        "notes": "Pay per generation. No subscription required."
       },
       "configSchema": [
         {
@@ -4383,8 +4399,8 @@
       },
       "referenceLimits": {},
       "ceiling": {
-        "ceilingUsd": 4.675,
-        "ceilingBasis": "flat-default-cost",
+        "ceilingUsd": null,
+        "ceilingBasis": "unknown",
         "pricingClass": "indeterminate",
         "staticallyBillable": false,
         "unbounded": false,
@@ -4398,6 +4414,7 @@
           "Duration"
         ],
         "notes": [
+          "playground default $4.675 is NOT used as a ceiling (it is one point on the price surface at the playground's own default settings)",
           "INDETERMINATE: document does not state prices for all settings this model accepts (varies by: Duration)"
         ]
       },
@@ -4460,8 +4477,8 @@
       },
       "referenceLimits": {},
       "ceiling": {
-        "ceilingUsd": 4.675,
-        "ceilingBasis": "flat-default-cost",
+        "ceilingUsd": null,
+        "ceilingBasis": "unknown",
         "pricingClass": "indeterminate",
         "staticallyBillable": false,
         "unbounded": false,
@@ -4475,6 +4492,7 @@
           "Duration"
         ],
         "notes": [
+          "playground default $4.675 is NOT used as a ceiling (it is one point on the price surface at the playground's own default settings)",
           "INDETERMINATE: document does not state prices for all settings this model accepts (varies by: Duration)"
         ]
       },
@@ -4551,11 +4569,13 @@
         "variablePriceParams": [
           "Duration (seconds)"
         ],
-        "notes": []
+        "notes": [
+          "playground default $3 is NOT used as a ceiling (it is one point on the price surface at the playground's own default settings)"
+        ]
       },
       "providerPricing": {
-        "costText": "",
-        "notes": ""
+        "costText": "$3.00 per generation",
+        "notes": "Flat per-generation rate for 1080p output — no per-second charges."
       },
       "configSchema": [
         {
@@ -4620,11 +4640,13 @@
         "variablePriceParams": [
           "Duration (seconds)"
         ],
-        "notes": []
+        "notes": [
+          "playground default $3 is NOT used as a ceiling (it is one point on the price surface at the playground's own default settings)"
+        ]
       },
       "providerPricing": {
-        "costText": "",
-        "notes": ""
+        "costText": "$3.00 per generation",
+        "notes": "Flat rate per generation — no per-second billing. Competitively priced for 1080p output quality."
       },
       "configSchema": [
         {
@@ -4891,7 +4913,9 @@
         "indeterminateReason": null,
         "referenceRateUsdPerSecond": null,
         "variablePriceParams": [],
-        "notes": []
+        "notes": [
+          "playground default $0.78 is NOT used as a ceiling (it is one point on the price surface at the playground's own default settings)"
+        ]
       },
       "providerPricing": {
         "costText": "$0.6",
@@ -5568,7 +5592,9 @@
         "indeterminateReason": null,
         "referenceRateUsdPerSecond": null,
         "variablePriceParams": [],
-        "notes": []
+        "notes": [
+          "playground default $0.6 is NOT used as a ceiling (it is one point on the price surface at the playground's own default settings)"
+        ]
       },
       "providerPricing": {
         "costText": "$0.6",
@@ -5629,7 +5655,9 @@
         "indeterminateReason": null,
         "referenceRateUsdPerSecond": null,
         "variablePriceParams": [],
-        "notes": []
+        "notes": [
+          "playground default $0.6 is NOT used as a ceiling (it is one point on the price surface at the playground's own default settings)"
+        ]
       },
       "providerPricing": {
         "costText": "$0.6 per generation",
@@ -5684,7 +5712,9 @@
         "indeterminateReason": null,
         "referenceRateUsdPerSecond": null,
         "variablePriceParams": [],
-        "notes": []
+        "notes": [
+          "playground default $2.5 is NOT used as a ceiling (it is one point on the price surface at the playground's own default settings)"
+        ]
       },
       "providerPricing": {
         "costText": "$2.5",
@@ -5739,7 +5769,9 @@
         "indeterminateReason": null,
         "referenceRateUsdPerSecond": null,
         "variablePriceParams": [],
-        "notes": []
+        "notes": [
+          "playground default $2.5 is NOT used as a ceiling (it is one point on the price surface at the playground's own default settings)"
+        ]
       },
       "providerPricing": {
         "costText": "$2.5 per generation",
@@ -7882,8 +7914,8 @@
         ]
       },
       "providerPricing": {
-        "costText": "",
-        "notes": ""
+        "costText": "From $0.05 per generation",
+        "notes": "Pay-per-run, no subscription. 6s 480p starts at $0.05; 10s 720p at $0.15."
       },
       "configSchema": [
         {
