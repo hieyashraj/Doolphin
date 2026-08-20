@@ -26,11 +26,14 @@ import { updateSession } from "@/lib/supabase/proxy";
 export async function proxy(request) {
   const { response, user } = await updateSession(request);
 
-  // Only /app is gated. The other matched paths are here purely so the Supabase
-  // session cookie gets refreshed while the user moves around; redirecting them
-  // would break the auth pages themselves (and /verify-email would redirect to
-  // itself forever). API routes must keep returning JSON errors, not redirects.
-  if (!request.nextUrl.pathname.startsWith("/app")) return response;
+  // /app and /admin are gated. The other matched paths are here purely so the
+  // Supabase session cookie gets refreshed while the user moves around;
+  // redirecting them would break the auth pages themselves (and /verify-email
+  // would redirect to itself forever). API routes must keep returning JSON
+  // errors, not redirects.
+  const path = request.nextUrl.pathname;
+  const isAdminArea = path.startsWith("/admin");
+  if (!path.startsWith("/app") && !isAdminArea) return response;
 
   // STEP 1 — no session at all.
   if (!user) {
@@ -39,6 +42,13 @@ export async function proxy(request) {
     url.searchParams.set("next", request.nextUrl.pathname);
     return NextResponse.redirect(url);
   }
+
+  // /admin needs an isAdmin lookup that only Prisma can do, and Prisma cannot
+  // run at the edge. So the proxy stops here for /admin — it has turned away
+  // anonymous traffic, and src/app/admin/page.js is the authority that verifies
+  // the isAdmin flag and 404s a non-admin. Email/plan steps below are /app-only:
+  // an admin account is not required to hold a purchased plan.
+  if (isAdminArea) return response;
 
   // STEP 2 — email not confirmed. `updateSession` already performs a full
   // `auth.getUser()` to validate the cookie, so `email_confirmed_at` is already
@@ -61,4 +71,4 @@ export async function proxy(request) {
   return response;
 }
 
-export const config = { matcher: ["/app/:path*", "/sign-in", "/sign-up", "/verify-email", "/api/:path*"] };
+export const config = { matcher: ["/app/:path*", "/admin/:path*", "/sign-in", "/sign-up", "/verify-email", "/api/:path*"] };

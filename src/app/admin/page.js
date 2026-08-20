@@ -1,14 +1,33 @@
 import React from "react";
+import { notFound, redirect } from "next/navigation";
+import { requireAdminUser } from "@/lib/access/authorization";
 import { prisma } from "@/lib/prisma";
 
 /**
  * Admin Operations Console.
  * Section 24 Compliance.
+ *
+ * This page renders customer emails, credit balances, provider jobs and system
+ * state. It previously had NO access check at all — anyone who typed /admin saw
+ * all of it. The gate below is the authority (it runs a Prisma isAdmin lookup,
+ * which the edge proxy cannot); the proxy adds a cheaper anonymous turn-away.
+ *
+ * A non-admin (including a perfectly valid paying customer) gets a 404, not a
+ * 403: there is no reason to confirm to a curious logged-in user that an admin
+ * console exists at this path. Only an unauthenticated visitor is sent to sign
+ * in, because they may be an admin who simply is not logged in yet.
  */
 
 export const revalidate = 0;
 
 export default async function AdminPage() {
+  try {
+    await requireAdminUser();
+  } catch (error) {
+    if (error?.code === "UNAUTHENTICATED") redirect("/sign-in?next=/admin");
+    notFound();
+  }
+
   let creations = [];
   let providerJobs = [];
   let outboxRows = [];
