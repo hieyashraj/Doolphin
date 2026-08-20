@@ -710,6 +710,25 @@ for (const section of sections) {
   const categoryIdx = lines.findIndex((l) => new RegExp(`^muapi/${escapeRe(section.slug)}$`).test(l.trim()));
   const category = categoryIdx !== -1 ? (lines[categoryIdx + 1] ?? "").trim() : "";
 
+  /*
+   * Resolution tokens mentioned in the model's own prose description.
+   *
+   * DISPLAY ONLY -- never a pricing input. Most endpoints state their native
+   * resolution in prose rather than in a price table or a name suffix ("Supports
+   * clips up to 30 seconds at 720p"), and without this the UI would show no
+   * resolution badge for 38 of 71 models. A prose heuristic is acceptable here
+   * precisely because nothing financial depends on it; the price surface is read
+   * from tables only.
+   */
+  const descriptionRegion = lines.slice(0, 14).join(" ");
+  const resolutionMentions = [
+    ...new Set(
+      [...descriptionRegion.matchAll(/\b(480p|540p|720p|1080p|2K|4K)\b/gi)].map((m) =>
+        m[1].toLowerCase() === "2k" ? "2K" : m[1].toLowerCase() === "4k" ? "4K" : m[1].toLowerCase(),
+      ),
+    ),
+  ];
+
   const flatRateDeclared = declaresFlatRate(lines);
   const flatRateCost = flatRateDeclared ? findFlatRateCost(lines) : null;
   const variablePriceParams = findVariablePriceParams(params);
@@ -744,6 +763,7 @@ for (const section of sections) {
     name: section.slug,
     headingRaw: section.headingRaw,
     category,
+    resolutionMentions,
     title: (lines[1] ?? "").trim(),
     defaultCostUsd: defaultCost,
     pricingDescriptor: descriptor,

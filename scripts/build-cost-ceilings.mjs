@@ -170,8 +170,50 @@ for (const doc of docs.models) {
       ? inputPolicy.ceilingUsd
       : ceiling.ceilingUsd;
 
+  /*
+   * Resolutions the model can output, for the UI badge.
+   *
+   * Two patterns exist and both must be handled: some models take resolution as
+   * a request PARAMETER (veo3.1-lite: 720p/1080p/4k on one endpoint), others
+   * expose a SEPARATE ENDPOINT PER RESOLUTION (seedance-2.5-*-1080p). Reading
+   * only the price table would miss the second kind entirely and label a 4k
+   * endpoint as having no resolution.
+   */
+  const resolutionsFromTable = [];
+  for (const table of doc.priceTables ?? []) {
+    const idx = table.dimensions.findIndex((d) => /resolution/i.test(d));
+    if (idx === -1) continue;
+    for (const row of table.rows) {
+      const value = row.combination[idx];
+      if (value && !resolutionsFromTable.includes(value)) resolutionsFromTable.push(value);
+    }
+  }
+  const suffixResolution = /-(480p|720p|1080p|4k)$/i.exec(doc.name)?.[1] ?? null;
+  // Precedence: price table (authoritative, resolution is a priced parameter) ->
+  // endpoint name suffix (authoritative, resolution IS the endpoint) -> prose
+  // mention (display hint only, for native-resolution endpoints).
+  const resolutions = resolutionsFromTable.length
+    ? resolutionsFromTable
+    : suffixResolution
+      ? [suffixResolution]
+      : (doc.resolutionMentions ?? []);
+  const resolutionSource = resolutionsFromTable.length
+    ? "price-table"
+    : suffixResolution
+      ? "endpoint-name"
+      : (doc.resolutionMentions ?? []).length
+        ? "prose-hint"
+        : "unknown";
+
+  // Human title: the document's heading before the colon
+  // ("Omni Reference Fast: AI Image-to-Video Generator" -> "Omni Reference Fast").
+  const title = (doc.title || "").split(":")[0].trim() || null;
+
   models[doc.name] = {
     category: doc.category || null,
+    title,
+    resolutions,
+    resolutionSource,
     availability,
     comingSoonReason,
     // Seedance 2.5 is the newest family and is surfaced with a NEW tag.

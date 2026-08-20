@@ -650,7 +650,15 @@ export default function CreationHub({
       modelLocked: true,
       script: { text: spokenScript.trim(), language: "auto", maxCharacters: 300 },
       instructions: {
-        raw: (additionalInstructions || sceneMotion || "").trim(),
+        // Both fields are user direction and both must reach the model. The
+        // previous `additionalInstructions || sceneMotion` silently DISCARDED
+        // scene motion whenever additional instructions were also filled in, so
+        // a user who described their camera movement and then added a note got a
+        // video that ignored the camera movement, with nothing to indicate why.
+        raw: [sceneMotion, additionalInstructions]
+          .map((part) => (part || "").trim())
+          .filter(Boolean)
+          .join(". "),
         confirmedScenePlanId: null
       },
       settings: {
