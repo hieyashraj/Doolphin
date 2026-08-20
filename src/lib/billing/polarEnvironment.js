@@ -1,87 +1,64 @@
-// Centralized server-owned Polar environment resolver.
-// Rejects implicit NODE_ENV guessing, loose rules, or generic legacy secrets.
+// Server-owned Polar environment resolver.
+//
+// THE ENVIRONMENT IS DETECTED AUTOMATICALLY from VERCEL_ENV — the one variable
+// Vercel already sets for every deployment — so there is nothing to configure to
+// switch between test and live billing, and no DOOLPHIN_ENV / POLAR_ENV flags to
+// remember:
+//
+//   VERCEL_ENV === "production"   ->  LIVE Polar   (https://api.polar.sh)
+//   anything else (preview/dev)   ->  SANDBOX Polar (https://sandbox-api.polar.sh)
+//
+// This makes it structurally impossible to run sandbox billing on the live
+// domain, or live billing on a preview — without anyone remembering a flag.
+//
+// CREDENTIALS are read tier-first with a generic fallback, so whichever names you
+// already added to Vercel are picked up:
+//   live:    POLAR_PRODUCTION_*   then  POLAR_*
+//   sandbox: POLAR_SANDBOX_*       then  POLAR_*
+//
+// If the resolved tier is missing an access token or webhook secret, it FAILS
+// CLOSED (throws) — checkout refuses rather than guessing. A wrong-tier token
+// (e.g. a sandbox token on the live domain) can only ever fail the Polar API
+// call; it can never silently mischarge.
+
+const PLAN_CODES = [
+  "EXPLORER",
+  "STARTER_MONTHLY",
+  "STARTER_ANNUAL",
+  "GROWTH_MONTHLY",
+  "GROWTH_ANNUAL",
+  "AGENCY_MONTHLY",
+  "AGENCY_ANNUAL",
+];
 
 export function getPolarConfig() {
-  const polarEnv = process.env.POLAR_ENV;
-  const doolphinEnv = process.env.DOOLPHIN_ENV;
-  const vercelEnv = process.env.VERCEL_ENV;
+  const env = process.env;
+  const isProduction = env.VERCEL_ENV === "production";
+  const tier = isProduction ? "PRODUCTION" : "SANDBOX";
 
-  // Staging / Local Staging Billing:
-  // Must have DOOLPHIN_ENV=staging and POLAR_ENV=sandbox
-  // VERCEL_ENV may be "preview" on Vercel or absent in local staging execution
-  // Must NEVER be "production"
-  const isStaging =
-    doolphinEnv === "staging" &&
-    polarEnv === "sandbox" &&
-    vercelEnv !== "production";
+  // Tier-specific name first, then the generic POLAR_* name.
+  const pick = (suffix) => env[`POLAR_${tier}_${suffix}`] || env[`POLAR_${suffix}`] || null;
 
-  if (isStaging) {
-    const token = process.env.POLAR_SANDBOX_ACCESS_TOKEN;
-    const webhookSecret = process.env.POLAR_SANDBOX_WEBHOOK_SECRET;
+  const token = pick("ACCESS_TOKEN");
+  const webhookSecret = pick("WEBHOOK_SECRET");
 
-    if (!token || !webhookSecret) {
-      const err = new Error("Polar sandbox credentials incomplete: POLAR_SANDBOX_ACCESS_TOKEN and POLAR_SANDBOX_WEBHOOK_SECRET required");
-      err.code = "POLAR_CONFIG_INCOMPLETE";
-      throw err;
-    }
-
-    const products = {
-      EXPLORER: process.env.POLAR_SANDBOX_PRODUCT_EXPLORER || null,
-      STARTER_MONTHLY: process.env.POLAR_SANDBOX_PRODUCT_STARTER_MONTHLY || null,
-      STARTER_ANNUAL: process.env.POLAR_SANDBOX_PRODUCT_STARTER_ANNUAL || null,
-      GROWTH_MONTHLY: process.env.POLAR_SANDBOX_PRODUCT_GROWTH_MONTHLY || null,
-      GROWTH_ANNUAL: process.env.POLAR_SANDBOX_PRODUCT_GROWTH_ANNUAL || null,
-      AGENCY_MONTHLY: process.env.POLAR_SANDBOX_PRODUCT_AGENCY_MONTHLY || null,
-      AGENCY_ANNUAL: process.env.POLAR_SANDBOX_PRODUCT_AGENCY_ANNUAL || null,
-    };
-
-    return {
-      env: "sandbox",
-      baseUrl: "https://sandbox-api.polar.sh",
-      token,
-      webhookSecret,
-      products,
-    };
+  if (!token || !webhookSecret) {
+    const err = new Error(
+      `Polar ${tier.toLowerCase()} credentials incomplete: an access token and webhook secret are required ` +
+        `(POLAR_${tier}_ACCESS_TOKEN + POLAR_${tier}_WEBHOOK_SECRET, or the generic POLAR_ACCESS_TOKEN + POLAR_WEBHOOK_SECRET).`
+    );
+    err.code = "POLAR_CONFIG_INCOMPLETE";
+    throw err;
   }
 
-  // Production Billing:
-  // Must have DOOLPHIN_ENV=production, POLAR_ENV=production, VERCEL_ENV=production
-  const isProduction =
-    doolphinEnv === "production" &&
-    polarEnv === "production" &&
-    vercelEnv === "production";
+  const products = {};
+  for (const code of PLAN_CODES) products[code] = pick(`PRODUCT_${code}`);
 
-  if (isProduction) {
-    const token = process.env.POLAR_PRODUCTION_ACCESS_TOKEN;
-    const webhookSecret = process.env.POLAR_PRODUCTION_WEBHOOK_SECRET;
-
-    if (!token || !webhookSecret) {
-      const err = new Error("Polar production credentials incomplete: POLAR_PRODUCTION_ACCESS_TOKEN and POLAR_PRODUCTION_WEBHOOK_SECRET required");
-      err.code = "POLAR_CONFIG_INCOMPLETE";
-      throw err;
-    }
-
-    const products = {
-      EXPLORER: process.env.POLAR_PRODUCTION_PRODUCT_EXPLORER || null,
-      STARTER_MONTHLY: process.env.POLAR_PRODUCTION_PRODUCT_STARTER_MONTHLY || null,
-      STARTER_ANNUAL: process.env.POLAR_PRODUCTION_PRODUCT_STARTER_ANNUAL || null,
-      GROWTH_MONTHLY: process.env.POLAR_PRODUCTION_PRODUCT_GROWTH_MONTHLY || null,
-      GROWTH_ANNUAL: process.env.POLAR_PRODUCTION_PRODUCT_GROWTH_ANNUAL || null,
-      AGENCY_MONTHLY: process.env.POLAR_PRODUCTION_PRODUCT_AGENCY_MONTHLY || null,
-      AGENCY_ANNUAL: process.env.POLAR_PRODUCTION_PRODUCT_AGENCY_ANNUAL || null,
-    };
-
-    return {
-      env: "production",
-      baseUrl: "https://api.polar.sh",
-      token,
-      webhookSecret,
-      products,
-    };
-  }
-
-  // Contradictory, unconfigured, or ambiguous environment signals -> FAIL CLOSED
-  const err = new Error(`Ambiguous or unconfigured Polar environment. POLAR_ENV="${polarEnv}", DOOLPHIN_ENV="${doolphinEnv}", VERCEL_ENV="${vercelEnv}"`);
-  err.code = "POLAR_CONFIG_AMBIGUOUS";
-  throw err;
+  return {
+    env: isProduction ? "production" : "sandbox",
+    baseUrl: isProduction ? "https://api.polar.sh" : "https://sandbox-api.polar.sh",
+    token,
+    webhookSecret,
+    products,
+  };
 }
