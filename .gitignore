@@ -43,3 +43,8 @@ dev.db*
 .playwright/
 artifacts/
 
+
+
+# intermediate build artifacts for the pricing document pipeline.
+# Regenerate with: node scripts/extract-docx.mjs "Models and their Pricing.docx" .work/models-pricing.txt
+/.work/

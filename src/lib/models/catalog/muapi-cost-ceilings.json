@@ -1,0 +1,5578 @@
+{
+  "$schema": "doolphin/muapi-cost-ceilings@1",
+  "revision": "2026-08-documented-cost-ceilings-v1",
+  "provenance": {
+    "priceSurface": "Models and their Pricing.docx (founder-supplied, authoritative)",
+    "catalogCrossCheck": "MUAPI MODELS.json (609-model provider catalog)",
+    "generatedBy": "scripts/build-cost-ceilings.mjs"
+  },
+  "note": "ceilingUsd is the MAXIMUM a single call can cost. defaultCostUsd is the price at default parameters and must never be used as a billing basis. pricingClass 'unbounded' means cost scales with the duration of user-supplied media and cannot be bounded before dispatch; 'indeterminate' means the document omits prices for parameters the model accepts.",
+  "modelCount": 71,
+  "models": {
+    "seedance-2-omni-reference-no-video-fast": {
+      "category": "Image to Video",
+      "title": "Omni Reference Fast",
+      "resolutions": [],
+      "resolutionSource": "unknown",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
+      "availability": "AVAILABLE",
+      "comingSoonReason": null,
+      "isNew": false,
+      "family": "sd-2",
+      "groupOf": "video",
+      "inputVideoPolicy": {
+        "capSeconds": 15,
+        "applies": false,
+        "boundable": true,
+        "reason": null,
+        "formula": "not billed on input duration",
+        "referenceClipLimit": null,
+        "billedClipLimit": null
+      },
+      "effectiveCeilingUsd": 2.25,
+      "effectiveCeilingMicroUsd": 2250000,
+      "defaultCostUsd": 0.75,
+      "defaultCostMicroUsd": 750000,
+      "ceilingUsd": 2.25,
+      "ceilingMicroUsd": 2250000,
+      "ceilingBasis": "max(cost-table-max, per-second-rate x max-duration)",
+      "pricingClass": "bounded",
+      "staticallyBillable": true,
+      "unbounded": false,
+      "unboundedKind": null,
+      "unboundedEvidence": [],
+      "costDrivers": [
+        "duration"
+      ],
+      "priceVaries": true,
+      "catalogCostUsd": 0.75,
+      "catalogDynamicPricing": true,
+      "estimateEndpoint": "/api/v1/models/seedance-2-omni-reference-no-video-fast/estimate-cost",
+      "endpoint": "/api/v1/seedance-2-omni-reference-no-video-fast",
+      "durationMinSeconds": 4,
+      "durationMaxSeconds": 15,
+      "referenceLimits": {
+        "images": 9,
+        "audios": 3
+      },
+      "maxPerSecondRateUsd": 0.15,
+      "priceTables": [
+        {
+          "dimensions": [
+            "Duration"
+          ],
+          "rows": [
+            {
+              "combination": [
+                "5s"
+              ],
+              "costUsd": 0.75
+            },
+            {
+              "combination": [
+                "8s"
+              ],
+              "costUsd": 1.2
+            },
+            {
+              "combination": [
+                "10s"
+              ],
+              "costUsd": 1.5
+            }
+          ]
+        }
+      ]
+    },
+    "seedance-2-omni-reference-no-video": {
+      "category": "Image to Video",
+      "title": "Omni Reference",
+      "resolutions": [],
+      "resolutionSource": "unknown",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
+      "availability": "AVAILABLE",
+      "comingSoonReason": null,
+      "isNew": false,
+      "family": "sd-2",
+      "groupOf": "video",
+      "inputVideoPolicy": {
+        "capSeconds": 15,
+        "applies": false,
+        "boundable": true,
+        "reason": null,
+        "formula": "not billed on input duration",
+        "referenceClipLimit": null,
+        "billedClipLimit": null
+      },
+      "effectiveCeilingUsd": 3.75,
+      "effectiveCeilingMicroUsd": 3750000,
+      "defaultCostUsd": 1.25,
+      "defaultCostMicroUsd": 1250000,
+      "ceilingUsd": 3.75,
+      "ceilingMicroUsd": 3750000,
+      "ceilingBasis": "max(cost-table-max, per-second-rate x max-duration)",
+      "pricingClass": "bounded",
+      "staticallyBillable": true,
+      "unbounded": false,
+      "unboundedKind": null,
+      "unboundedEvidence": [],
+      "costDrivers": [
+        "duration"
+      ],
+      "priceVaries": true,
+      "catalogCostUsd": 1.25,
+      "catalogDynamicPricing": true,
+      "estimateEndpoint": "/api/v1/models/seedance-2-omni-reference-no-video/estimate-cost",
+      "endpoint": "/api/v1/seedance-2-omni-reference-no-video",
+      "durationMinSeconds": 4,
+      "durationMaxSeconds": 15,
+      "referenceLimits": {
+        "images": 9,
+        "audios": 3
+      },
+      "maxPerSecondRateUsd": 0.25,
+      "priceTables": [
+        {
+          "dimensions": [
+            "Duration"
+          ],
+          "rows": [
+            {
+              "combination": [
+                "5s"
+              ],
+              "costUsd": 1.25
+            },
+            {
+              "combination": [
+                "8s"
+              ],
+              "costUsd": 2
+            },
+            {
+              "combination": [
+                "10s"
+              ],
+              "costUsd": 2.5
+            }
+          ]
+        }
+      ]
+    },
+    "seedance-2-omni-reference": {
+      "category": "Image to Video",
+      "title": "Omni Reference",
+      "resolutions": [],
+      "resolutionSource": "unknown",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
+      "availability": "AVAILABLE",
+      "comingSoonReason": null,
+      "isNew": false,
+      "family": "sd-v2.0",
+      "groupOf": "video",
+      "inputVideoPolicy": {
+        "capSeconds": 15,
+        "applies": true,
+        "boundable": true,
+        "reason": null,
+        "formula": "$0.3/sec x 15s output + 0.3 x $0.3/sec x 3 x 15s capped input",
+        "referenceClipLimit": 3,
+        "billedClipLimit": 3
+      },
+      "effectiveCeilingUsd": 8.55,
+      "effectiveCeilingMicroUsd": 8550000,
+      "defaultCostUsd": 1.5,
+      "defaultCostMicroUsd": 1500000,
+      "ceilingUsd": 4.5,
+      "ceilingMicroUsd": 4500000,
+      "ceilingBasis": "max(cost-table-max, per-second-rate x max-duration)",
+      "pricingClass": "unbounded",
+      "staticallyBillable": false,
+      "unbounded": true,
+      "unboundedKind": "input-surcharge",
+      "unboundedEvidence": [
+        {
+          "rule": "input-surcharge",
+          "quote": "Generation quality. 'high' uses the standard model ($0.30/sec output + $0.09/sec per input video second). 'basic' uses the fast model (~2x speed, $0.21/sec output + $0.063/sec per input video second). Video reference inp"
+        },
+        {
+          "rule": "input-surcharge",
+          "quote": "Cost = (rate × output_duration) + (0.3 × rate × total_input_video_duration). 'high' quality: $0.30/sec output. 'basic' quality: $0.21/sec output. If video_files are provided, an additional 30% surcharge applies per secon"
+        },
+        {
+          "rule": "input-surcharge",
+          "quote": "Cost = (rate × output_duration) + (0.3 × rate × total_input_video_duration). 'high' quality: $0.30/sec output. 'basic' quality: $0.21/sec output. If video_files are provided, an additional 30% surcharge applies per secon"
+        }
+      ],
+      "costDrivers": [
+        "duration",
+        "quality"
+      ],
+      "priceVaries": true,
+      "catalogCostUsd": 1.5,
+      "catalogDynamicPricing": true,
+      "estimateEndpoint": "/api/v1/models/seedance-2-omni-reference/estimate-cost",
+      "endpoint": "/api/v1/seedance-2-omni-reference",
+      "durationMinSeconds": 4,
+      "durationMaxSeconds": 15,
+      "referenceLimits": {
+        "images": 9,
+        "videos": 3,
+        "audios": 3
+      },
+      "maxPerSecondRateUsd": 0.3,
+      "priceTables": [
+        {
+          "dimensions": [
+            "Quality",
+            "Duration"
+          ],
+          "rows": [
+            {
+              "combination": [
+                "Basic",
+                "5s"
+              ],
+              "costUsd": 1.05
+            },
+            {
+              "combination": [
+                "Basic",
+                "8s"
+              ],
+              "costUsd": 1.68
+            },
+            {
+              "combination": [
+                "Basic",
+                "10s"
+              ],
+              "costUsd": 2.1
+            },
+            {
+              "combination": [
+                "High",
+                "5s"
+              ],
+              "costUsd": 1.5
+            },
+            {
+              "combination": [
+                "High",
+                "8s"
+              ],
+              "costUsd": 2.4
+            },
+            {
+              "combination": [
+                "High",
+                "10s"
+              ],
+              "costUsd": 3
+            }
+          ]
+        }
+      ]
+    },
+    "seedance-2-vip-omni-reference-fast": {
+      "category": "Image to Video",
+      "title": "Omni Reference VIP Fast",
+      "resolutions": [],
+      "resolutionSource": "unknown",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
+      "availability": "AVAILABLE",
+      "comingSoonReason": null,
+      "isNew": false,
+      "family": "sd-2",
+      "groupOf": "video",
+      "inputVideoPolicy": {
+        "capSeconds": 15,
+        "applies": false,
+        "boundable": true,
+        "reason": null,
+        "formula": "not billed on input duration",
+        "referenceClipLimit": 3,
+        "billedClipLimit": null
+      },
+      "effectiveCeilingUsd": 1.05,
+      "effectiveCeilingMicroUsd": 1050000,
+      "defaultCostUsd": 1.05,
+      "defaultCostMicroUsd": 1050000,
+      "ceilingUsd": 1.05,
+      "ceilingMicroUsd": 1050000,
+      "ceilingBasis": "flat-rate-per-run",
+      "pricingClass": "flat",
+      "staticallyBillable": true,
+      "unbounded": false,
+      "unboundedKind": null,
+      "unboundedEvidence": [],
+      "costDrivers": [],
+      "priceVaries": true,
+      "catalogCostUsd": 1.05,
+      "catalogDynamicPricing": true,
+      "estimateEndpoint": "/api/v1/models/seedance-2-vip-omni-reference-fast/estimate-cost",
+      "endpoint": "/api/v1/seedance-2-vip-omni-reference-fast",
+      "durationMinSeconds": null,
+      "durationMaxSeconds": null,
+      "referenceLimits": {
+        "images": 9,
+        "videos": 3,
+        "audios": 3
+      },
+      "maxPerSecondRateUsd": 0.21,
+      "priceTables": []
+    },
+    "seedance-2-vip-omni-reference-1080p": {
+      "category": "Image to Video",
+      "title": "Omni Reference VIP 1080p",
+      "resolutions": [
+        "1080p"
+      ],
+      "resolutionSource": "endpoint-name",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
+      "availability": "AVAILABLE",
+      "comingSoonReason": null,
+      "isNew": false,
+      "family": "sd-2",
+      "groupOf": "video",
+      "inputVideoPolicy": {
+        "capSeconds": 15,
+        "applies": false,
+        "boundable": true,
+        "reason": null,
+        "formula": "not billed on input duration",
+        "referenceClipLimit": 3,
+        "billedClipLimit": null
+      },
+      "effectiveCeilingUsd": 3.38,
+      "effectiveCeilingMicroUsd": 3380000,
+      "defaultCostUsd": 3.375,
+      "defaultCostMicroUsd": 3375000,
+      "ceilingUsd": 3.38,
+      "ceilingMicroUsd": 3380000,
+      "ceilingBasis": "flat-rate-per-run",
+      "pricingClass": "flat",
+      "staticallyBillable": true,
+      "unbounded": false,
+      "unboundedKind": null,
+      "unboundedEvidence": [],
+      "costDrivers": [],
+      "priceVaries": true,
+      "catalogCostUsd": 3.375,
+      "catalogDynamicPricing": true,
+      "estimateEndpoint": "/api/v1/models/seedance-2-vip-omni-reference-1080p/estimate-cost",
+      "endpoint": "/api/v1/seedance-2-vip-omni-reference-1080p",
+      "durationMinSeconds": null,
+      "durationMaxSeconds": null,
+      "referenceLimits": {
+        "images": 9,
+        "videos": 3,
+        "audios": 3
+      },
+      "maxPerSecondRateUsd": null,
+      "priceTables": []
+    },
+    "seedance-2-image-to-video": {
+      "category": "Image to Video",
+      "title": "Seedance 2 Image to Video",
+      "resolutions": [
+        "2K"
+      ],
+      "resolutionSource": "prose-hint",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
+      "availability": "AVAILABLE",
+      "comingSoonReason": null,
+      "isNew": false,
+      "family": "sd-2",
+      "groupOf": "video",
+      "inputVideoPolicy": {
+        "capSeconds": 15,
+        "applies": false,
+        "boundable": true,
+        "reason": null,
+        "formula": "not billed on input duration",
+        "referenceClipLimit": null,
+        "billedClipLimit": null
+      },
+      "effectiveCeilingUsd": 2.5,
+      "effectiveCeilingMicroUsd": 2500000,
+      "defaultCostUsd": 1.25,
+      "defaultCostMicroUsd": 1250000,
+      "ceilingUsd": 2.5,
+      "ceilingMicroUsd": 2500000,
+      "ceilingBasis": "max(cost-table-max, per-second-rate x max-duration)",
+      "pricingClass": "bounded",
+      "staticallyBillable": true,
+      "unbounded": false,
+      "unboundedKind": null,
+      "unboundedEvidence": [],
+      "costDrivers": [
+        "duration"
+      ],
+      "priceVaries": true,
+      "catalogCostUsd": 1.25,
+      "catalogDynamicPricing": true,
+      "estimateEndpoint": "/api/v1/models/seedance-2-image-to-video/estimate-cost",
+      "endpoint": "/api/v1/seedance-2-image-to-video",
+      "durationMinSeconds": 5,
+      "durationMaxSeconds": 10,
+      "referenceLimits": {},
+      "maxPerSecondRateUsd": 0.25,
+      "priceTables": [
+        {
+          "dimensions": [
+            "Duration"
+          ],
+          "rows": [
+            {
+              "combination": [
+                "5s"
+              ],
+              "costUsd": 1.25
+            },
+            {
+              "combination": [
+                "8s"
+              ],
+              "costUsd": 2
+            },
+            {
+              "combination": [
+                "10s"
+              ],
+              "costUsd": 2.5
+            }
+          ]
+        }
+      ]
+    },
+    "seedance-2-image-to-video-fast": {
+      "category": "Image to Video",
+      "title": "Seedance 2 Fast Image to Video",
+      "resolutions": [],
+      "resolutionSource": "unknown",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
+      "availability": "AVAILABLE",
+      "comingSoonReason": null,
+      "isNew": false,
+      "family": "sd-2",
+      "groupOf": "video",
+      "inputVideoPolicy": {
+        "capSeconds": 15,
+        "applies": false,
+        "boundable": true,
+        "reason": null,
+        "formula": "not billed on input duration",
+        "referenceClipLimit": null,
+        "billedClipLimit": null
+      },
+      "effectiveCeilingUsd": 1.5,
+      "effectiveCeilingMicroUsd": 1500000,
+      "defaultCostUsd": 0.75,
+      "defaultCostMicroUsd": 750000,
+      "ceilingUsd": 1.5,
+      "ceilingMicroUsd": 1500000,
+      "ceilingBasis": "max(cost-table-max, per-second-rate x max-duration)",
+      "pricingClass": "bounded",
+      "staticallyBillable": true,
+      "unbounded": false,
+      "unboundedKind": null,
+      "unboundedEvidence": [],
+      "costDrivers": [
+        "duration"
+      ],
+      "priceVaries": true,
+      "catalogCostUsd": 0.75,
+      "catalogDynamicPricing": true,
+      "estimateEndpoint": "/api/v1/models/seedance-2-image-to-video-fast/estimate-cost",
+      "endpoint": "/api/v1/seedance-2-image-to-video-fast",
+      "durationMinSeconds": 5,
+      "durationMaxSeconds": 10,
+      "referenceLimits": {},
+      "maxPerSecondRateUsd": 0.15,
+      "priceTables": [
+        {
+          "dimensions": [
+            "Duration"
+          ],
+          "rows": [
+            {
+              "combination": [
+                "5s"
+              ],
+              "costUsd": 0.75
+            },
+            {
+              "combination": [
+                "8s"
+              ],
+              "costUsd": 1.2
+            },
+            {
+              "combination": [
+                "10s"
+              ],
+              "costUsd": 1.5
+            }
+          ]
+        }
+      ]
+    },
+    "seedance-2-i2v": {
+      "category": "Image to Video",
+      "title": "Seedance 2 Image to Video",
+      "resolutions": [
+        "480p",
+        "720p"
+      ],
+      "resolutionSource": "price-table",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
+      "availability": "AVAILABLE",
+      "comingSoonReason": null,
+      "isNew": false,
+      "family": "sd-v2.0",
+      "groupOf": "video",
+      "inputVideoPolicy": {
+        "capSeconds": 15,
+        "applies": false,
+        "boundable": true,
+        "reason": null,
+        "formula": "not billed on input duration",
+        "referenceClipLimit": null,
+        "billedClipLimit": null
+      },
+      "effectiveCeilingUsd": 2.5,
+      "effectiveCeilingMicroUsd": 2500000,
+      "defaultCostUsd": 0.75,
+      "defaultCostMicroUsd": 750000,
+      "ceilingUsd": 2.5,
+      "ceilingMicroUsd": 2500000,
+      "ceilingBasis": "max(cost-table-max, per-second-rate x max-duration)",
+      "pricingClass": "bounded",
+      "staticallyBillable": true,
+      "unbounded": false,
+      "unboundedKind": null,
+      "unboundedEvidence": [],
+      "costDrivers": [
+        "duration",
+        "resolution"
+      ],
+      "priceVaries": true,
+      "catalogCostUsd": 0.75,
+      "catalogDynamicPricing": true,
+      "estimateEndpoint": "/api/v1/models/seedance-2-i2v/estimate-cost",
+      "endpoint": "/api/v1/seedance-2-i2v",
+      "durationMinSeconds": 5,
+      "durationMaxSeconds": 10,
+      "referenceLimits": {
+        "images": 9
+      },
+      "maxPerSecondRateUsd": 0.25,
+      "priceTables": [
+        {
+          "dimensions": [
+            "Resolution",
+            "Duration"
+          ],
+          "rows": [
+            {
+              "combination": [
+                "480p",
+                "5s"
+              ],
+              "costUsd": 0.6
+            },
+            {
+              "combination": [
+                "480p",
+                "10s"
+              ],
+              "costUsd": 1.2
+            },
+            {
+              "combination": [
+                "720p",
+                "5s"
+              ],
+              "costUsd": 0.75
+            },
+            {
+              "combination": [
+                "720p",
+                "10s"
+              ],
+              "costUsd": 1.5
+            }
+          ]
+        }
+      ]
+    },
+    "seedance-2-i2v-480p": {
+      "category": "Image to Video",
+      "title": "Seedance 2 480p Image to Video",
+      "resolutions": [
+        "480p"
+      ],
+      "resolutionSource": "endpoint-name",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
+      "availability": "AVAILABLE",
+      "comingSoonReason": null,
+      "isNew": false,
+      "family": "sd-v2.0",
+      "groupOf": "video",
+      "inputVideoPolicy": {
+        "capSeconds": 15,
+        "applies": false,
+        "boundable": true,
+        "reason": null,
+        "formula": "not billed on input duration",
+        "referenceClipLimit": null,
+        "billedClipLimit": null
+      },
+      "effectiveCeilingUsd": 1.5,
+      "effectiveCeilingMicroUsd": 1500000,
+      "defaultCostUsd": 0.6,
+      "defaultCostMicroUsd": 600000,
+      "ceilingUsd": 1.5,
+      "ceilingMicroUsd": 1500000,
+      "ceilingBasis": "max(cost-table-max, per-second-rate x max-duration)",
+      "pricingClass": "bounded",
+      "staticallyBillable": true,
+      "unbounded": false,
+      "unboundedKind": null,
+      "unboundedEvidence": [],
+      "costDrivers": [
+        "duration",
+        "quality"
+      ],
+      "priceVaries": true,
+      "catalogCostUsd": 0.6,
+      "catalogDynamicPricing": true,
+      "estimateEndpoint": "/api/v1/models/seedance-2-i2v-480p/estimate-cost",
+      "endpoint": "/api/v1/seedance-2-i2v-480p",
+      "durationMinSeconds": 5,
+      "durationMaxSeconds": 10,
+      "referenceLimits": {
+        "images": 9
+      },
+      "maxPerSecondRateUsd": 0.15,
+      "priceTables": [
+        {
+          "dimensions": [
+            "Quality",
+            "Duration"
+          ],
+          "rows": [
+            {
+              "combination": [
+                "Basic",
+                "5s"
+              ],
+              "costUsd": 0.6
+            },
+            {
+              "combination": [
+                "Basic",
+                "8s"
+              ],
+              "costUsd": 0.96
+            },
+            {
+              "combination": [
+                "Basic",
+                "10s"
+              ],
+              "costUsd": 1.2
+            },
+            {
+              "combination": [
+                "High",
+                "5s"
+              ],
+              "costUsd": 0.75
+            },
+            {
+              "combination": [
+                "High",
+                "8s"
+              ],
+              "costUsd": 1.2
+            },
+            {
+              "combination": [
+                "High",
+                "10s"
+              ],
+              "costUsd": 1.5
+            }
+          ]
+        }
+      ]
+    },
+    "seedance-2-first-last-frame": {
+      "category": "Image to Video",
+      "title": "Seedance 2 First & Last Frame",
+      "resolutions": [],
+      "resolutionSource": "unknown",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
+      "availability": "AVAILABLE",
+      "comingSoonReason": null,
+      "isNew": false,
+      "family": "sd-2",
+      "groupOf": "video",
+      "inputVideoPolicy": {
+        "capSeconds": 15,
+        "applies": false,
+        "boundable": true,
+        "reason": null,
+        "formula": "not billed on input duration",
+        "referenceClipLimit": null,
+        "billedClipLimit": null
+      },
+      "effectiveCeilingUsd": 2.5,
+      "effectiveCeilingMicroUsd": 2500000,
+      "defaultCostUsd": 1.25,
+      "defaultCostMicroUsd": 1250000,
+      "ceilingUsd": 2.5,
+      "ceilingMicroUsd": 2500000,
+      "ceilingBasis": "max(cost-table-max, per-second-rate x max-duration)",
+      "pricingClass": "bounded",
+      "staticallyBillable": true,
+      "unbounded": false,
+      "unboundedKind": null,
+      "unboundedEvidence": [],
+      "costDrivers": [
+        "duration"
+      ],
+      "priceVaries": true,
+      "catalogCostUsd": 1.25,
+      "catalogDynamicPricing": true,
+      "estimateEndpoint": "/api/v1/models/seedance-2-first-last-frame/estimate-cost",
+      "endpoint": "/api/v1/seedance-2-first-last-frame",
+      "durationMinSeconds": 5,
+      "durationMaxSeconds": 10,
+      "referenceLimits": {},
+      "maxPerSecondRateUsd": 0.25,
+      "priceTables": [
+        {
+          "dimensions": [
+            "Duration"
+          ],
+          "rows": [
+            {
+              "combination": [
+                "5s"
+              ],
+              "costUsd": 1.25
+            },
+            {
+              "combination": [
+                "8s"
+              ],
+              "costUsd": 2
+            },
+            {
+              "combination": [
+                "10s"
+              ],
+              "costUsd": 2.5
+            }
+          ]
+        }
+      ]
+    },
+    "seedance-2-first-last-frame-fast": {
+      "category": "Image to Video",
+      "title": "Seedance 2 First & Last Frame Fast",
+      "resolutions": [],
+      "resolutionSource": "unknown",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
+      "availability": "AVAILABLE",
+      "comingSoonReason": null,
+      "isNew": false,
+      "family": "sd-2",
+      "groupOf": "video",
+      "inputVideoPolicy": {
+        "capSeconds": 15,
+        "applies": false,
+        "boundable": true,
+        "reason": null,
+        "formula": "not billed on input duration",
+        "referenceClipLimit": null,
+        "billedClipLimit": null
+      },
+      "effectiveCeilingUsd": 1.5,
+      "effectiveCeilingMicroUsd": 1500000,
+      "defaultCostUsd": 0.75,
+      "defaultCostMicroUsd": 750000,
+      "ceilingUsd": 1.5,
+      "ceilingMicroUsd": 1500000,
+      "ceilingBasis": "max(cost-table-max, per-second-rate x max-duration)",
+      "pricingClass": "bounded",
+      "staticallyBillable": true,
+      "unbounded": false,
+      "unboundedKind": null,
+      "unboundedEvidence": [],
+      "costDrivers": [
+        "duration"
+      ],
+      "priceVaries": true,
+      "catalogCostUsd": 0.75,
+      "catalogDynamicPricing": true,
+      "estimateEndpoint": "/api/v1/models/seedance-2-first-last-frame-fast/estimate-cost",
+      "endpoint": "/api/v1/seedance-2-first-last-frame-fast",
+      "durationMinSeconds": 5,
+      "durationMaxSeconds": 10,
+      "referenceLimits": {},
+      "maxPerSecondRateUsd": 0.15,
+      "priceTables": [
+        {
+          "dimensions": [
+            "Duration"
+          ],
+          "rows": [
+            {
+              "combination": [
+                "5s"
+              ],
+              "costUsd": 0.75
+            },
+            {
+              "combination": [
+                "8s"
+              ],
+              "costUsd": 1.2
+            },
+            {
+              "combination": [
+                "10s"
+              ],
+              "costUsd": 1.5
+            }
+          ]
+        }
+      ]
+    },
+    "seedance-2-video-edit": {
+      "category": "Video to Video",
+      "title": "Seedance 2 Video Edit",
+      "resolutions": [],
+      "resolutionSource": "unknown",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
+      "availability": "AVAILABLE",
+      "comingSoonReason": null,
+      "isNew": false,
+      "family": "sd-v2.0",
+      "groupOf": "video",
+      "inputVideoPolicy": {
+        "capSeconds": 15,
+        "applies": true,
+        "boundable": true,
+        "reason": null,
+        "formula": "$0.3/sec x 15s output + 0.3 x $0.3/sec x 1 x 15s capped input",
+        "referenceClipLimit": 1,
+        "billedClipLimit": 1
+      },
+      "effectiveCeilingUsd": 5.85,
+      "effectiveCeilingMicroUsd": 5850000,
+      "defaultCostUsd": 1.365,
+      "defaultCostMicroUsd": 1365000,
+      "ceilingUsd": 4.5,
+      "ceilingMicroUsd": 4500000,
+      "ceilingBasis": "max(cost-table-max, per-second-rate x max-duration)",
+      "pricingClass": "unbounded",
+      "staticallyBillable": false,
+      "unbounded": true,
+      "unboundedKind": "input-surcharge",
+      "unboundedEvidence": [
+        {
+          "rule": "input-surcharge",
+          "quote": "Select Quality Settings: Choose basic ($0.21/sec output + $0.063/sec per input video second) for faster, cost-effective rendering, or high ($0.30/sec output + $0.09/sec per input video second) for maximum visual fidelity"
+        }
+      ],
+      "costDrivers": [
+        "duration",
+        "quality"
+      ],
+      "priceVaries": true,
+      "catalogCostUsd": 1.5,
+      "catalogDynamicPricing": true,
+      "estimateEndpoint": "/api/v1/models/seedance-2-video-edit/estimate-cost",
+      "endpoint": "/api/v1/seedance-2-video-edit",
+      "durationMinSeconds": 4,
+      "durationMaxSeconds": 15,
+      "referenceLimits": {
+        "videos": 1,
+        "images": 9,
+        "audios": 3
+      },
+      "maxPerSecondRateUsd": 0.3,
+      "priceTables": [
+        {
+          "dimensions": [
+            "Quality",
+            "Duration"
+          ],
+          "rows": [
+            {
+              "combination": [
+                "Basic",
+                "5s"
+              ],
+              "costUsd": 1.05
+            },
+            {
+              "combination": [
+                "Basic",
+                "8s"
+              ],
+              "costUsd": 1.68
+            },
+            {
+              "combination": [
+                "Basic",
+                "10s"
+              ],
+              "costUsd": 2.1
+            },
+            {
+              "combination": [
+                "High",
+                "5s"
+              ],
+              "costUsd": 1.5
+            },
+            {
+              "combination": [
+                "High",
+                "8s"
+              ],
+              "costUsd": 2.4
+            },
+            {
+              "combination": [
+                "High",
+                "10s"
+              ],
+              "costUsd": 3
+            }
+          ]
+        }
+      ]
+    },
+    "seedance-2-extend": {
+      "category": "Text to Video",
+      "title": "Seedance 2 Extend Video",
+      "resolutions": [],
+      "resolutionSource": "unknown",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
+      "availability": "AVAILABLE",
+      "comingSoonReason": null,
+      "isNew": false,
+      "family": "sd-v2.0",
+      "groupOf": "video",
+      "inputVideoPolicy": {
+        "capSeconds": 15,
+        "applies": false,
+        "boundable": true,
+        "reason": null,
+        "formula": "not billed on input duration",
+        "referenceClipLimit": 3,
+        "billedClipLimit": null
+      },
+      "effectiveCeilingUsd": 3,
+      "effectiveCeilingMicroUsd": 3000000,
+      "defaultCostUsd": 1.05,
+      "defaultCostMicroUsd": 1050000,
+      "ceilingUsd": 3,
+      "ceilingMicroUsd": 3000000,
+      "ceilingBasis": "max(cost-table-max, per-second-rate x max-duration)",
+      "pricingClass": "bounded",
+      "staticallyBillable": true,
+      "unbounded": false,
+      "unboundedKind": null,
+      "unboundedEvidence": [],
+      "costDrivers": [
+        "duration",
+        "quality"
+      ],
+      "priceVaries": true,
+      "catalogCostUsd": 1.05,
+      "catalogDynamicPricing": true,
+      "estimateEndpoint": "/api/v1/models/seedance-2-extend/estimate-cost",
+      "endpoint": "/api/v1/seedance-2-extend",
+      "durationMinSeconds": 5,
+      "durationMaxSeconds": 10,
+      "referenceLimits": {
+        "images": 8,
+        "videos": 3,
+        "audios": 3
+      },
+      "maxPerSecondRateUsd": 0.25,
+      "priceTables": [
+        {
+          "dimensions": [
+            "Quality",
+            "Duration"
+          ],
+          "rows": [
+            {
+              "combination": [
+                "Basic",
+                "5s"
+              ],
+              "costUsd": 1.05
+            },
+            {
+              "combination": [
+                "Basic",
+                "8s"
+              ],
+              "costUsd": 1.68
+            },
+            {
+              "combination": [
+                "Basic",
+                "10s"
+              ],
+              "costUsd": 2.1
+            },
+            {
+              "combination": [
+                "High",
+                "5s"
+              ],
+              "costUsd": 1.5
+            },
+            {
+              "combination": [
+                "High",
+                "8s"
+              ],
+              "costUsd": 2.4
+            },
+            {
+              "combination": [
+                "High",
+                "10s"
+              ],
+              "costUsd": 3
+            }
+          ]
+        }
+      ]
+    },
+    "seedance-2-vip-extend": {
+      "category": "Text to Video",
+      "title": "Seedance 2 VIP Extend Video",
+      "resolutions": [
+        "720p"
+      ],
+      "resolutionSource": "prose-hint",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
+      "availability": "COMING_SOON",
+      "comingSoonReason": "COST_NOT_BOUNDABLE",
+      "isNew": false,
+      "family": "sd-v2.0",
+      "groupOf": "video",
+      "inputVideoPolicy": {
+        "capSeconds": 15,
+        "applies": true,
+        "boundable": false,
+        "reason": "the document states \"a small surcharge per reference video clip\" but never states its amount, so no arithmetic bound exists even with an input cap",
+        "formula": null,
+        "referenceClipLimit": 3,
+        "billedClipLimit": 3
+      },
+      "effectiveCeilingUsd": 3,
+      "effectiveCeilingMicroUsd": 3000000,
+      "defaultCostUsd": 1.05,
+      "defaultCostMicroUsd": 1050000,
+      "ceilingUsd": 3,
+      "ceilingMicroUsd": 3000000,
+      "ceilingBasis": "max(cost-table-max, per-second-rate x max-duration)",
+      "pricingClass": "unbounded",
+      "staticallyBillable": false,
+      "unbounded": true,
+      "unboundedKind": "reference-surcharge",
+      "unboundedEvidence": [
+        {
+          "rule": "reference-surcharge",
+          "quote": "muapiapp prices SD 2.0 VIP Extend at $0.30/sec for high and $0.21/sec for basic, plus a small surcharge per reference video clip."
+        }
+      ],
+      "costDrivers": [
+        "duration",
+        "quality"
+      ],
+      "priceVaries": true,
+      "catalogCostUsd": 1.05,
+      "catalogDynamicPricing": true,
+      "estimateEndpoint": "/api/v1/models/seedance-2-vip-extend/estimate-cost",
+      "endpoint": "/api/v1/seedance-2-vip-extend",
+      "durationMinSeconds": 5,
+      "durationMaxSeconds": 10,
+      "referenceLimits": {
+        "images": 8,
+        "videos": 3,
+        "audios": 3
+      },
+      "maxPerSecondRateUsd": 0.3,
+      "priceTables": [
+        {
+          "dimensions": [
+            "Quality",
+            "Duration"
+          ],
+          "rows": [
+            {
+              "combination": [
+                "Basic",
+                "5s"
+              ],
+              "costUsd": 1.05
+            },
+            {
+              "combination": [
+                "Basic",
+                "8s"
+              ],
+              "costUsd": 1.68
+            },
+            {
+              "combination": [
+                "Basic",
+                "10s"
+              ],
+              "costUsd": 2.1
+            },
+            {
+              "combination": [
+                "High",
+                "5s"
+              ],
+              "costUsd": 1.5
+            },
+            {
+              "combination": [
+                "High",
+                "8s"
+              ],
+              "costUsd": 2.4
+            },
+            {
+              "combination": [
+                "High",
+                "10s"
+              ],
+              "costUsd": 3
+            }
+          ]
+        }
+      ]
+    },
+    "seedance-2-vip-extend-1080p": {
+      "category": "Text to Video",
+      "title": "Seedance 2 VIP Extend Video 1080p",
+      "resolutions": [
+        "1080p"
+      ],
+      "resolutionSource": "endpoint-name",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
+      "availability": "COMING_SOON",
+      "comingSoonReason": "COST_NOT_BOUNDABLE",
+      "isNew": false,
+      "family": "sd-v2.0",
+      "groupOf": "video",
+      "inputVideoPolicy": {
+        "capSeconds": 15,
+        "applies": true,
+        "boundable": false,
+        "reason": "the document states \"a small surcharge per reference video clip\" but never states its amount, so no arithmetic bound exists even with an input cap",
+        "formula": null,
+        "referenceClipLimit": 3,
+        "billedClipLimit": 3
+      },
+      "effectiveCeilingUsd": 6.75,
+      "effectiveCeilingMicroUsd": 6750000,
+      "defaultCostUsd": 3.375,
+      "defaultCostMicroUsd": 3375000,
+      "ceilingUsd": 6.75,
+      "ceilingMicroUsd": 6750000,
+      "ceilingBasis": "max(cost-table-max, per-second-rate x max-duration)",
+      "pricingClass": "unbounded",
+      "staticallyBillable": false,
+      "unbounded": true,
+      "unboundedKind": "reference-surcharge",
+      "unboundedEvidence": [
+        {
+          "rule": "reference-surcharge",
+          "quote": "muapiapp prices SD 2.0 VIP Extend 1080p at $0.675/sec for high and $0.4725/sec for basic, plus a small surcharge per reference video clip."
+        }
+      ],
+      "costDrivers": [
+        "duration",
+        "quality"
+      ],
+      "priceVaries": true,
+      "catalogCostUsd": 2.3625,
+      "catalogDynamicPricing": true,
+      "estimateEndpoint": "/api/v1/models/seedance-2-vip-extend-1080p/estimate-cost",
+      "endpoint": "/api/v1/seedance-2-vip-extend-1080p",
+      "durationMinSeconds": 5,
+      "durationMaxSeconds": 10,
+      "referenceLimits": {
+        "images": 8,
+        "videos": 3,
+        "audios": 3
+      },
+      "maxPerSecondRateUsd": 0.675,
+      "priceTables": [
+        {
+          "dimensions": [
+            "Quality",
+            "Duration"
+          ],
+          "rows": [
+            {
+              "combination": [
+                "Basic",
+                "5s"
+              ],
+              "costUsd": 2.36
+            },
+            {
+              "combination": [
+                "Basic",
+                "8s"
+              ],
+              "costUsd": 3.78
+            },
+            {
+              "combination": [
+                "Basic",
+                "10s"
+              ],
+              "costUsd": 4.72
+            },
+            {
+              "combination": [
+                "High",
+                "5s"
+              ],
+              "costUsd": 3.38
+            },
+            {
+              "combination": [
+                "High",
+                "8s"
+              ],
+              "costUsd": 5.4
+            },
+            {
+              "combination": [
+                "High",
+                "10s"
+              ],
+              "costUsd": 6.75
+            }
+          ]
+        }
+      ]
+    },
+    "seedance-2.5-text-to-video": {
+      "category": "Text to Video",
+      "title": "Seedance 2.5 Text to Video",
+      "resolutions": [
+        "720p",
+        "480p",
+        "1080p"
+      ],
+      "resolutionSource": "prose-hint",
+      "apiPayloadKeys": [
+        "prompt",
+        "duration",
+        "aspect_ratio"
+      ],
+      "payloadContractVerified": true,
+      "availability": "AVAILABLE",
+      "comingSoonReason": null,
+      "isNew": true,
+      "family": "seedance-2.5",
+      "groupOf": "video",
+      "inputVideoPolicy": {
+        "capSeconds": 15,
+        "applies": false,
+        "boundable": true,
+        "reason": null,
+        "formula": "not billed on input duration",
+        "referenceClipLimit": null,
+        "billedClipLimit": null
+      },
+      "effectiveCeilingUsd": 10.200000000000001,
+      "effectiveCeilingMicroUsd": 10200001,
+      "defaultCostUsd": 1.7,
+      "defaultCostMicroUsd": 1700000,
+      "ceilingUsd": 10.200000000000001,
+      "ceilingMicroUsd": 10200001,
+      "ceilingBasis": "max(cost-table-max, per-second-rate x max-duration)",
+      "pricingClass": "bounded",
+      "staticallyBillable": true,
+      "unbounded": false,
+      "unboundedKind": null,
+      "unboundedEvidence": [],
+      "costDrivers": [
+        "duration"
+      ],
+      "priceVaries": true,
+      "catalogCostUsd": 1.7,
+      "catalogDynamicPricing": true,
+      "estimateEndpoint": "/api/v1/models/seedance-2.5-text-to-video/estimate-cost",
+      "endpoint": "/api/v1/seedance-2.5-text-to-video",
+      "durationMinSeconds": null,
+      "durationMaxSeconds": 30,
+      "referenceLimits": {},
+      "maxPerSecondRateUsd": 0.34,
+      "priceTables": [
+        {
+          "dimensions": [
+            "Duration"
+          ],
+          "rows": [
+            {
+              "combination": [
+                "5s"
+              ],
+              "costUsd": 1.7
+            },
+            {
+              "combination": [
+                "10s"
+              ],
+              "costUsd": 3.4
+            },
+            {
+              "combination": [
+                "20s"
+              ],
+              "costUsd": 6.8
+            },
+            {
+              "combination": [
+                "30s"
+              ],
+              "costUsd": 10.2
+            }
+          ]
+        }
+      ]
+    },
+    "seedance-2.5-image-to-video": {
+      "category": "Image to Video",
+      "title": "Seedance 2.5 Image to Video",
+      "resolutions": [
+        "720p",
+        "480p",
+        "1080p"
+      ],
+      "resolutionSource": "prose-hint",
+      "apiPayloadKeys": [
+        "prompt",
+        "image_url",
+        "duration"
+      ],
+      "payloadContractVerified": true,
+      "availability": "AVAILABLE",
+      "comingSoonReason": null,
+      "isNew": true,
+      "family": "seedance-2.5",
+      "groupOf": "video",
+      "inputVideoPolicy": {
+        "capSeconds": 15,
+        "applies": false,
+        "boundable": true,
+        "reason": null,
+        "formula": "not billed on input duration",
+        "referenceClipLimit": null,
+        "billedClipLimit": null
+      },
+      "effectiveCeilingUsd": 10.200000000000001,
+      "effectiveCeilingMicroUsd": 10200001,
+      "defaultCostUsd": 1.7,
+      "defaultCostMicroUsd": 1700000,
+      "ceilingUsd": 10.200000000000001,
+      "ceilingMicroUsd": 10200001,
+      "ceilingBasis": "max(cost-table-max, per-second-rate x max-duration)",
+      "pricingClass": "bounded",
+      "staticallyBillable": true,
+      "unbounded": false,
+      "unboundedKind": null,
+      "unboundedEvidence": [],
+      "costDrivers": [
+        "duration"
+      ],
+      "priceVaries": true,
+      "catalogCostUsd": 1.7,
+      "catalogDynamicPricing": true,
+      "estimateEndpoint": "/api/v1/models/seedance-2.5-image-to-video/estimate-cost",
+      "endpoint": "/api/v1/seedance-2.5-image-to-video",
+      "durationMinSeconds": null,
+      "durationMaxSeconds": 30,
+      "referenceLimits": {},
+      "maxPerSecondRateUsd": 0.34,
+      "priceTables": [
+        {
+          "dimensions": [
+            "Duration"
+          ],
+          "rows": [
+            {
+              "combination": [
+                "5s"
+              ],
+              "costUsd": 1.7
+            },
+            {
+              "combination": [
+                "10s"
+              ],
+              "costUsd": 3.4
+            },
+            {
+              "combination": [
+                "20s"
+              ],
+              "costUsd": 6.8
+            },
+            {
+              "combination": [
+                "30s"
+              ],
+              "costUsd": 10.2
+            }
+          ]
+        }
+      ]
+    },
+    "seedance-2.5-image-to-video-480p": {
+      "category": "Image to Video",
+      "title": "Seedance 2.5 Image to Video 480p",
+      "resolutions": [
+        "480p"
+      ],
+      "resolutionSource": "endpoint-name",
+      "apiPayloadKeys": [
+        "prompt",
+        "image_url",
+        "duration"
+      ],
+      "payloadContractVerified": true,
+      "availability": "AVAILABLE",
+      "comingSoonReason": null,
+      "isNew": true,
+      "family": "seedance-2.5",
+      "groupOf": "video",
+      "inputVideoPolicy": {
+        "capSeconds": 15,
+        "applies": false,
+        "boundable": true,
+        "reason": null,
+        "formula": "not billed on input duration",
+        "referenceClipLimit": null,
+        "billedClipLimit": null
+      },
+      "effectiveCeilingUsd": 5.1000000000000005,
+      "effectiveCeilingMicroUsd": 5100001,
+      "defaultCostUsd": 0.85,
+      "defaultCostMicroUsd": 850000,
+      "ceilingUsd": 5.1000000000000005,
+      "ceilingMicroUsd": 5100001,
+      "ceilingBasis": "max(cost-table-max, per-second-rate x max-duration)",
+      "pricingClass": "bounded",
+      "staticallyBillable": true,
+      "unbounded": false,
+      "unboundedKind": null,
+      "unboundedEvidence": [],
+      "costDrivers": [
+        "duration"
+      ],
+      "priceVaries": true,
+      "catalogCostUsd": 0.85,
+      "catalogDynamicPricing": true,
+      "estimateEndpoint": "/api/v1/models/seedance-2.5-image-to-video-480p/estimate-cost",
+      "endpoint": "/api/v1/seedance-2.5-image-to-video-480p",
+      "durationMinSeconds": null,
+      "durationMaxSeconds": 30,
+      "referenceLimits": {},
+      "maxPerSecondRateUsd": 0.17,
+      "priceTables": [
+        {
+          "dimensions": [
+            "Duration"
+          ],
+          "rows": [
+            {
+              "combination": [
+                "5s"
+              ],
+              "costUsd": 0.85
+            },
+            {
+              "combination": [
+                "10s"
+              ],
+              "costUsd": 1.7
+            },
+            {
+              "combination": [
+                "20s"
+              ],
+              "costUsd": 3.4
+            },
+            {
+              "combination": [
+                "30s"
+              ],
+              "costUsd": 5.1
+            }
+          ]
+        }
+      ]
+    },
+    "seedance-2.5-omni-reference": {
+      "category": "Image to Video",
+      "title": "Seedance 2.5 Omni Reference",
+      "resolutions": [
+        "720p",
+        "480p",
+        "1080p"
+      ],
+      "resolutionSource": "prose-hint",
+      "apiPayloadKeys": [
+        "prompt",
+        "images_list",
+        "videos_list",
+        "duration"
+      ],
+      "payloadContractVerified": true,
+      "availability": "AVAILABLE",
+      "comingSoonReason": null,
+      "isNew": true,
+      "family": "seedance-2.5",
+      "groupOf": "video",
+      "inputVideoPolicy": {
+        "capSeconds": 15,
+        "applies": true,
+        "boundable": true,
+        "reason": null,
+        "formula": "$0.221/sec x (30s output + 10 x 15s capped reference)",
+        "referenceClipLimit": 10,
+        "billedClipLimit": 10
+      },
+      "effectiveCeilingUsd": 39.78,
+      "effectiveCeilingMicroUsd": 39780000,
+      "defaultCostUsd": 1.7,
+      "defaultCostMicroUsd": 1700000,
+      "ceilingUsd": 10.200000000000001,
+      "ceilingMicroUsd": 10200001,
+      "ceilingBasis": "max(cost-table-max, per-second-rate x max-duration)",
+      "pricingClass": "unbounded",
+      "staticallyBillable": false,
+      "unbounded": true,
+      "unboundedKind": "combined-duration",
+      "unboundedEvidence": [
+        {
+          "rule": "combined-duration",
+          "quote": "Price varies by duration; a video reference switches billing to a reduced per-second rate charged on output duration plus every reference video's duration"
+        },
+        {
+          "rule": "combined-duration",
+          "quote": "price table row: output + reference duration(s)"
+        }
+      ],
+      "costDrivers": [
+        "duration",
+        "reference_videos"
+      ],
+      "priceVaries": true,
+      "catalogCostUsd": 1.7,
+      "catalogDynamicPricing": true,
+      "estimateEndpoint": "/api/v1/models/seedance-2.5-omni-reference/estimate-cost",
+      "endpoint": "/api/v1/seedance-2.5-omni-reference",
+      "durationMinSeconds": null,
+      "durationMaxSeconds": 30,
+      "referenceLimits": {
+        "images": 30,
+        "videos": 10,
+        "audios": 10
+      },
+      "maxPerSecondRateUsd": 0.34,
+      "priceTables": [
+        {
+          "dimensions": [
+            "Video Reference",
+            "Duration"
+          ],
+          "rows": [
+            {
+              "combination": [
+                "No",
+                "5s"
+              ],
+              "costUsd": 1.7
+            },
+            {
+              "combination": [
+                "No",
+                "10s"
+              ],
+              "costUsd": 3.4
+            },
+            {
+              "combination": [
+                "No",
+                "20s"
+              ],
+              "costUsd": 6.8
+            },
+            {
+              "combination": [
+                "No",
+                "30s"
+              ],
+              "costUsd": 10.2
+            },
+            {
+              "combination": [
+                "Yes",
+                "output + reference duration(s)"
+              ],
+              "costUsd": 0.221
+            }
+          ]
+        }
+      ]
+    },
+    "seedance-2.5-text-to-video-4k": {
+      "category": "Text to Video",
+      "title": "Text to Video 4K",
+      "resolutions": [
+        "4k"
+      ],
+      "resolutionSource": "endpoint-name",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
+      "availability": "AVAILABLE",
+      "comingSoonReason": null,
+      "isNew": true,
+      "family": "seedance-2.5",
+      "groupOf": "video",
+      "inputVideoPolicy": {
+        "capSeconds": 15,
+        "applies": false,
+        "boundable": true,
+        "reason": null,
+        "formula": "not billed on input duration",
+        "referenceClipLimit": null,
+        "billedClipLimit": null
+      },
+      "effectiveCeilingUsd": 51,
+      "effectiveCeilingMicroUsd": 51000000,
+      "defaultCostUsd": 8.5,
+      "defaultCostMicroUsd": 8500000,
+      "ceilingUsd": 51,
+      "ceilingMicroUsd": 51000000,
+      "ceilingBasis": "cost-table-max",
+      "pricingClass": "bounded",
+      "staticallyBillable": true,
+      "unbounded": false,
+      "unboundedKind": null,
+      "unboundedEvidence": [],
+      "costDrivers": [
+        "duration"
+      ],
+      "priceVaries": true,
+      "catalogCostUsd": 8.5,
+      "catalogDynamicPricing": true,
+      "estimateEndpoint": "/api/v1/models/seedance-2.5-text-to-video-4k/estimate-cost",
+      "endpoint": "/api/v1/seedance-2.5-text-to-video-4k",
+      "durationMinSeconds": null,
+      "durationMaxSeconds": 30,
+      "referenceLimits": {},
+      "maxPerSecondRateUsd": null,
+      "priceTables": [
+        {
+          "dimensions": [
+            "Duration"
+          ],
+          "rows": [
+            {
+              "combination": [
+                "5s"
+              ],
+              "costUsd": 8.5
+            },
+            {
+              "combination": [
+                "10s"
+              ],
+              "costUsd": 17
+            },
+            {
+              "combination": [
+                "20s"
+              ],
+              "costUsd": 34
+            },
+            {
+              "combination": [
+                "30s"
+              ],
+              "costUsd": 51
+            }
+          ]
+        }
+      ]
+    },
+    "seedance-2.5-omni-reference-480p": {
+      "category": "Image to Video",
+      "title": "Seedance 2.5 Omni Reference 480p",
+      "resolutions": [
+        "480p"
+      ],
+      "resolutionSource": "endpoint-name",
+      "apiPayloadKeys": [
+        "prompt",
+        "images_list",
+        "duration"
+      ],
+      "payloadContractVerified": true,
+      "availability": "AVAILABLE",
+      "comingSoonReason": null,
+      "isNew": true,
+      "family": "seedance-2.5",
+      "groupOf": "video",
+      "inputVideoPolicy": {
+        "capSeconds": 15,
+        "applies": true,
+        "boundable": true,
+        "reason": null,
+        "formula": "$0.111/sec x (30s output + 10 x 15s capped reference)",
+        "referenceClipLimit": 10,
+        "billedClipLimit": 10
+      },
+      "effectiveCeilingUsd": 19.98,
+      "effectiveCeilingMicroUsd": 19980000,
+      "defaultCostUsd": 0.85,
+      "defaultCostMicroUsd": 850000,
+      "ceilingUsd": 5.1000000000000005,
+      "ceilingMicroUsd": 5100001,
+      "ceilingBasis": "max(cost-table-max, per-second-rate x max-duration)",
+      "pricingClass": "unbounded",
+      "staticallyBillable": false,
+      "unbounded": true,
+      "unboundedKind": "combined-duration",
+      "unboundedEvidence": [
+        {
+          "rule": "combined-duration",
+          "quote": "Price varies by duration; a video reference switches billing to a reduced per-second rate charged on output duration plus every reference video's duration"
+        },
+        {
+          "rule": "combined-duration",
+          "quote": "price table row: output + reference duration(s)"
+        }
+      ],
+      "costDrivers": [
+        "duration",
+        "reference_videos"
+      ],
+      "priceVaries": true,
+      "catalogCostUsd": 0.85,
+      "catalogDynamicPricing": true,
+      "estimateEndpoint": "/api/v1/models/seedance-2.5-omni-reference-480p/estimate-cost",
+      "endpoint": "/api/v1/seedance-2.5-omni-reference-480p",
+      "durationMinSeconds": 5,
+      "durationMaxSeconds": 30,
+      "referenceLimits": {
+        "images": 30,
+        "videos": 10,
+        "audios": 10
+      },
+      "maxPerSecondRateUsd": 0.17,
+      "priceTables": [
+        {
+          "dimensions": [
+            "Video Reference",
+            "Duration"
+          ],
+          "rows": [
+            {
+              "combination": [
+                "No",
+                "5s"
+              ],
+              "costUsd": 0.85
+            },
+            {
+              "combination": [
+                "No",
+                "10s"
+              ],
+              "costUsd": 1.7
+            },
+            {
+              "combination": [
+                "No",
+                "20s"
+              ],
+              "costUsd": 3.4
+            },
+            {
+              "combination": [
+                "No",
+                "30s"
+              ],
+              "costUsd": 5.1
+            },
+            {
+              "combination": [
+                "Yes",
+                "output + reference duration(s)"
+              ],
+              "costUsd": 0.111
+            }
+          ]
+        }
+      ]
+    },
+    "seedance-2.5-image-to-video-1080p": {
+      "category": "Image to Video",
+      "title": "Image to Video 1080p",
+      "resolutions": [
+        "1080p"
+      ],
+      "resolutionSource": "endpoint-name",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
+      "availability": "AVAILABLE",
+      "comingSoonReason": null,
+      "isNew": true,
+      "family": "seedance-2.5",
+      "groupOf": "video",
+      "inputVideoPolicy": {
+        "capSeconds": 15,
+        "applies": false,
+        "boundable": true,
+        "reason": null,
+        "formula": "not billed on input duration",
+        "referenceClipLimit": null,
+        "billedClipLimit": null
+      },
+      "effectiveCeilingUsd": 25.5,
+      "effectiveCeilingMicroUsd": 25500000,
+      "defaultCostUsd": 4.25,
+      "defaultCostMicroUsd": 4250000,
+      "ceilingUsd": 25.5,
+      "ceilingMicroUsd": 25500000,
+      "ceilingBasis": "cost-table-max",
+      "pricingClass": "bounded",
+      "staticallyBillable": true,
+      "unbounded": false,
+      "unboundedKind": null,
+      "unboundedEvidence": [],
+      "costDrivers": [
+        "duration"
+      ],
+      "priceVaries": true,
+      "catalogCostUsd": 4.25,
+      "catalogDynamicPricing": true,
+      "estimateEndpoint": "/api/v1/models/seedance-2.5-image-to-video-1080p/estimate-cost",
+      "endpoint": "/api/v1/seedance-2.5-image-to-video-1080p",
+      "durationMinSeconds": null,
+      "durationMaxSeconds": 30,
+      "referenceLimits": {},
+      "maxPerSecondRateUsd": null,
+      "priceTables": [
+        {
+          "dimensions": [
+            "Duration"
+          ],
+          "rows": [
+            {
+              "combination": [
+                "5s"
+              ],
+              "costUsd": 4.25
+            },
+            {
+              "combination": [
+                "10s"
+              ],
+              "costUsd": 8.5
+            },
+            {
+              "combination": [
+                "20s"
+              ],
+              "costUsd": 17
+            },
+            {
+              "combination": [
+                "30s"
+              ],
+              "costUsd": 25.5
+            }
+          ]
+        }
+      ]
+    },
+    "seedance-2.5-image-to-video-4k": {
+      "category": "Image to Video",
+      "title": "Image to Video 4K",
+      "resolutions": [
+        "4k"
+      ],
+      "resolutionSource": "endpoint-name",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
+      "availability": "AVAILABLE",
+      "comingSoonReason": null,
+      "isNew": true,
+      "family": "seedance-2.5",
+      "groupOf": "video",
+      "inputVideoPolicy": {
+        "capSeconds": 15,
+        "applies": false,
+        "boundable": true,
+        "reason": null,
+        "formula": "not billed on input duration",
+        "referenceClipLimit": null,
+        "billedClipLimit": null
+      },
+      "effectiveCeilingUsd": 51,
+      "effectiveCeilingMicroUsd": 51000000,
+      "defaultCostUsd": 8.5,
+      "defaultCostMicroUsd": 8500000,
+      "ceilingUsd": 51,
+      "ceilingMicroUsd": 51000000,
+      "ceilingBasis": "cost-table-max",
+      "pricingClass": "bounded",
+      "staticallyBillable": true,
+      "unbounded": false,
+      "unboundedKind": null,
+      "unboundedEvidence": [],
+      "costDrivers": [
+        "duration"
+      ],
+      "priceVaries": true,
+      "catalogCostUsd": 8.5,
+      "catalogDynamicPricing": true,
+      "estimateEndpoint": "/api/v1/models/seedance-2.5-image-to-video-4k/estimate-cost",
+      "endpoint": "/api/v1/seedance-2.5-image-to-video-4k",
+      "durationMinSeconds": null,
+      "durationMaxSeconds": 30,
+      "referenceLimits": {},
+      "maxPerSecondRateUsd": null,
+      "priceTables": [
+        {
+          "dimensions": [
+            "Duration"
+          ],
+          "rows": [
+            {
+              "combination": [
+                "5s"
+              ],
+              "costUsd": 8.5
+            },
+            {
+              "combination": [
+                "10s"
+              ],
+              "costUsd": 17
+            },
+            {
+              "combination": [
+                "20s"
+              ],
+              "costUsd": 34
+            },
+            {
+              "combination": [
+                "30s"
+              ],
+              "costUsd": 51
+            }
+          ]
+        }
+      ]
+    },
+    "seedance-2.5-omni-reference-4k": {
+      "category": "Image to Video",
+      "title": "Omni Reference 4K",
+      "resolutions": [
+        "4k"
+      ],
+      "resolutionSource": "endpoint-name",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
+      "availability": "AVAILABLE",
+      "comingSoonReason": null,
+      "isNew": true,
+      "family": "seedance-2.5",
+      "groupOf": "video",
+      "inputVideoPolicy": {
+        "capSeconds": 15,
+        "applies": true,
+        "boundable": true,
+        "reason": null,
+        "formula": "$1.105/sec x (30s output + 10 x 15s capped reference)",
+        "referenceClipLimit": 10,
+        "billedClipLimit": 10
+      },
+      "effectiveCeilingUsd": 198.9,
+      "effectiveCeilingMicroUsd": 198900000,
+      "defaultCostUsd": 8.5,
+      "defaultCostMicroUsd": 8500000,
+      "ceilingUsd": 51,
+      "ceilingMicroUsd": 51000000,
+      "ceilingBasis": "cost-table-max",
+      "pricingClass": "unbounded",
+      "staticallyBillable": false,
+      "unbounded": true,
+      "unboundedKind": "combined-duration",
+      "unboundedEvidence": [
+        {
+          "rule": "combined-duration",
+          "quote": "Price varies by duration; a video reference switches billing to a reduced per-second rate charged on output duration plus every reference video's duration"
+        },
+        {
+          "rule": "combined-duration",
+          "quote": "price table row: output + reference duration(s)"
+        }
+      ],
+      "costDrivers": [
+        "duration",
+        "reference_videos"
+      ],
+      "priceVaries": true,
+      "catalogCostUsd": 8.5,
+      "catalogDynamicPricing": true,
+      "estimateEndpoint": "/api/v1/models/seedance-2.5-omni-reference-4k/estimate-cost",
+      "endpoint": "/api/v1/seedance-2.5-omni-reference-4k",
+      "durationMinSeconds": null,
+      "durationMaxSeconds": 30,
+      "referenceLimits": {
+        "images": 30,
+        "videos": 10,
+        "audios": 10
+      },
+      "maxPerSecondRateUsd": null,
+      "priceTables": [
+        {
+          "dimensions": [
+            "Video Reference",
+            "Duration"
+          ],
+          "rows": [
+            {
+              "combination": [
+                "No",
+                "5s"
+              ],
+              "costUsd": 8.5
+            },
+            {
+              "combination": [
+                "No",
+                "10s"
+              ],
+              "costUsd": 17
+            },
+            {
+              "combination": [
+                "No",
+                "20s"
+              ],
+              "costUsd": 34
+            },
+            {
+              "combination": [
+                "No",
+                "30s"
+              ],
+              "costUsd": 51
+            },
+            {
+              "combination": [
+                "Yes",
+                "output + reference duration(s)"
+              ],
+              "costUsd": 1.105
+            }
+          ]
+        }
+      ]
+    },
+    "seedance-2.5-omni-reference-1080p": {
+      "category": "Image to Video",
+      "title": "Omni Reference 1080p",
+      "resolutions": [
+        "1080p"
+      ],
+      "resolutionSource": "endpoint-name",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
+      "availability": "AVAILABLE",
+      "comingSoonReason": null,
+      "isNew": true,
+      "family": "seedance-2.5",
+      "groupOf": "video",
+      "inputVideoPolicy": {
+        "capSeconds": 15,
+        "applies": true,
+        "boundable": true,
+        "reason": null,
+        "formula": "$0.552/sec x (30s output + 10 x 15s capped reference)",
+        "referenceClipLimit": 10,
+        "billedClipLimit": 10
+      },
+      "effectiveCeilingUsd": 99.36000000000001,
+      "effectiveCeilingMicroUsd": 99360001,
+      "defaultCostUsd": 4.25,
+      "defaultCostMicroUsd": 4250000,
+      "ceilingUsd": 25.5,
+      "ceilingMicroUsd": 25500000,
+      "ceilingBasis": "cost-table-max",
+      "pricingClass": "unbounded",
+      "staticallyBillable": false,
+      "unbounded": true,
+      "unboundedKind": "combined-duration",
+      "unboundedEvidence": [
+        {
+          "rule": "combined-duration",
+          "quote": "Price varies by duration; a video reference switches billing to a reduced per-second rate charged on output duration plus every reference video's duration"
+        },
+        {
+          "rule": "combined-duration",
+          "quote": "price table row: output + reference duration(s)"
+        }
+      ],
+      "costDrivers": [
+        "duration",
+        "reference_videos"
+      ],
+      "priceVaries": true,
+      "catalogCostUsd": 4.25,
+      "catalogDynamicPricing": true,
+      "estimateEndpoint": "/api/v1/models/seedance-2.5-omni-reference-1080p/estimate-cost",
+      "endpoint": "/api/v1/seedance-2.5-omni-reference-1080p",
+      "durationMinSeconds": null,
+      "durationMaxSeconds": 30,
+      "referenceLimits": {
+        "images": 30,
+        "videos": 10,
+        "audios": 10
+      },
+      "maxPerSecondRateUsd": null,
+      "priceTables": [
+        {
+          "dimensions": [
+            "Video Reference",
+            "Duration"
+          ],
+          "rows": [
+            {
+              "combination": [
+                "No",
+                "5s"
+              ],
+              "costUsd": 4.25
+            },
+            {
+              "combination": [
+                "No",
+                "10s"
+              ],
+              "costUsd": 8.5
+            },
+            {
+              "combination": [
+                "No",
+                "20s"
+              ],
+              "costUsd": 17
+            },
+            {
+              "combination": [
+                "No",
+                "30s"
+              ],
+              "costUsd": 25.5
+            },
+            {
+              "combination": [
+                "Yes",
+                "output + reference duration(s)"
+              ],
+              "costUsd": 0.552
+            }
+          ]
+        }
+      ]
+    },
+    "seedance-2.5-video-edit": {
+      "category": "Video to Video",
+      "title": "Seedance 2.5 Video Edit",
+      "resolutions": [],
+      "resolutionSource": "unknown",
+      "apiPayloadKeys": [
+        "prompt",
+        "video",
+        "duration"
+      ],
+      "payloadContractVerified": true,
+      "availability": "AVAILABLE",
+      "comingSoonReason": null,
+      "isNew": true,
+      "family": "seedance-2.5",
+      "groupOf": "video",
+      "inputVideoPolicy": {
+        "capSeconds": 15,
+        "applies": true,
+        "boundable": true,
+        "reason": null,
+        "formula": "$0.221/sec x (30s output + 1 x 15s capped reference)",
+        "referenceClipLimit": null,
+        "billedClipLimit": 1
+      },
+      "effectiveCeilingUsd": 9.945,
+      "effectiveCeilingMicroUsd": 9945000,
+      "defaultCostUsd": 1.7,
+      "defaultCostMicroUsd": 1700000,
+      "ceilingUsd": 10.2,
+      "ceilingMicroUsd": 10200000,
+      "ceilingBasis": "max(cost-table-max, per-second-rate x max-duration)",
+      "pricingClass": "unbounded",
+      "staticallyBillable": false,
+      "unbounded": true,
+      "unboundedKind": "combined-duration",
+      "unboundedEvidence": [
+        {
+          "rule": "combined-duration",
+          "quote": "Price varies by duration; a video reference switches billing to a reduced per-second rate charged on output duration plus every reference video's duration"
+        },
+        {
+          "rule": "combined-duration",
+          "quote": "Billed on the combined duration of the input video plus the generated output, at 65% of the base per-second rate."
+        },
+        {
+          "rule": "combined-duration",
+          "quote": "price table row: output + reference duration(s)"
+        }
+      ],
+      "costDrivers": [
+        "duration",
+        "reference_videos"
+      ],
+      "priceVaries": true,
+      "catalogCostUsd": 1.7,
+      "catalogDynamicPricing": true,
+      "estimateEndpoint": "/api/v1/models/seedance-2.5-video-edit/estimate-cost",
+      "endpoint": "/api/v1/seedance-2.5-video-edit",
+      "durationMinSeconds": 5,
+      "durationMaxSeconds": 30,
+      "referenceLimits": {
+        "images": 30,
+        "audios": 10
+      },
+      "maxPerSecondRateUsd": 0.221,
+      "priceTables": [
+        {
+          "dimensions": [
+            "Video Reference",
+            "Duration"
+          ],
+          "rows": [
+            {
+              "combination": [
+                "No",
+                "5s"
+              ],
+              "costUsd": 1.7
+            },
+            {
+              "combination": [
+                "No",
+                "10s"
+              ],
+              "costUsd": 3.4
+            },
+            {
+              "combination": [
+                "No",
+                "20s"
+              ],
+              "costUsd": 6.8
+            },
+            {
+              "combination": [
+                "No",
+                "30s"
+              ],
+              "costUsd": 10.2
+            },
+            {
+              "combination": [
+                "Yes",
+                "output + reference duration(s)"
+              ],
+              "costUsd": 0.221
+            }
+          ]
+        }
+      ]
+    },
+    "seedance-2.5-spicy-text-to-video-480p": {
+      "category": "Text to Video",
+      "title": "Spicy Seedance 2.5 Text to Video 480p",
+      "resolutions": [
+        "480p"
+      ],
+      "resolutionSource": "endpoint-name",
+      "apiPayloadKeys": [
+        "prompt",
+        "duration"
+      ],
+      "payloadContractVerified": true,
+      "availability": "AVAILABLE",
+      "comingSoonReason": null,
+      "isNew": true,
+      "family": "seedance-2.5",
+      "groupOf": "video",
+      "inputVideoPolicy": {
+        "capSeconds": 15,
+        "applies": false,
+        "boundable": true,
+        "reason": null,
+        "formula": "not billed on input duration",
+        "referenceClipLimit": null,
+        "billedClipLimit": null
+      },
+      "effectiveCeilingUsd": 5.1000000000000005,
+      "effectiveCeilingMicroUsd": 5100001,
+      "defaultCostUsd": 0.935,
+      "defaultCostMicroUsd": 935000,
+      "ceilingUsd": 5.1000000000000005,
+      "ceilingMicroUsd": 5100001,
+      "ceilingBasis": "per-second-rate x max-duration",
+      "pricingClass": "bounded",
+      "staticallyBillable": true,
+      "unbounded": false,
+      "unboundedKind": null,
+      "unboundedEvidence": [],
+      "costDrivers": [],
+      "priceVaries": true,
+      "catalogCostUsd": 0.935,
+      "catalogDynamicPricing": true,
+      "estimateEndpoint": "/api/v1/models/seedance-2.5-spicy-text-to-video-480p/estimate-cost",
+      "endpoint": "/api/v1/seedance-2.5-spicy-text-to-video-480p",
+      "durationMinSeconds": null,
+      "durationMaxSeconds": 30,
+      "referenceLimits": {},
+      "maxPerSecondRateUsd": 0.17,
+      "priceTables": []
+    },
+    "seedance-2.5-spicy-text-to-video-1080p": {
+      "category": "Text to Video",
+      "title": "Spicy Text to Video 1080p",
+      "resolutions": [
+        "1080p"
+      ],
+      "resolutionSource": "endpoint-name",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
+      "availability": "COMING_SOON",
+      "comingSoonReason": "UNRELEASED_NO_PUBLISHED_PRICING",
+      "isNew": true,
+      "family": "seedance-2.5",
+      "groupOf": "video",
+      "inputVideoPolicy": {
+        "capSeconds": 15,
+        "applies": false,
+        "boundable": true,
+        "reason": null,
+        "formula": "not billed on input duration",
+        "referenceClipLimit": null,
+        "billedClipLimit": null
+      },
+      "effectiveCeilingUsd": null,
+      "effectiveCeilingMicroUsd": null,
+      "defaultCostUsd": 4.675,
+      "defaultCostMicroUsd": 4675000,
+      "ceilingUsd": null,
+      "ceilingMicroUsd": null,
+      "ceilingBasis": "unknown",
+      "pricingClass": "indeterminate",
+      "staticallyBillable": false,
+      "unbounded": false,
+      "unboundedKind": null,
+      "unboundedEvidence": [],
+      "costDrivers": [],
+      "priceVaries": true,
+      "catalogCostUsd": 4.675,
+      "catalogDynamicPricing": true,
+      "estimateEndpoint": "/api/v1/models/seedance-2.5-spicy-text-to-video-1080p/estimate-cost",
+      "endpoint": "/api/v1/seedance-2.5-spicy-text-to-video-1080p",
+      "durationMinSeconds": null,
+      "durationMaxSeconds": 30,
+      "referenceLimits": {},
+      "maxPerSecondRateUsd": null,
+      "priceTables": []
+    },
+    "seedance-2.5-intl-text-to-video-1080p": {
+      "category": "Text to Video",
+      "title": "Intl Text to Video 1080p",
+      "resolutions": [
+        "1080p"
+      ],
+      "resolutionSource": "endpoint-name",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
+      "availability": "COMING_SOON",
+      "comingSoonReason": "UNRELEASED_NO_PUBLISHED_PRICING",
+      "isNew": true,
+      "family": "seedance-2.5",
+      "groupOf": "video",
+      "inputVideoPolicy": {
+        "capSeconds": 15,
+        "applies": false,
+        "boundable": true,
+        "reason": null,
+        "formula": "not billed on input duration",
+        "referenceClipLimit": null,
+        "billedClipLimit": null
+      },
+      "effectiveCeilingUsd": null,
+      "effectiveCeilingMicroUsd": null,
+      "defaultCostUsd": 4.675,
+      "defaultCostMicroUsd": 4675000,
+      "ceilingUsd": null,
+      "ceilingMicroUsd": null,
+      "ceilingBasis": "unknown",
+      "pricingClass": "indeterminate",
+      "staticallyBillable": false,
+      "unbounded": false,
+      "unboundedKind": null,
+      "unboundedEvidence": [],
+      "costDrivers": [],
+      "priceVaries": true,
+      "catalogCostUsd": 4.675,
+      "catalogDynamicPricing": true,
+      "estimateEndpoint": "/api/v1/models/seedance-2.5-intl-text-to-video-1080p/estimate-cost",
+      "endpoint": "/api/v1/seedance-2.5-intl-text-to-video-1080p",
+      "durationMinSeconds": null,
+      "durationMaxSeconds": 30,
+      "referenceLimits": {},
+      "maxPerSecondRateUsd": null,
+      "priceTables": []
+    },
+    "seedance-2.5-intl-text-to-video-4k": {
+      "category": "Text to Video",
+      "title": "Intl Text to Video 4K",
+      "resolutions": [
+        "4k"
+      ],
+      "resolutionSource": "endpoint-name",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
+      "availability": "COMING_SOON",
+      "comingSoonReason": "UNRELEASED_NO_PUBLISHED_PRICING",
+      "isNew": true,
+      "family": "seedance-2.5",
+      "groupOf": "video",
+      "inputVideoPolicy": {
+        "capSeconds": 15,
+        "applies": false,
+        "boundable": true,
+        "reason": null,
+        "formula": "not billed on input duration",
+        "referenceClipLimit": null,
+        "billedClipLimit": null
+      },
+      "effectiveCeilingUsd": null,
+      "effectiveCeilingMicroUsd": null,
+      "defaultCostUsd": 9.35,
+      "defaultCostMicroUsd": 9350000,
+      "ceilingUsd": null,
+      "ceilingMicroUsd": null,
+      "ceilingBasis": "unknown",
+      "pricingClass": "indeterminate",
+      "staticallyBillable": false,
+      "unbounded": false,
+      "unboundedKind": null,
+      "unboundedEvidence": [],
+      "costDrivers": [],
+      "priceVaries": true,
+      "catalogCostUsd": 9.35,
+      "catalogDynamicPricing": true,
+      "estimateEndpoint": "/api/v1/models/seedance-2.5-intl-text-to-video-4k/estimate-cost",
+      "endpoint": "/api/v1/seedance-2.5-intl-text-to-video-4k",
+      "durationMinSeconds": null,
+      "durationMaxSeconds": 30,
+      "referenceLimits": {},
+      "maxPerSecondRateUsd": null,
+      "priceTables": []
+    },
+    "seedance-2.5-spicy-text-to-video-4k": {
+      "category": "Text to Video",
+      "title": "Spicy Text to Video 4K",
+      "resolutions": [
+        "4k"
+      ],
+      "resolutionSource": "endpoint-name",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
+      "availability": "COMING_SOON",
+      "comingSoonReason": "UNRELEASED_NO_PUBLISHED_PRICING",
+      "isNew": true,
+      "family": "seedance-2.5",
+      "groupOf": "video",
+      "inputVideoPolicy": {
+        "capSeconds": 15,
+        "applies": false,
+        "boundable": true,
+        "reason": null,
+        "formula": "not billed on input duration",
+        "referenceClipLimit": null,
+        "billedClipLimit": null
+      },
+      "effectiveCeilingUsd": null,
+      "effectiveCeilingMicroUsd": null,
+      "defaultCostUsd": 9.35,
+      "defaultCostMicroUsd": 9350000,
+      "ceilingUsd": null,
+      "ceilingMicroUsd": null,
+      "ceilingBasis": "unknown",
+      "pricingClass": "indeterminate",
+      "staticallyBillable": false,
+      "unbounded": false,
+      "unboundedKind": null,
+      "unboundedEvidence": [],
+      "costDrivers": [],
+      "priceVaries": true,
+      "catalogCostUsd": 9.35,
+      "catalogDynamicPricing": true,
+      "estimateEndpoint": "/api/v1/models/seedance-2.5-spicy-text-to-video-4k/estimate-cost",
+      "endpoint": "/api/v1/seedance-2.5-spicy-text-to-video-4k",
+      "durationMinSeconds": null,
+      "durationMaxSeconds": 30,
+      "referenceLimits": {},
+      "maxPerSecondRateUsd": null,
+      "priceTables": []
+    },
+    "seedance-2.5-intl-image-to-video": {
+      "category": "Image to Video",
+      "title": "Seedance 2.5 Image to Video (Intl)",
+      "resolutions": [
+        "720p",
+        "480p",
+        "1080p"
+      ],
+      "resolutionSource": "prose-hint",
+      "apiPayloadKeys": [
+        "prompt",
+        "image_url",
+        "duration"
+      ],
+      "payloadContractVerified": true,
+      "availability": "AVAILABLE",
+      "comingSoonReason": null,
+      "isNew": true,
+      "family": "seedance-2.5",
+      "groupOf": "video",
+      "inputVideoPolicy": {
+        "capSeconds": 15,
+        "applies": false,
+        "boundable": true,
+        "reason": null,
+        "formula": "not billed on input duration",
+        "referenceClipLimit": null,
+        "billedClipLimit": null
+      },
+      "effectiveCeilingUsd": 10.200000000000001,
+      "effectiveCeilingMicroUsd": 10200001,
+      "defaultCostUsd": 1.87,
+      "defaultCostMicroUsd": 1870000,
+      "ceilingUsd": 10.200000000000001,
+      "ceilingMicroUsd": 10200001,
+      "ceilingBasis": "per-second-rate x max-duration",
+      "pricingClass": "bounded",
+      "staticallyBillable": true,
+      "unbounded": false,
+      "unboundedKind": null,
+      "unboundedEvidence": [],
+      "costDrivers": [],
+      "priceVaries": true,
+      "catalogCostUsd": 1.87,
+      "catalogDynamicPricing": true,
+      "estimateEndpoint": "/api/v1/models/seedance-2.5-intl-image-to-video/estimate-cost",
+      "endpoint": "/api/v1/seedance-2.5-intl-image-to-video",
+      "durationMinSeconds": null,
+      "durationMaxSeconds": 30,
+      "referenceLimits": {},
+      "maxPerSecondRateUsd": 0.34,
+      "priceTables": []
+    },
+    "seedance-2.5-spicy-image-to-video": {
+      "category": "Image to Video",
+      "title": "Seedance 2.5 Spicy Image to Video",
+      "resolutions": [
+        "4K"
+      ],
+      "resolutionSource": "prose-hint",
+      "apiPayloadKeys": [
+        "prompt",
+        "image_url",
+        "resolution",
+        "duration",
+        "generate_audio"
+      ],
+      "payloadContractVerified": true,
+      "availability": "COMING_SOON",
+      "comingSoonReason": "UNRELEASED_NO_PUBLISHED_PRICING",
+      "isNew": true,
+      "family": "seedance-2.5",
+      "groupOf": "video",
+      "inputVideoPolicy": {
+        "capSeconds": 15,
+        "applies": false,
+        "boundable": true,
+        "reason": null,
+        "formula": "not billed on input duration",
+        "referenceClipLimit": null,
+        "billedClipLimit": null
+      },
+      "effectiveCeilingUsd": null,
+      "effectiveCeilingMicroUsd": null,
+      "defaultCostUsd": 1.87,
+      "defaultCostMicroUsd": 1870000,
+      "ceilingUsd": null,
+      "ceilingMicroUsd": null,
+      "ceilingBasis": "unknown",
+      "pricingClass": "indeterminate",
+      "staticallyBillable": false,
+      "unbounded": false,
+      "unboundedKind": null,
+      "unboundedEvidence": [],
+      "costDrivers": [],
+      "priceVaries": true,
+      "catalogCostUsd": 0.6,
+      "catalogDynamicPricing": true,
+      "estimateEndpoint": "/api/v1/models/seedance-2.5-spicy-image-to-video/estimate-cost",
+      "endpoint": "/api/v1/seedance-2.5-spicy-image-to-video",
+      "durationMinSeconds": null,
+      "durationMaxSeconds": 16,
+      "referenceLimits": {},
+      "maxPerSecondRateUsd": null,
+      "priceTables": []
+    },
+    "seedance-2.5-intl-image-to-video-1080p": {
+      "category": "Image to Video",
+      "title": "Intl Image to Video 1080p",
+      "resolutions": [
+        "1080p"
+      ],
+      "resolutionSource": "endpoint-name",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
+      "availability": "COMING_SOON",
+      "comingSoonReason": "UNRELEASED_NO_PUBLISHED_PRICING",
+      "isNew": true,
+      "family": "seedance-2.5",
+      "groupOf": "video",
+      "inputVideoPolicy": {
+        "capSeconds": 15,
+        "applies": false,
+        "boundable": true,
+        "reason": null,
+        "formula": "not billed on input duration",
+        "referenceClipLimit": null,
+        "billedClipLimit": null
+      },
+      "effectiveCeilingUsd": null,
+      "effectiveCeilingMicroUsd": null,
+      "defaultCostUsd": 4.675,
+      "defaultCostMicroUsd": 4675000,
+      "ceilingUsd": null,
+      "ceilingMicroUsd": null,
+      "ceilingBasis": "unknown",
+      "pricingClass": "indeterminate",
+      "staticallyBillable": false,
+      "unbounded": false,
+      "unboundedKind": null,
+      "unboundedEvidence": [],
+      "costDrivers": [],
+      "priceVaries": true,
+      "catalogCostUsd": 4.675,
+      "catalogDynamicPricing": true,
+      "estimateEndpoint": "/api/v1/models/seedance-2.5-intl-image-to-video-1080p/estimate-cost",
+      "endpoint": "/api/v1/seedance-2.5-intl-image-to-video-1080p",
+      "durationMinSeconds": null,
+      "durationMaxSeconds": 30,
+      "referenceLimits": {},
+      "maxPerSecondRateUsd": null,
+      "priceTables": []
+    },
+    "seedance-2.5-spicy-image-to-video-1080p": {
+      "category": "Image to Video",
+      "title": "Spicy Image to Video 1080p",
+      "resolutions": [
+        "1080p"
+      ],
+      "resolutionSource": "endpoint-name",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
+      "availability": "COMING_SOON",
+      "comingSoonReason": "UNRELEASED_NO_PUBLISHED_PRICING",
+      "isNew": true,
+      "family": "seedance-2.5",
+      "groupOf": "video",
+      "inputVideoPolicy": {
+        "capSeconds": 15,
+        "applies": false,
+        "boundable": true,
+        "reason": null,
+        "formula": "not billed on input duration",
+        "referenceClipLimit": null,
+        "billedClipLimit": null
+      },
+      "effectiveCeilingUsd": null,
+      "effectiveCeilingMicroUsd": null,
+      "defaultCostUsd": 4.675,
+      "defaultCostMicroUsd": 4675000,
+      "ceilingUsd": null,
+      "ceilingMicroUsd": null,
+      "ceilingBasis": "unknown",
+      "pricingClass": "indeterminate",
+      "staticallyBillable": false,
+      "unbounded": false,
+      "unboundedKind": null,
+      "unboundedEvidence": [],
+      "costDrivers": [],
+      "priceVaries": true,
+      "catalogCostUsd": 4.675,
+      "catalogDynamicPricing": true,
+      "estimateEndpoint": "/api/v1/models/seedance-2.5-spicy-image-to-video-1080p/estimate-cost",
+      "endpoint": "/api/v1/seedance-2.5-spicy-image-to-video-1080p",
+      "durationMinSeconds": null,
+      "durationMaxSeconds": 30,
+      "referenceLimits": {},
+      "maxPerSecondRateUsd": null,
+      "priceTables": []
+    },
+    "veo-4-image-to-video": {
+      "category": "Image to Video",
+      "title": "Veo 4 Image to Video",
+      "resolutions": [
+        "1080p"
+      ],
+      "resolutionSource": "prose-hint",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
+      "availability": "AVAILABLE",
+      "comingSoonReason": null,
+      "isNew": false,
+      "family": "veo-4",
+      "groupOf": "video",
+      "inputVideoPolicy": {
+        "capSeconds": 15,
+        "applies": false,
+        "boundable": true,
+        "reason": null,
+        "formula": "not billed on input duration",
+        "referenceClipLimit": null,
+        "billedClipLimit": null
+      },
+      "effectiveCeilingUsd": 3,
+      "effectiveCeilingMicroUsd": 3000000,
+      "defaultCostUsd": 3,
+      "defaultCostMicroUsd": 3000000,
+      "ceilingUsd": 3,
+      "ceilingMicroUsd": 3000000,
+      "ceilingBasis": "flat-rate-per-run",
+      "pricingClass": "flat",
+      "staticallyBillable": true,
+      "unbounded": false,
+      "unboundedKind": null,
+      "unboundedEvidence": [],
+      "costDrivers": [],
+      "priceVaries": true,
+      "catalogCostUsd": 3,
+      "catalogDynamicPricing": true,
+      "estimateEndpoint": "/api/v1/models/veo-4-image-to-video/estimate-cost",
+      "endpoint": "/api/v1/veo-4-image-to-video",
+      "durationMinSeconds": null,
+      "durationMaxSeconds": null,
+      "referenceLimits": {},
+      "maxPerSecondRateUsd": null,
+      "priceTables": []
+    },
+    "veo-4-text-to-video": {
+      "category": "Text to Video",
+      "title": "Veo 4 Text to Video",
+      "resolutions": [
+        "1080p"
+      ],
+      "resolutionSource": "prose-hint",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
+      "availability": "AVAILABLE",
+      "comingSoonReason": null,
+      "isNew": false,
+      "family": "veo-4",
+      "groupOf": "video",
+      "inputVideoPolicy": {
+        "capSeconds": 15,
+        "applies": false,
+        "boundable": true,
+        "reason": null,
+        "formula": "not billed on input duration",
+        "referenceClipLimit": null,
+        "billedClipLimit": null
+      },
+      "effectiveCeilingUsd": 3,
+      "effectiveCeilingMicroUsd": 3000000,
+      "defaultCostUsd": 3,
+      "defaultCostMicroUsd": 3000000,
+      "ceilingUsd": 3,
+      "ceilingMicroUsd": 3000000,
+      "ceilingBasis": "flat-rate-per-run",
+      "pricingClass": "flat",
+      "staticallyBillable": true,
+      "unbounded": false,
+      "unboundedKind": null,
+      "unboundedEvidence": [],
+      "costDrivers": [],
+      "priceVaries": true,
+      "catalogCostUsd": 3,
+      "catalogDynamicPricing": true,
+      "estimateEndpoint": "/api/v1/models/veo-4-text-to-video/estimate-cost",
+      "endpoint": "/api/v1/veo-4-text-to-video",
+      "durationMinSeconds": null,
+      "durationMaxSeconds": null,
+      "referenceLimits": {},
+      "maxPerSecondRateUsd": null,
+      "priceTables": []
+    },
+    "veo3.1-lite-image-to-video": {
+      "category": "Image to Video",
+      "title": "Veo 3.1 Lite Image to Video",
+      "resolutions": [
+        "720p",
+        "1080p",
+        "4k"
+      ],
+      "resolutionSource": "price-table",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
+      "availability": "AVAILABLE",
+      "comingSoonReason": null,
+      "isNew": false,
+      "family": "veo3.1",
+      "groupOf": "video",
+      "inputVideoPolicy": {
+        "capSeconds": 15,
+        "applies": false,
+        "boundable": true,
+        "reason": null,
+        "formula": "not billed on input duration",
+        "referenceClipLimit": null,
+        "billedClipLimit": null
+      },
+      "effectiveCeilingUsd": 1.5,
+      "effectiveCeilingMicroUsd": 1500000,
+      "defaultCostUsd": 0.3,
+      "defaultCostMicroUsd": 300000,
+      "ceilingUsd": 1.5,
+      "ceilingMicroUsd": 1500000,
+      "ceilingBasis": "cost-table-max",
+      "pricingClass": "bounded",
+      "staticallyBillable": true,
+      "unbounded": false,
+      "unboundedKind": null,
+      "unboundedEvidence": [],
+      "costDrivers": [
+        "resolution"
+      ],
+      "priceVaries": true,
+      "catalogCostUsd": 0.3,
+      "catalogDynamicPricing": true,
+      "estimateEndpoint": "/api/v1/models/veo3.1-lite-image-to-video/estimate-cost",
+      "endpoint": "/api/v1/veo3.1-lite-image-to-video",
+      "durationMinSeconds": null,
+      "durationMaxSeconds": null,
+      "referenceLimits": {},
+      "maxPerSecondRateUsd": null,
+      "priceTables": [
+        {
+          "dimensions": [
+            "Resolution"
+          ],
+          "rows": [
+            {
+              "combination": [
+                "720p"
+              ],
+              "costUsd": 0.3
+            },
+            {
+              "combination": [
+                "1080p"
+              ],
+              "costUsd": 0.39
+            },
+            {
+              "combination": [
+                "4k"
+              ],
+              "costUsd": 1.5
+            }
+          ]
+        }
+      ]
+    },
+    "veo3.1-lite-text-to-video": {
+      "category": "Text to Video",
+      "title": "Veo 3.1 Lite Text to Video",
+      "resolutions": [
+        "720p",
+        "1080p",
+        "4k"
+      ],
+      "resolutionSource": "price-table",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
+      "availability": "AVAILABLE",
+      "comingSoonReason": null,
+      "isNew": false,
+      "family": "veo3.1",
+      "groupOf": "video",
+      "inputVideoPolicy": {
+        "capSeconds": 15,
+        "applies": false,
+        "boundable": true,
+        "reason": null,
+        "formula": "not billed on input duration",
+        "referenceClipLimit": null,
+        "billedClipLimit": null
+      },
+      "effectiveCeilingUsd": 1.5,
+      "effectiveCeilingMicroUsd": 1500000,
+      "defaultCostUsd": 0.3,
+      "defaultCostMicroUsd": 300000,
+      "ceilingUsd": 1.5,
+      "ceilingMicroUsd": 1500000,
+      "ceilingBasis": "cost-table-max",
+      "pricingClass": "bounded",
+      "staticallyBillable": true,
+      "unbounded": false,
+      "unboundedKind": null,
+      "unboundedEvidence": [],
+      "costDrivers": [
+        "resolution"
+      ],
+      "priceVaries": true,
+      "catalogCostUsd": 0.3,
+      "catalogDynamicPricing": true,
+      "estimateEndpoint": "/api/v1/models/veo3.1-lite-text-to-video/estimate-cost",
+      "endpoint": "/api/v1/veo3.1-lite-text-to-video",
+      "durationMinSeconds": null,
+      "durationMaxSeconds": null,
+      "referenceLimits": {},
+      "maxPerSecondRateUsd": null,
+      "priceTables": [
+        {
+          "dimensions": [
+            "Resolution"
+          ],
+          "rows": [
+            {
+              "combination": [
+                "720p"
+              ],
+              "costUsd": 0.3
+            },
+            {
+              "combination": [
+                "1080p"
+              ],
+              "costUsd": 0.39
+            },
+            {
+              "combination": [
+                "4k"
+              ],
+              "costUsd": 1.5
+            }
+          ]
+        }
+      ]
+    },
+    "veo3.1-4k-video": {
+      "category": "Text to Video",
+      "title": "Veo 3.1 4K Video",
+      "resolutions": [
+        "4K"
+      ],
+      "resolutionSource": "prose-hint",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
+      "availability": "AVAILABLE",
+      "comingSoonReason": null,
+      "isNew": false,
+      "family": "veo3.1",
+      "groupOf": "video",
+      "inputVideoPolicy": {
+        "capSeconds": 15,
+        "applies": false,
+        "boundable": true,
+        "reason": null,
+        "formula": "not billed on input duration",
+        "referenceClipLimit": null,
+        "billedClipLimit": null
+      },
+      "effectiveCeilingUsd": 0.78,
+      "effectiveCeilingMicroUsd": 780000,
+      "defaultCostUsd": 0.78,
+      "defaultCostMicroUsd": 780000,
+      "ceilingUsd": 0.78,
+      "ceilingMicroUsd": 780000,
+      "ceilingBasis": "flat-rate-per-run",
+      "pricingClass": "flat",
+      "staticallyBillable": true,
+      "unbounded": false,
+      "unboundedKind": null,
+      "unboundedEvidence": [],
+      "costDrivers": [],
+      "priceVaries": true,
+      "catalogCostUsd": 0.6,
+      "catalogDynamicPricing": true,
+      "estimateEndpoint": "/api/v1/models/veo3.1-4k-video/estimate-cost",
+      "endpoint": "/api/v1/veo3.1-4k-video",
+      "durationMinSeconds": null,
+      "durationMaxSeconds": null,
+      "referenceLimits": {},
+      "maxPerSecondRateUsd": null,
+      "priceTables": []
+    },
+    "veo3.1-extend-video": {
+      "category": "Text to Video",
+      "title": "Veo 3.1 Extend Video",
+      "resolutions": [
+        "720p",
+        "1080p",
+        "4k"
+      ],
+      "resolutionSource": "price-table",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
+      "availability": "AVAILABLE",
+      "comingSoonReason": null,
+      "isNew": false,
+      "family": "veo3.1",
+      "groupOf": "video",
+      "inputVideoPolicy": {
+        "capSeconds": 15,
+        "applies": false,
+        "boundable": true,
+        "reason": null,
+        "formula": "not billed on input duration",
+        "referenceClipLimit": null,
+        "billedClipLimit": null
+      },
+      "effectiveCeilingUsd": 1.8,
+      "effectiveCeilingMicroUsd": 1800000,
+      "defaultCostUsd": 0.6,
+      "defaultCostMicroUsd": 600000,
+      "ceilingUsd": 1.8,
+      "ceilingMicroUsd": 1800000,
+      "ceilingBasis": "cost-table-max",
+      "pricingClass": "bounded",
+      "staticallyBillable": true,
+      "unbounded": false,
+      "unboundedKind": null,
+      "unboundedEvidence": [],
+      "costDrivers": [
+        "resolution"
+      ],
+      "priceVaries": true,
+      "catalogCostUsd": 0.6,
+      "catalogDynamicPricing": true,
+      "estimateEndpoint": "/api/v1/models/veo3.1-extend-video/estimate-cost",
+      "endpoint": "/api/v1/veo3.1-extend-video",
+      "durationMinSeconds": null,
+      "durationMaxSeconds": null,
+      "referenceLimits": {},
+      "maxPerSecondRateUsd": null,
+      "priceTables": [
+        {
+          "dimensions": [
+            "Resolution"
+          ],
+          "rows": [
+            {
+              "combination": [
+                "720p"
+              ],
+              "costUsd": 0.6
+            },
+            {
+              "combination": [
+                "1080p"
+              ],
+              "costUsd": 0.78
+            },
+            {
+              "combination": [
+                "4k"
+              ],
+              "costUsd": 1.8
+            }
+          ]
+        }
+      ]
+    },
+    "veo3.1-reference-to-video": {
+      "category": "Image to Video",
+      "title": "Veo 3.1 Reference to Video",
+      "resolutions": [
+        "720p",
+        "1080p",
+        "4k"
+      ],
+      "resolutionSource": "price-table",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
+      "availability": "AVAILABLE",
+      "comingSoonReason": null,
+      "isNew": false,
+      "family": "veo3.1",
+      "groupOf": "video",
+      "inputVideoPolicy": {
+        "capSeconds": 15,
+        "applies": false,
+        "boundable": true,
+        "reason": null,
+        "formula": "not billed on input duration",
+        "referenceClipLimit": null,
+        "billedClipLimit": null
+      },
+      "effectiveCeilingUsd": 1.8,
+      "effectiveCeilingMicroUsd": 1800000,
+      "defaultCostUsd": 0.6,
+      "defaultCostMicroUsd": 600000,
+      "ceilingUsd": 1.8,
+      "ceilingMicroUsd": 1800000,
+      "ceilingBasis": "cost-table-max",
+      "pricingClass": "bounded",
+      "staticallyBillable": true,
+      "unbounded": false,
+      "unboundedKind": null,
+      "unboundedEvidence": [],
+      "costDrivers": [
+        "resolution"
+      ],
+      "priceVaries": true,
+      "catalogCostUsd": 0.6,
+      "catalogDynamicPricing": true,
+      "estimateEndpoint": "/api/v1/models/veo3.1-reference-to-video/estimate-cost",
+      "endpoint": "/api/v1/veo3.1-reference-to-video",
+      "durationMinSeconds": null,
+      "durationMaxSeconds": null,
+      "referenceLimits": {},
+      "maxPerSecondRateUsd": null,
+      "priceTables": [
+        {
+          "dimensions": [
+            "Resolution"
+          ],
+          "rows": [
+            {
+              "combination": [
+                "720p"
+              ],
+              "costUsd": 0.6
+            },
+            {
+              "combination": [
+                "1080p"
+              ],
+              "costUsd": 0.78
+            },
+            {
+              "combination": [
+                "4k"
+              ],
+              "costUsd": 1.8
+            }
+          ]
+        }
+      ]
+    },
+    "veo3.1-fast-text-to-video": {
+      "category": "Text to Video",
+      "title": "Veo 3.1 Fast Text to Video",
+      "resolutions": [
+        "720p",
+        "1080p",
+        "4k"
+      ],
+      "resolutionSource": "price-table",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
+      "availability": "AVAILABLE",
+      "comingSoonReason": null,
+      "isNew": false,
+      "family": "veo3.1",
+      "groupOf": "video",
+      "inputVideoPolicy": {
+        "capSeconds": 15,
+        "applies": false,
+        "boundable": true,
+        "reason": null,
+        "formula": "not billed on input duration",
+        "referenceClipLimit": null,
+        "billedClipLimit": null
+      },
+      "effectiveCeilingUsd": 1.8,
+      "effectiveCeilingMicroUsd": 1800000,
+      "defaultCostUsd": 0.6,
+      "defaultCostMicroUsd": 600000,
+      "ceilingUsd": 1.8,
+      "ceilingMicroUsd": 1800000,
+      "ceilingBasis": "cost-table-max",
+      "pricingClass": "bounded",
+      "staticallyBillable": true,
+      "unbounded": false,
+      "unboundedKind": null,
+      "unboundedEvidence": [],
+      "costDrivers": [
+        "resolution"
+      ],
+      "priceVaries": true,
+      "catalogCostUsd": 0.6,
+      "catalogDynamicPricing": true,
+      "estimateEndpoint": "/api/v1/models/veo3.1-fast-text-to-video/estimate-cost",
+      "endpoint": "/api/v1/veo3.1-fast-text-to-video",
+      "durationMinSeconds": null,
+      "durationMaxSeconds": null,
+      "referenceLimits": {},
+      "maxPerSecondRateUsd": null,
+      "priceTables": [
+        {
+          "dimensions": [
+            "Resolution"
+          ],
+          "rows": [
+            {
+              "combination": [
+                "720p"
+              ],
+              "costUsd": 0.6
+            },
+            {
+              "combination": [
+                "1080p"
+              ],
+              "costUsd": 0.78
+            },
+            {
+              "combination": [
+                "4k"
+              ],
+              "costUsd": 1.8
+            }
+          ]
+        }
+      ]
+    },
+    "veo3.1-fast-image-to-video": {
+      "category": "Image to Video",
+      "title": "Veo 3.1 Fast Image to Video",
+      "resolutions": [
+        "720p",
+        "1080p",
+        "4k"
+      ],
+      "resolutionSource": "price-table",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
+      "availability": "AVAILABLE",
+      "comingSoonReason": null,
+      "isNew": false,
+      "family": "veo3.1",
+      "groupOf": "video",
+      "inputVideoPolicy": {
+        "capSeconds": 15,
+        "applies": false,
+        "boundable": true,
+        "reason": null,
+        "formula": "not billed on input duration",
+        "referenceClipLimit": null,
+        "billedClipLimit": null
+      },
+      "effectiveCeilingUsd": 1.8,
+      "effectiveCeilingMicroUsd": 1800000,
+      "defaultCostUsd": 0.6,
+      "defaultCostMicroUsd": 600000,
+      "ceilingUsd": 1.8,
+      "ceilingMicroUsd": 1800000,
+      "ceilingBasis": "cost-table-max",
+      "pricingClass": "bounded",
+      "staticallyBillable": true,
+      "unbounded": false,
+      "unboundedKind": null,
+      "unboundedEvidence": [],
+      "costDrivers": [
+        "resolution"
+      ],
+      "priceVaries": true,
+      "catalogCostUsd": 0.6,
+      "catalogDynamicPricing": true,
+      "estimateEndpoint": "/api/v1/models/veo3.1-fast-image-to-video/estimate-cost",
+      "endpoint": "/api/v1/veo3.1-fast-image-to-video",
+      "durationMinSeconds": null,
+      "durationMaxSeconds": null,
+      "referenceLimits": {},
+      "maxPerSecondRateUsd": null,
+      "priceTables": [
+        {
+          "dimensions": [
+            "Resolution"
+          ],
+          "rows": [
+            {
+              "combination": [
+                "720p"
+              ],
+              "costUsd": 0.6
+            },
+            {
+              "combination": [
+                "1080p"
+              ],
+              "costUsd": 0.78
+            },
+            {
+              "combination": [
+                "4k"
+              ],
+              "costUsd": 1.8
+            }
+          ]
+        }
+      ]
+    },
+    "veo3.1-text-to-video": {
+      "category": "Text to Video",
+      "title": "Veo 3.1 Text to Video",
+      "resolutions": [
+        "720p",
+        "1080p",
+        "4k"
+      ],
+      "resolutionSource": "price-table",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
+      "availability": "AVAILABLE",
+      "comingSoonReason": null,
+      "isNew": false,
+      "family": "veo3.1",
+      "groupOf": "video",
+      "inputVideoPolicy": {
+        "capSeconds": 15,
+        "applies": false,
+        "boundable": true,
+        "reason": null,
+        "formula": "not billed on input duration",
+        "referenceClipLimit": null,
+        "billedClipLimit": null
+      },
+      "effectiveCeilingUsd": 3.7,
+      "effectiveCeilingMicroUsd": 3700000,
+      "defaultCostUsd": 2.5,
+      "defaultCostMicroUsd": 2500000,
+      "ceilingUsd": 3.7,
+      "ceilingMicroUsd": 3700000,
+      "ceilingBasis": "cost-table-max",
+      "pricingClass": "bounded",
+      "staticallyBillable": true,
+      "unbounded": false,
+      "unboundedKind": null,
+      "unboundedEvidence": [],
+      "costDrivers": [
+        "resolution"
+      ],
+      "priceVaries": true,
+      "catalogCostUsd": 2.5,
+      "catalogDynamicPricing": true,
+      "estimateEndpoint": "/api/v1/models/veo3.1-text-to-video/estimate-cost",
+      "endpoint": "/api/v1/veo3.1-text-to-video",
+      "durationMinSeconds": null,
+      "durationMaxSeconds": null,
+      "referenceLimits": {},
+      "maxPerSecondRateUsd": null,
+      "priceTables": [
+        {
+          "dimensions": [
+            "Resolution"
+          ],
+          "rows": [
+            {
+              "combination": [
+                "720p"
+              ],
+              "costUsd": 2.5
+            },
+            {
+              "combination": [
+                "1080p"
+              ],
+              "costUsd": 3.25
+            },
+            {
+              "combination": [
+                "4k"
+              ],
+              "costUsd": 3.7
+            }
+          ]
+        }
+      ]
+    },
+    "veo3.1-image-to-video": {
+      "category": "Image to Video",
+      "title": "Veo 3.1 Image to Video",
+      "resolutions": [
+        "720p",
+        "1080p",
+        "4k"
+      ],
+      "resolutionSource": "price-table",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
+      "availability": "AVAILABLE",
+      "comingSoonReason": null,
+      "isNew": false,
+      "family": "veo3.1",
+      "groupOf": "video",
+      "inputVideoPolicy": {
+        "capSeconds": 15,
+        "applies": false,
+        "boundable": true,
+        "reason": null,
+        "formula": "not billed on input duration",
+        "referenceClipLimit": null,
+        "billedClipLimit": null
+      },
+      "effectiveCeilingUsd": 3.7,
+      "effectiveCeilingMicroUsd": 3700000,
+      "defaultCostUsd": 2.5,
+      "defaultCostMicroUsd": 2500000,
+      "ceilingUsd": 3.7,
+      "ceilingMicroUsd": 3700000,
+      "ceilingBasis": "cost-table-max",
+      "pricingClass": "bounded",
+      "staticallyBillable": true,
+      "unbounded": false,
+      "unboundedKind": null,
+      "unboundedEvidence": [],
+      "costDrivers": [
+        "resolution"
+      ],
+      "priceVaries": true,
+      "catalogCostUsd": 2.5,
+      "catalogDynamicPricing": true,
+      "estimateEndpoint": "/api/v1/models/veo3.1-image-to-video/estimate-cost",
+      "endpoint": "/api/v1/veo3.1-image-to-video",
+      "durationMinSeconds": null,
+      "durationMaxSeconds": null,
+      "referenceLimits": {},
+      "maxPerSecondRateUsd": null,
+      "priceTables": [
+        {
+          "dimensions": [
+            "Resolution"
+          ],
+          "rows": [
+            {
+              "combination": [
+                "720p"
+              ],
+              "costUsd": 2.5
+            },
+            {
+              "combination": [
+                "1080p"
+              ],
+              "costUsd": 3.25
+            },
+            {
+              "combination": [
+                "4k"
+              ],
+              "costUsd": 3.7
+            }
+          ]
+        }
+      ]
+    },
+    "veo3-fast-image-to-video": {
+      "category": "Image to Video",
+      "title": "Veo 3 Fast Image to Video",
+      "resolutions": [],
+      "resolutionSource": "unknown",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
+      "availability": "AVAILABLE",
+      "comingSoonReason": null,
+      "isNew": false,
+      "family": "veo",
+      "groupOf": "video",
+      "inputVideoPolicy": {
+        "capSeconds": 15,
+        "applies": false,
+        "boundable": true,
+        "reason": null,
+        "formula": "not billed on input duration",
+        "referenceClipLimit": null,
+        "billedClipLimit": null
+      },
+      "effectiveCeilingUsd": 0.6,
+      "effectiveCeilingMicroUsd": 600000,
+      "defaultCostUsd": 0.6,
+      "defaultCostMicroUsd": 600000,
+      "ceilingUsd": 0.6,
+      "ceilingMicroUsd": 600000,
+      "ceilingBasis": "flat-rate-per-run",
+      "pricingClass": "flat",
+      "staticallyBillable": true,
+      "unbounded": false,
+      "unboundedKind": null,
+      "unboundedEvidence": [],
+      "costDrivers": [],
+      "priceVaries": true,
+      "catalogCostUsd": 0.6,
+      "catalogDynamicPricing": true,
+      "estimateEndpoint": "/api/v1/models/veo3-fast-image-to-video/estimate-cost",
+      "endpoint": "/api/v1/veo3-fast-image-to-video",
+      "durationMinSeconds": null,
+      "durationMaxSeconds": null,
+      "referenceLimits": {},
+      "maxPerSecondRateUsd": null,
+      "priceTables": []
+    },
+    "veo3-fast-text-to-video": {
+      "category": "Text to Video",
+      "title": "Veo 3 Fast Text to Video",
+      "resolutions": [],
+      "resolutionSource": "unknown",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
+      "availability": "AVAILABLE",
+      "comingSoonReason": null,
+      "isNew": false,
+      "family": "veo",
+      "groupOf": "video",
+      "inputVideoPolicy": {
+        "capSeconds": 15,
+        "applies": false,
+        "boundable": true,
+        "reason": null,
+        "formula": "not billed on input duration",
+        "referenceClipLimit": null,
+        "billedClipLimit": null
+      },
+      "effectiveCeilingUsd": 0.6,
+      "effectiveCeilingMicroUsd": 600000,
+      "defaultCostUsd": 0.6,
+      "defaultCostMicroUsd": 600000,
+      "ceilingUsd": 0.6,
+      "ceilingMicroUsd": 600000,
+      "ceilingBasis": "flat-rate-per-run",
+      "pricingClass": "flat",
+      "staticallyBillable": true,
+      "unbounded": false,
+      "unboundedKind": null,
+      "unboundedEvidence": [],
+      "costDrivers": [],
+      "priceVaries": true,
+      "catalogCostUsd": 0.6,
+      "catalogDynamicPricing": true,
+      "estimateEndpoint": "/api/v1/models/veo3-fast-text-to-video/estimate-cost",
+      "endpoint": "/api/v1/veo3-fast-text-to-video",
+      "durationMinSeconds": null,
+      "durationMaxSeconds": null,
+      "referenceLimits": {},
+      "maxPerSecondRateUsd": null,
+      "priceTables": []
+    },
+    "veo3-text-to-video": {
+      "category": "Text to Video",
+      "title": "Veo 3 Text to Video",
+      "resolutions": [],
+      "resolutionSource": "unknown",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
+      "availability": "AVAILABLE",
+      "comingSoonReason": null,
+      "isNew": false,
+      "family": "veo",
+      "groupOf": "video",
+      "inputVideoPolicy": {
+        "capSeconds": 15,
+        "applies": false,
+        "boundable": true,
+        "reason": null,
+        "formula": "not billed on input duration",
+        "referenceClipLimit": null,
+        "billedClipLimit": null
+      },
+      "effectiveCeilingUsd": 2.5,
+      "effectiveCeilingMicroUsd": 2500000,
+      "defaultCostUsd": 2.5,
+      "defaultCostMicroUsd": 2500000,
+      "ceilingUsd": 2.5,
+      "ceilingMicroUsd": 2500000,
+      "ceilingBasis": "flat-rate-per-run",
+      "pricingClass": "flat",
+      "staticallyBillable": true,
+      "unbounded": false,
+      "unboundedKind": null,
+      "unboundedEvidence": [],
+      "costDrivers": [],
+      "priceVaries": true,
+      "catalogCostUsd": 2.5,
+      "catalogDynamicPricing": true,
+      "estimateEndpoint": "/api/v1/models/veo3-text-to-video/estimate-cost",
+      "endpoint": "/api/v1/veo3-text-to-video",
+      "durationMinSeconds": null,
+      "durationMaxSeconds": null,
+      "referenceLimits": {},
+      "maxPerSecondRateUsd": null,
+      "priceTables": []
+    },
+    "veo3-image-to-video": {
+      "category": "Image to Video",
+      "title": "Veo 3 Image to Video",
+      "resolutions": [],
+      "resolutionSource": "unknown",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
+      "availability": "AVAILABLE",
+      "comingSoonReason": null,
+      "isNew": false,
+      "family": "veo",
+      "groupOf": "video",
+      "inputVideoPolicy": {
+        "capSeconds": 15,
+        "applies": false,
+        "boundable": true,
+        "reason": null,
+        "formula": "not billed on input duration",
+        "referenceClipLimit": null,
+        "billedClipLimit": null
+      },
+      "effectiveCeilingUsd": 2.5,
+      "effectiveCeilingMicroUsd": 2500000,
+      "defaultCostUsd": 2.5,
+      "defaultCostMicroUsd": 2500000,
+      "ceilingUsd": 2.5,
+      "ceilingMicroUsd": 2500000,
+      "ceilingBasis": "flat-rate-per-run",
+      "pricingClass": "flat",
+      "staticallyBillable": true,
+      "unbounded": false,
+      "unboundedKind": null,
+      "unboundedEvidence": [],
+      "costDrivers": [],
+      "priceVaries": true,
+      "catalogCostUsd": 2.5,
+      "catalogDynamicPricing": true,
+      "estimateEndpoint": "/api/v1/models/veo3-image-to-video/estimate-cost",
+      "endpoint": "/api/v1/veo3-image-to-video",
+      "durationMinSeconds": null,
+      "durationMaxSeconds": null,
+      "referenceLimits": {},
+      "maxPerSecondRateUsd": null,
+      "priceTables": []
+    },
+    "kling-v3-turbo-pro-image-to-video": {
+      "category": "Image to Video",
+      "title": "Kling 3.0 Turbo Pro Image to Video",
+      "resolutions": [
+        "1080p"
+      ],
+      "resolutionSource": "prose-hint",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
+      "availability": "AVAILABLE",
+      "comingSoonReason": null,
+      "isNew": false,
+      "family": "kling-v3.0",
+      "groupOf": "video",
+      "inputVideoPolicy": {
+        "capSeconds": 15,
+        "applies": false,
+        "boundable": true,
+        "reason": null,
+        "formula": "not billed on input duration",
+        "referenceClipLimit": null,
+        "billedClipLimit": null
+      },
+      "effectiveCeilingUsd": 2.1,
+      "effectiveCeilingMicroUsd": 2100000,
+      "defaultCostUsd": 0.7,
+      "defaultCostMicroUsd": 700000,
+      "ceilingUsd": 2.1,
+      "ceilingMicroUsd": 2100000,
+      "ceilingBasis": "max(cost-table-max, per-second-rate x max-duration)",
+      "pricingClass": "bounded",
+      "staticallyBillable": true,
+      "unbounded": false,
+      "unboundedKind": null,
+      "unboundedEvidence": [],
+      "costDrivers": [
+        "duration"
+      ],
+      "priceVaries": true,
+      "catalogCostUsd": 0.7,
+      "catalogDynamicPricing": true,
+      "estimateEndpoint": "/api/v1/models/kling-v3-turbo-pro-image-to-video/estimate-cost",
+      "endpoint": "/api/v1/kling-v3-turbo-pro-image-to-video",
+      "durationMinSeconds": 3,
+      "durationMaxSeconds": 15,
+      "referenceLimits": {},
+      "maxPerSecondRateUsd": 0.14,
+      "priceTables": [
+        {
+          "dimensions": [
+            "Duration"
+          ],
+          "rows": [
+            {
+              "combination": [
+                "5s"
+              ],
+              "costUsd": 0.7
+            },
+            {
+              "combination": [
+                "10s"
+              ],
+              "costUsd": 1.4
+            }
+          ]
+        }
+      ]
+    },
+    "kling-v3-turbo-pro-text-to-video": {
+      "category": "Text to Video",
+      "title": "Kling 3.0 Turbo Pro Text to Video",
+      "resolutions": [
+        "1080p"
+      ],
+      "resolutionSource": "prose-hint",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
+      "availability": "AVAILABLE",
+      "comingSoonReason": null,
+      "isNew": false,
+      "family": "kling-v3.0",
+      "groupOf": "video",
+      "inputVideoPolicy": {
+        "capSeconds": 15,
+        "applies": false,
+        "boundable": true,
+        "reason": null,
+        "formula": "not billed on input duration",
+        "referenceClipLimit": null,
+        "billedClipLimit": null
+      },
+      "effectiveCeilingUsd": 2.1,
+      "effectiveCeilingMicroUsd": 2100000,
+      "defaultCostUsd": 0.7,
+      "defaultCostMicroUsd": 700000,
+      "ceilingUsd": 2.1,
+      "ceilingMicroUsd": 2100000,
+      "ceilingBasis": "max(cost-table-max, per-second-rate x max-duration)",
+      "pricingClass": "bounded",
+      "staticallyBillable": true,
+      "unbounded": false,
+      "unboundedKind": null,
+      "unboundedEvidence": [],
+      "costDrivers": [
+        "duration"
+      ],
+      "priceVaries": true,
+      "catalogCostUsd": 0.7,
+      "catalogDynamicPricing": true,
+      "estimateEndpoint": "/api/v1/models/kling-v3-turbo-pro-text-to-video/estimate-cost",
+      "endpoint": "/api/v1/kling-v3-turbo-pro-text-to-video",
+      "durationMinSeconds": 3,
+      "durationMaxSeconds": 15,
+      "referenceLimits": {},
+      "maxPerSecondRateUsd": 0.14,
+      "priceTables": [
+        {
+          "dimensions": [
+            "Duration"
+          ],
+          "rows": [
+            {
+              "combination": [
+                "5s"
+              ],
+              "costUsd": 0.7
+            },
+            {
+              "combination": [
+                "10s"
+              ],
+              "costUsd": 1.4
+            }
+          ]
+        }
+      ]
+    },
+    "kling-v3-turbo-standard-image-to-video": {
+      "category": "Image to Video",
+      "title": "Kling 3.0 Turbo Standard Image to Video",
+      "resolutions": [
+        "720p"
+      ],
+      "resolutionSource": "prose-hint",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
+      "availability": "AVAILABLE",
+      "comingSoonReason": null,
+      "isNew": false,
+      "family": "kling-v3.0",
+      "groupOf": "video",
+      "inputVideoPolicy": {
+        "capSeconds": 15,
+        "applies": false,
+        "boundable": true,
+        "reason": null,
+        "formula": "not billed on input duration",
+        "referenceClipLimit": null,
+        "billedClipLimit": null
+      },
+      "effectiveCeilingUsd": 1.68,
+      "effectiveCeilingMicroUsd": 1680000,
+      "defaultCostUsd": 0.56,
+      "defaultCostMicroUsd": 560000,
+      "ceilingUsd": 1.68,
+      "ceilingMicroUsd": 1680000,
+      "ceilingBasis": "max(cost-table-max, per-second-rate x max-duration)",
+      "pricingClass": "bounded",
+      "staticallyBillable": true,
+      "unbounded": false,
+      "unboundedKind": null,
+      "unboundedEvidence": [],
+      "costDrivers": [
+        "duration"
+      ],
+      "priceVaries": true,
+      "catalogCostUsd": 0.56,
+      "catalogDynamicPricing": true,
+      "estimateEndpoint": "/api/v1/models/kling-v3-turbo-standard-image-to-video/estimate-cost",
+      "endpoint": "/api/v1/kling-v3-turbo-standard-image-to-video",
+      "durationMinSeconds": 3,
+      "durationMaxSeconds": 15,
+      "referenceLimits": {},
+      "maxPerSecondRateUsd": 0.112,
+      "priceTables": [
+        {
+          "dimensions": [
+            "Duration"
+          ],
+          "rows": [
+            {
+              "combination": [
+                "5s"
+              ],
+              "costUsd": 0.56
+            },
+            {
+              "combination": [
+                "10s"
+              ],
+              "costUsd": 1.12
+            }
+          ]
+        }
+      ]
+    },
+    "kling-v3.0-omni-4k-image-to-video": {
+      "category": "Image to Video",
+      "title": "Kling 3 Omni 4K Image to Video",
+      "resolutions": [
+        "4K"
+      ],
+      "resolutionSource": "prose-hint",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
+      "availability": "AVAILABLE",
+      "comingSoonReason": null,
+      "isNew": false,
+      "family": "kling-v3-omni",
+      "groupOf": "video",
+      "inputVideoPolicy": {
+        "capSeconds": 15,
+        "applies": false,
+        "boundable": true,
+        "reason": null,
+        "formula": "not billed on input duration",
+        "referenceClipLimit": null,
+        "billedClipLimit": null
+      },
+      "effectiveCeilingUsd": 5.36,
+      "effectiveCeilingMicroUsd": 5360000,
+      "defaultCostUsd": 2.678,
+      "defaultCostMicroUsd": 2678000,
+      "ceilingUsd": 5.36,
+      "ceilingMicroUsd": 5360000,
+      "ceilingBasis": "max(cost-table-max, per-second-rate x max-duration)",
+      "pricingClass": "bounded",
+      "staticallyBillable": true,
+      "unbounded": false,
+      "unboundedKind": null,
+      "unboundedEvidence": [],
+      "costDrivers": [
+        "duration"
+      ],
+      "priceVaries": true,
+      "catalogCostUsd": 2.6785,
+      "catalogDynamicPricing": true,
+      "estimateEndpoint": "/api/v1/models/kling-v3.0-omni-4k-image-to-video/estimate-cost",
+      "endpoint": "/api/v1/kling-v3.0-omni-4k-image-to-video",
+      "durationMinSeconds": 5,
+      "durationMaxSeconds": 10,
+      "referenceLimits": {
+        "images": 4
+      },
+      "maxPerSecondRateUsd": 0.536,
+      "priceTables": [
+        {
+          "dimensions": [
+            "Duration"
+          ],
+          "rows": [
+            {
+              "combination": [
+                "5s"
+              ],
+              "costUsd": 2.68
+            },
+            {
+              "combination": [
+                "10s"
+              ],
+              "costUsd": 5.36
+            }
+          ]
+        }
+      ]
+    },
+    "kling-v3.0-omni-4k-text-to-video": {
+      "category": "Text to Video",
+      "title": "Kling 3 Omni 4K Text to Video",
+      "resolutions": [
+        "4K"
+      ],
+      "resolutionSource": "prose-hint",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
+      "availability": "AVAILABLE",
+      "comingSoonReason": null,
+      "isNew": false,
+      "family": "kling-v3-omni",
+      "groupOf": "video",
+      "inputVideoPolicy": {
+        "capSeconds": 15,
+        "applies": false,
+        "boundable": true,
+        "reason": null,
+        "formula": "not billed on input duration",
+        "referenceClipLimit": null,
+        "billedClipLimit": null
+      },
+      "effectiveCeilingUsd": 5.36,
+      "effectiveCeilingMicroUsd": 5360000,
+      "defaultCostUsd": 2.678,
+      "defaultCostMicroUsd": 2678000,
+      "ceilingUsd": 5.36,
+      "ceilingMicroUsd": 5360000,
+      "ceilingBasis": "max(cost-table-max, per-second-rate x max-duration)",
+      "pricingClass": "bounded",
+      "staticallyBillable": true,
+      "unbounded": false,
+      "unboundedKind": null,
+      "unboundedEvidence": [],
+      "costDrivers": [
+        "duration"
+      ],
+      "priceVaries": true,
+      "catalogCostUsd": 2.6785,
+      "catalogDynamicPricing": true,
+      "estimateEndpoint": "/api/v1/models/kling-v3.0-omni-4k-text-to-video/estimate-cost",
+      "endpoint": "/api/v1/kling-v3.0-omni-4k-text-to-video",
+      "durationMinSeconds": 5,
+      "durationMaxSeconds": 10,
+      "referenceLimits": {},
+      "maxPerSecondRateUsd": 0.536,
+      "priceTables": [
+        {
+          "dimensions": [
+            "Duration"
+          ],
+          "rows": [
+            {
+              "combination": [
+                "5s"
+              ],
+              "costUsd": 2.68
+            },
+            {
+              "combination": [
+                "10s"
+              ],
+              "costUsd": 5.36
+            }
+          ]
+        }
+      ]
+    },
+    "kling-v3.0-omni-pro-image-to-video": {
+      "category": "Image to Video",
+      "title": "Kling 3 Omni Pro Image to Video",
+      "resolutions": [
+        "1080p"
+      ],
+      "resolutionSource": "prose-hint",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
+      "availability": "AVAILABLE",
+      "comingSoonReason": null,
+      "isNew": false,
+      "family": "kling-v3-omni",
+      "groupOf": "video",
+      "inputVideoPolicy": {
+        "capSeconds": 15,
+        "applies": false,
+        "boundable": true,
+        "reason": null,
+        "formula": "not billed on input duration",
+        "referenceClipLimit": null,
+        "billedClipLimit": null
+      },
+      "effectiveCeilingUsd": 1.4000000000000001,
+      "effectiveCeilingMicroUsd": 1400001,
+      "defaultCostUsd": 0.56,
+      "defaultCostMicroUsd": 560000,
+      "ceilingUsd": 1.4000000000000001,
+      "ceilingMicroUsd": 1400001,
+      "ceilingBasis": "max(cost-table-max, per-second-rate x max-duration)",
+      "pricingClass": "bounded",
+      "staticallyBillable": true,
+      "unbounded": false,
+      "unboundedKind": null,
+      "unboundedEvidence": [],
+      "costDrivers": [
+        "duration",
+        "audio"
+      ],
+      "priceVaries": true,
+      "catalogCostUsd": 0.56,
+      "catalogDynamicPricing": true,
+      "estimateEndpoint": "/api/v1/models/kling-v3.0-omni-pro-image-to-video/estimate-cost",
+      "endpoint": "/api/v1/kling-v3.0-omni-pro-image-to-video",
+      "durationMinSeconds": 5,
+      "durationMaxSeconds": 10,
+      "referenceLimits": {
+        "images": 4
+      },
+      "maxPerSecondRateUsd": 0.14,
+      "priceTables": [
+        {
+          "dimensions": [
+            "Duration",
+            "Audio"
+          ],
+          "rows": [
+            {
+              "combination": [
+                "5s",
+                "No"
+              ],
+              "costUsd": 0.56
+            },
+            {
+              "combination": [
+                "5s",
+                "Yes"
+              ],
+              "costUsd": 0.7
+            },
+            {
+              "combination": [
+                "10s",
+                "No"
+              ],
+              "costUsd": 1.12
+            },
+            {
+              "combination": [
+                "10s",
+                "Yes"
+              ],
+              "costUsd": 1.4
+            }
+          ]
+        }
+      ]
+    },
+    "kling-v3.0-omni-standard-image-to-video": {
+      "category": "Image to Video",
+      "title": "Kling 3 Omni Standard Image to Video",
+      "resolutions": [
+        "720p"
+      ],
+      "resolutionSource": "prose-hint",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
+      "availability": "AVAILABLE",
+      "comingSoonReason": null,
+      "isNew": false,
+      "family": "kling-v3-omni",
+      "groupOf": "video",
+      "inputVideoPolicy": {
+        "capSeconds": 15,
+        "applies": false,
+        "boundable": true,
+        "reason": null,
+        "formula": "not billed on input duration",
+        "referenceClipLimit": null,
+        "billedClipLimit": null
+      },
+      "effectiveCeilingUsd": 1.12,
+      "effectiveCeilingMicroUsd": 1120000,
+      "defaultCostUsd": 0.42,
+      "defaultCostMicroUsd": 420000,
+      "ceilingUsd": 1.12,
+      "ceilingMicroUsd": 1120000,
+      "ceilingBasis": "max(cost-table-max, per-second-rate x max-duration)",
+      "pricingClass": "bounded",
+      "staticallyBillable": true,
+      "unbounded": false,
+      "unboundedKind": null,
+      "unboundedEvidence": [],
+      "costDrivers": [
+        "duration",
+        "audio"
+      ],
+      "priceVaries": true,
+      "catalogCostUsd": 0.42,
+      "catalogDynamicPricing": true,
+      "estimateEndpoint": "/api/v1/models/kling-v3.0-omni-standard-image-to-video/estimate-cost",
+      "endpoint": "/api/v1/kling-v3.0-omni-standard-image-to-video",
+      "durationMinSeconds": 5,
+      "durationMaxSeconds": 10,
+      "referenceLimits": {
+        "images": 4
+      },
+      "maxPerSecondRateUsd": 0.112,
+      "priceTables": [
+        {
+          "dimensions": [
+            "Duration",
+            "Audio"
+          ],
+          "rows": [
+            {
+              "combination": [
+                "5s",
+                "No"
+              ],
+              "costUsd": 0.42
+            },
+            {
+              "combination": [
+                "5s",
+                "Yes"
+              ],
+              "costUsd": 0.56
+            },
+            {
+              "combination": [
+                "10s",
+                "No"
+              ],
+              "costUsd": 0.84
+            },
+            {
+              "combination": [
+                "10s",
+                "Yes"
+              ],
+              "costUsd": 1.12
+            }
+          ]
+        }
+      ]
+    },
+    "kling-v2.6-std-motion-control": {
+      "category": "Video to Video",
+      "title": "Kling 2.6 Standard Motion Control",
+      "resolutions": [],
+      "resolutionSource": "unknown",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
+      "availability": "AVAILABLE",
+      "comingSoonReason": null,
+      "isNew": false,
+      "family": "kling-v2.6",
+      "groupOf": "avatar",
+      "inputVideoPolicy": {
+        "capSeconds": 15,
+        "applies": true,
+        "boundable": true,
+        "reason": null,
+        "formula": "$0.09/sec x 15s capped input",
+        "referenceClipLimit": null,
+        "billedClipLimit": 1
+      },
+      "effectiveCeilingUsd": 1.3499999999999999,
+      "effectiveCeilingMicroUsd": 1350000,
+      "defaultCostUsd": 0.45,
+      "defaultCostMicroUsd": 450000,
+      "ceilingUsd": 5.4,
+      "ceilingMicroUsd": 5400000,
+      "ceilingBasis": "max(cost-table-max, per-second-rate x max-duration)",
+      "pricingClass": "unbounded",
+      "staticallyBillable": false,
+      "unbounded": true,
+      "unboundedKind": "input-rate",
+      "unboundedEvidence": [
+        {
+          "rule": "input-rate",
+          "quote": "Price is ~$0.09/sec of input video"
+        }
+      ],
+      "costDrivers": [
+        "duration"
+      ],
+      "priceVaries": true,
+      "catalogCostUsd": 0.45,
+      "catalogDynamicPricing": true,
+      "estimateEndpoint": "/api/v1/models/kling-v2.6-std-motion-control/estimate-cost",
+      "endpoint": "/api/v1/kling-v2.6-std-motion-control",
+      "durationMinSeconds": 5,
+      "durationMaxSeconds": 60,
+      "referenceLimits": {},
+      "maxPerSecondRateUsd": 0.09,
+      "priceTables": [
+        {
+          "dimensions": [
+            "Duration"
+          ],
+          "rows": [
+            {
+              "combination": [
+                "5s"
+              ],
+              "costUsd": 0.45
+            },
+            {
+              "combination": [
+                "10s"
+              ],
+              "costUsd": 0.9
+            },
+            {
+              "combination": [
+                "30s"
+              ],
+              "costUsd": 2.7
+            },
+            {
+              "combination": [
+                "60s"
+              ],
+              "costUsd": 5.4
+            }
+          ]
+        }
+      ]
+    },
+    "kling-v2.6-pro-motion-control": {
+      "category": "Video to Video",
+      "title": "Kling 2.6 Pro Motion Control",
+      "resolutions": [],
+      "resolutionSource": "unknown",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
+      "availability": "AVAILABLE",
+      "comingSoonReason": null,
+      "isNew": false,
+      "family": "kling-v2.6",
+      "groupOf": "avatar",
+      "inputVideoPolicy": {
+        "capSeconds": 15,
+        "applies": true,
+        "boundable": true,
+        "reason": null,
+        "formula": "$0.145/sec x 15s capped input",
+        "referenceClipLimit": null,
+        "billedClipLimit": 1
+      },
+      "effectiveCeilingUsd": 2.175,
+      "effectiveCeilingMicroUsd": 2175000,
+      "defaultCostUsd": 0.725,
+      "defaultCostMicroUsd": 725000,
+      "ceilingUsd": 8.7,
+      "ceilingMicroUsd": 8700000,
+      "ceilingBasis": "max(cost-table-max, per-second-rate x max-duration)",
+      "pricingClass": "unbounded",
+      "staticallyBillable": false,
+      "unbounded": true,
+      "unboundedKind": "input-rate",
+      "unboundedEvidence": [
+        {
+          "rule": "input-rate",
+          "quote": "Price is $0.145/sec of input video"
+        }
+      ],
+      "costDrivers": [
+        "duration"
+      ],
+      "priceVaries": true,
+      "catalogCostUsd": 0.145,
+      "catalogDynamicPricing": true,
+      "estimateEndpoint": "/api/v1/models/kling-v2.6-pro-motion-control/estimate-cost",
+      "endpoint": "/api/v1/kling-v2.6-pro-motion-control",
+      "durationMinSeconds": 5,
+      "durationMaxSeconds": 60,
+      "referenceLimits": {},
+      "maxPerSecondRateUsd": 0.145,
+      "priceTables": [
+        {
+          "dimensions": [
+            "Duration"
+          ],
+          "rows": [
+            {
+              "combination": [
+                "5s"
+              ],
+              "costUsd": 0.72
+            },
+            {
+              "combination": [
+                "10s"
+              ],
+              "costUsd": 1.45
+            },
+            {
+              "combination": [
+                "30s"
+              ],
+              "costUsd": 4.35
+            },
+            {
+              "combination": [
+                "60s"
+              ],
+              "costUsd": 8.7
+            }
+          ]
+        }
+      ]
+    },
+    "kling-o1-video-edit-fast": {
+      "category": "Video to Video",
+      "title": "Kling O1 Video Edit Fast",
+      "resolutions": [],
+      "resolutionSource": "unknown",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
+      "availability": "AVAILABLE",
+      "comingSoonReason": null,
+      "isNew": false,
+      "family": "kling-o1",
+      "groupOf": "video",
+      "inputVideoPolicy": {
+        "capSeconds": 15,
+        "applies": true,
+        "boundable": true,
+        "reason": null,
+        "formula": "$0.117/sec x 15s capped input",
+        "referenceClipLimit": null,
+        "billedClipLimit": 1
+      },
+      "effectiveCeilingUsd": 1.7550000000000001,
+      "effectiveCeilingMicroUsd": 1755000,
+      "defaultCostUsd": 0.585,
+      "defaultCostMicroUsd": 585000,
+      "ceilingUsd": 7.0200000000000005,
+      "ceilingMicroUsd": 7020000,
+      "ceilingBasis": "max(cost-table-max, per-second-rate x max-duration)",
+      "pricingClass": "unbounded",
+      "staticallyBillable": false,
+      "unbounded": true,
+      "unboundedKind": "input-rate",
+      "unboundedEvidence": [
+        {
+          "rule": "input-rate",
+          "quote": "Price is $0.117/sec of input video"
+        }
+      ],
+      "costDrivers": [
+        "duration"
+      ],
+      "priceVaries": true,
+      "catalogCostUsd": 0.585,
+      "catalogDynamicPricing": true,
+      "estimateEndpoint": "/api/v1/models/kling-o1-video-edit-fast/estimate-cost",
+      "endpoint": "/api/v1/kling-o1-video-edit-fast",
+      "durationMinSeconds": 5,
+      "durationMaxSeconds": 60,
+      "referenceLimits": {},
+      "maxPerSecondRateUsd": 0.117,
+      "priceTables": [
+        {
+          "dimensions": [
+            "Duration"
+          ],
+          "rows": [
+            {
+              "combination": [
+                "5s"
+              ],
+              "costUsd": 0.59
+            },
+            {
+              "combination": [
+                "10s"
+              ],
+              "costUsd": 1.17
+            },
+            {
+              "combination": [
+                "30s"
+              ],
+              "costUsd": 3.51
+            },
+            {
+              "combination": [
+                "60s"
+              ],
+              "costUsd": 7.02
+            }
+          ]
+        }
+      ]
+    },
+    "kling-v2.5-turbo-std-i2v": {
+      "category": "Image to Video",
+      "title": "Kling 2.5 Standard",
+      "resolutions": [],
+      "resolutionSource": "unknown",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
+      "availability": "AVAILABLE",
+      "comingSoonReason": null,
+      "isNew": false,
+      "family": "kling-v2.5",
+      "groupOf": "video",
+      "inputVideoPolicy": {
+        "capSeconds": 15,
+        "applies": false,
+        "boundable": true,
+        "reason": null,
+        "formula": "not billed on input duration",
+        "referenceClipLimit": null,
+        "billedClipLimit": null
+      },
+      "effectiveCeilingUsd": 0.56,
+      "effectiveCeilingMicroUsd": 560000,
+      "defaultCostUsd": 0.28,
+      "defaultCostMicroUsd": 280000,
+      "ceilingUsd": 0.56,
+      "ceilingMicroUsd": 560000,
+      "ceilingBasis": "cost-table-max",
+      "pricingClass": "bounded",
+      "staticallyBillable": true,
+      "unbounded": false,
+      "unboundedKind": null,
+      "unboundedEvidence": [],
+      "costDrivers": [
+        "duration"
+      ],
+      "priceVaries": true,
+      "catalogCostUsd": 0.28,
+      "catalogDynamicPricing": true,
+      "estimateEndpoint": "/api/v1/models/kling-v2.5-turbo-std-i2v/estimate-cost",
+      "endpoint": "/api/v1/kling-v2.5-turbo-std-i2v",
+      "durationMinSeconds": 5,
+      "durationMaxSeconds": 10,
+      "referenceLimits": {},
+      "maxPerSecondRateUsd": null,
+      "priceTables": [
+        {
+          "dimensions": [
+            "Duration"
+          ],
+          "rows": [
+            {
+              "combination": [
+                "5s"
+              ],
+              "costUsd": 0.28
+            },
+            {
+              "combination": [
+                "10s"
+              ],
+              "costUsd": 0.56
+            }
+          ]
+        }
+      ]
+    },
+    "openai-sora-2-pro-storyboard": {
+      "category": "Text to Video",
+      "title": "OpenAI Sora 2 Pro Storyboard",
+      "resolutions": [],
+      "resolutionSource": "unknown",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
+      "availability": "AVAILABLE",
+      "comingSoonReason": null,
+      "isNew": false,
+      "family": "sora",
+      "groupOf": "video",
+      "inputVideoPolicy": {
+        "capSeconds": 15,
+        "applies": false,
+        "boundable": true,
+        "reason": null,
+        "formula": "not billed on input duration",
+        "referenceClipLimit": null,
+        "billedClipLimit": null
+      },
+      "effectiveCeilingUsd": 4,
+      "effectiveCeilingMicroUsd": 4000000,
+      "defaultCostUsd": 1.5,
+      "defaultCostMicroUsd": 1500000,
+      "ceilingUsd": 4,
+      "ceilingMicroUsd": 4000000,
+      "ceilingBasis": "cost-table-max",
+      "pricingClass": "bounded",
+      "staticallyBillable": true,
+      "unbounded": false,
+      "unboundedKind": null,
+      "unboundedEvidence": [],
+      "costDrivers": [
+        "duration"
+      ],
+      "priceVaries": true,
+      "catalogCostUsd": 0.58,
+      "catalogDynamicPricing": true,
+      "estimateEndpoint": "/api/v1/models/openai-sora-2-pro-storyboard/estimate-cost",
+      "endpoint": "/api/v1/openai-sora-2-pro-storyboard",
+      "durationMinSeconds": 10,
+      "durationMaxSeconds": 25,
+      "referenceLimits": {},
+      "maxPerSecondRateUsd": null,
+      "priceTables": [
+        {
+          "dimensions": [
+            "Duration"
+          ],
+          "rows": [
+            {
+              "combination": [
+                "10s"
+              ],
+              "costUsd": 1.5
+            },
+            {
+              "combination": [
+                "15s"
+              ],
+              "costUsd": 2.5
+            },
+            {
+              "combination": [
+                "25s"
+              ],
+              "costUsd": 4
+            }
+          ]
+        }
+      ]
+    },
+    "openai-sora-2-pro-text-to-video": {
+      "category": "Text to Video",
+      "title": "OpenAI Sora 2 Pro Text to Video",
+      "resolutions": [
+        "720p",
+        "1080p"
+      ],
+      "resolutionSource": "price-table",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
+      "availability": "AVAILABLE",
+      "comingSoonReason": null,
+      "isNew": false,
+      "family": "sora",
+      "groupOf": "video",
+      "inputVideoPolicy": {
+        "capSeconds": 15,
+        "applies": false,
+        "boundable": true,
+        "reason": null,
+        "formula": "not billed on input duration",
+        "referenceClipLimit": null,
+        "billedClipLimit": null
+      },
+      "effectiveCeilingUsd": 7.5,
+      "effectiveCeilingMicroUsd": 7500000,
+      "defaultCostUsd": 2.4,
+      "defaultCostMicroUsd": 2400000,
+      "ceilingUsd": 7.5,
+      "ceilingMicroUsd": 7500000,
+      "ceilingBasis": "cost-table-max",
+      "pricingClass": "bounded",
+      "staticallyBillable": true,
+      "unbounded": false,
+      "unboundedKind": null,
+      "unboundedEvidence": [],
+      "costDrivers": [
+        "duration",
+        "resolution"
+      ],
+      "priceVaries": true,
+      "catalogCostUsd": 2.4,
+      "catalogDynamicPricing": true,
+      "estimateEndpoint": "/api/v1/models/openai-sora-2-pro-text-to-video/estimate-cost",
+      "endpoint": "/api/v1/openai-sora-2-pro-text-to-video",
+      "durationMinSeconds": 5,
+      "durationMaxSeconds": 15,
+      "referenceLimits": {},
+      "maxPerSecondRateUsd": null,
+      "priceTables": [
+        {
+          "dimensions": [
+            "Resolution",
+            "Duration"
+          ],
+          "rows": [
+            {
+              "combination": [
+                "720p",
+                "5s"
+              ],
+              "costUsd": 1.5
+            },
+            {
+              "combination": [
+                "720p",
+                "8s"
+              ],
+              "costUsd": 2.4
+            },
+            {
+              "combination": [
+                "720p",
+                "10s"
+              ],
+              "costUsd": 3
+            },
+            {
+              "combination": [
+                "720p",
+                "15s"
+              ],
+              "costUsd": 4.5
+            },
+            {
+              "combination": [
+                "1080p",
+                "5s"
+              ],
+              "costUsd": 2.5
+            },
+            {
+              "combination": [
+                "1080p",
+                "8s"
+              ],
+              "costUsd": 4
+            },
+            {
+              "combination": [
+                "1080p",
+                "10s"
+              ],
+              "costUsd": 5
+            },
+            {
+              "combination": [
+                "1080p",
+                "15s"
+              ],
+              "costUsd": 7.5
+            }
+          ]
+        }
+      ]
+    },
+    "openai-sora-2-pro-image-to-video": {
+      "category": "Image to Video",
+      "title": "OpenAI Sora 2 Pro Image to Video",
+      "resolutions": [
+        "720p",
+        "1080p"
+      ],
+      "resolutionSource": "price-table",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
+      "availability": "AVAILABLE",
+      "comingSoonReason": null,
+      "isNew": false,
+      "family": "sora",
+      "groupOf": "video",
+      "inputVideoPolicy": {
+        "capSeconds": 15,
+        "applies": false,
+        "boundable": true,
+        "reason": null,
+        "formula": "not billed on input duration",
+        "referenceClipLimit": null,
+        "billedClipLimit": null
+      },
+      "effectiveCeilingUsd": 7.5,
+      "effectiveCeilingMicroUsd": 7500000,
+      "defaultCostUsd": 2.4,
+      "defaultCostMicroUsd": 2400000,
+      "ceilingUsd": 7.5,
+      "ceilingMicroUsd": 7500000,
+      "ceilingBasis": "cost-table-max",
+      "pricingClass": "bounded",
+      "staticallyBillable": true,
+      "unbounded": false,
+      "unboundedKind": null,
+      "unboundedEvidence": [],
+      "costDrivers": [
+        "duration",
+        "resolution"
+      ],
+      "priceVaries": true,
+      "catalogCostUsd": 2.4,
+      "catalogDynamicPricing": true,
+      "estimateEndpoint": "/api/v1/models/openai-sora-2-pro-image-to-video/estimate-cost",
+      "endpoint": "/api/v1/openai-sora-2-pro-image-to-video",
+      "durationMinSeconds": 5,
+      "durationMaxSeconds": 15,
+      "referenceLimits": {},
+      "maxPerSecondRateUsd": null,
+      "priceTables": [
+        {
+          "dimensions": [
+            "Resolution",
+            "Duration"
+          ],
+          "rows": [
+            {
+              "combination": [
+                "720p",
+                "5s"
+              ],
+              "costUsd": 1.5
+            },
+            {
+              "combination": [
+                "720p",
+                "8s"
+              ],
+              "costUsd": 2.4
+            },
+            {
+              "combination": [
+                "720p",
+                "10s"
+              ],
+              "costUsd": 3
+            },
+            {
+              "combination": [
+                "720p",
+                "15s"
+              ],
+              "costUsd": 4.5
+            },
+            {
+              "combination": [
+                "1080p",
+                "5s"
+              ],
+              "costUsd": 2.5
+            },
+            {
+              "combination": [
+                "1080p",
+                "8s"
+              ],
+              "costUsd": 4
+            },
+            {
+              "combination": [
+                "1080p",
+                "10s"
+              ],
+              "costUsd": 5
+            },
+            {
+              "combination": [
+                "1080p",
+                "15s"
+              ],
+              "costUsd": 7.5
+            }
+          ]
+        }
+      ]
+    },
+    "openai-sora-2-image-to-video": {
+      "category": "Image to Video",
+      "title": "OpenAI Sora 2 Image to Video",
+      "resolutions": [],
+      "resolutionSource": "unknown",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
+      "availability": "AVAILABLE",
+      "comingSoonReason": null,
+      "isNew": false,
+      "family": "sora",
+      "groupOf": "video",
+      "inputVideoPolicy": {
+        "capSeconds": 15,
+        "applies": false,
+        "boundable": true,
+        "reason": null,
+        "formula": "not billed on input duration",
+        "referenceClipLimit": null,
+        "billedClipLimit": null
+      },
+      "effectiveCeilingUsd": 2,
+      "effectiveCeilingMicroUsd": 2000000,
+      "defaultCostUsd": 0.8,
+      "defaultCostMicroUsd": 800000,
+      "ceilingUsd": 2,
+      "ceilingMicroUsd": 2000000,
+      "ceilingBasis": "max(cost-table-max, per-second-rate x max-duration)",
+      "pricingClass": "bounded",
+      "staticallyBillable": true,
+      "unbounded": false,
+      "unboundedKind": null,
+      "unboundedEvidence": [],
+      "costDrivers": [
+        "duration"
+      ],
+      "priceVaries": true,
+      "catalogCostUsd": 0.8,
+      "catalogDynamicPricing": true,
+      "estimateEndpoint": "/api/v1/models/openai-sora-2-image-to-video/estimate-cost",
+      "endpoint": "/api/v1/openai-sora-2-image-to-video",
+      "durationMinSeconds": 5,
+      "durationMaxSeconds": 20,
+      "referenceLimits": {},
+      "maxPerSecondRateUsd": 0.1,
+      "priceTables": [
+        {
+          "dimensions": [
+            "Duration"
+          ],
+          "rows": [
+            {
+              "combination": [
+                "5s"
+              ],
+              "costUsd": 0.5
+            },
+            {
+              "combination": [
+                "8s"
+              ],
+              "costUsd": 0.8
+            },
+            {
+              "combination": [
+                "10s"
+              ],
+              "costUsd": 1
+            },
+            {
+              "combination": [
+                "15s"
+              ],
+              "costUsd": 1.5
+            },
+            {
+              "combination": [
+                "20s"
+              ],
+              "costUsd": 2
+            }
+          ]
+        }
+      ]
+    },
+    "openai-sora-2-text-to-video": {
+      "category": "Text to Video",
+      "title": "OpenAI Sora 2 Text to Video",
+      "resolutions": [],
+      "resolutionSource": "unknown",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
+      "availability": "AVAILABLE",
+      "comingSoonReason": null,
+      "isNew": false,
+      "family": "sora",
+      "groupOf": "video",
+      "inputVideoPolicy": {
+        "capSeconds": 15,
+        "applies": false,
+        "boundable": true,
+        "reason": null,
+        "formula": "not billed on input duration",
+        "referenceClipLimit": null,
+        "billedClipLimit": null
+      },
+      "effectiveCeilingUsd": 2,
+      "effectiveCeilingMicroUsd": 2000000,
+      "defaultCostUsd": 0.8,
+      "defaultCostMicroUsd": 800000,
+      "ceilingUsd": 2,
+      "ceilingMicroUsd": 2000000,
+      "ceilingBasis": "max(cost-table-max, per-second-rate x max-duration)",
+      "pricingClass": "bounded",
+      "staticallyBillable": true,
+      "unbounded": false,
+      "unboundedKind": null,
+      "unboundedEvidence": [],
+      "costDrivers": [
+        "duration"
+      ],
+      "priceVaries": true,
+      "catalogCostUsd": 0.8,
+      "catalogDynamicPricing": true,
+      "estimateEndpoint": "/api/v1/models/openai-sora-2-text-to-video/estimate-cost",
+      "endpoint": "/api/v1/openai-sora-2-text-to-video",
+      "durationMinSeconds": 5,
+      "durationMaxSeconds": 20,
+      "referenceLimits": {},
+      "maxPerSecondRateUsd": 0.1,
+      "priceTables": [
+        {
+          "dimensions": [
+            "Duration"
+          ],
+          "rows": [
+            {
+              "combination": [
+                "5s"
+              ],
+              "costUsd": 0.5
+            },
+            {
+              "combination": [
+                "8s"
+              ],
+              "costUsd": 0.8
+            },
+            {
+              "combination": [
+                "10s"
+              ],
+              "costUsd": 1
+            },
+            {
+              "combination": [
+                "15s"
+              ],
+              "costUsd": 1.5
+            },
+            {
+              "combination": [
+                "20s"
+              ],
+              "costUsd": 2
+            }
+          ]
+        }
+      ]
+    },
+    "grok-imagine-video-1-5-preview": {
+      "category": "Image to Video",
+      "title": "Grok Imagine Video 1.5 Preview",
+      "resolutions": [
+        "480p",
+        "720p"
+      ],
+      "resolutionSource": "price-table",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
+      "availability": "AVAILABLE",
+      "comingSoonReason": null,
+      "isNew": false,
+      "family": "video-generation",
+      "groupOf": "video",
+      "inputVideoPolicy": {
+        "capSeconds": 15,
+        "applies": false,
+        "boundable": true,
+        "reason": null,
+        "formula": "not billed on input duration",
+        "referenceClipLimit": null,
+        "billedClipLimit": null
+      },
+      "effectiveCeilingUsd": 2.1,
+      "effectiveCeilingMicroUsd": 2100000,
+      "defaultCostUsd": 0.64,
+      "defaultCostMicroUsd": 640000,
+      "ceilingUsd": 2.1,
+      "ceilingMicroUsd": 2100000,
+      "ceilingBasis": "max(cost-table-max, per-second-rate x max-duration)",
+      "pricingClass": "bounded",
+      "staticallyBillable": true,
+      "unbounded": false,
+      "unboundedKind": null,
+      "unboundedEvidence": [],
+      "costDrivers": [
+        "duration",
+        "resolution"
+      ],
+      "priceVaries": true,
+      "catalogCostUsd": 0.64,
+      "catalogDynamicPricing": true,
+      "estimateEndpoint": "/api/v1/models/grok-imagine-video-1-5-preview/estimate-cost",
+      "endpoint": "/api/v1/grok-imagine-video-1-5-preview",
+      "durationMinSeconds": null,
+      "durationMaxSeconds": 15,
+      "referenceLimits": {},
+      "maxPerSecondRateUsd": 0.14,
+      "priceTables": [
+        {
+          "dimensions": [
+            "Resolution",
+            "Duration"
+          ],
+          "rows": [
+            {
+              "combination": [
+                "480p",
+                "5s"
+              ],
+              "costUsd": 0.4
+            },
+            {
+              "combination": [
+                "480p",
+                "8s"
+              ],
+              "costUsd": 0.64
+            },
+            {
+              "combination": [
+                "480p",
+                "10s"
+              ],
+              "costUsd": 0.8
+            },
+            {
+              "combination": [
+                "720p",
+                "5s"
+              ],
+              "costUsd": 0.7
+            },
+            {
+              "combination": [
+                "720p",
+                "8s"
+              ],
+              "costUsd": 1.12
+            },
+            {
+              "combination": [
+                "720p",
+                "10s"
+              ],
+              "costUsd": 1.4
+            }
+          ]
+        }
+      ]
+    },
+    "grok-imagine-extend": {
+      "category": "Text to Video",
+      "title": "Grok Imagine Extend Video",
+      "resolutions": [
+        "480p",
+        "720p"
+      ],
+      "resolutionSource": "price-table",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
+      "availability": "AVAILABLE",
+      "comingSoonReason": null,
+      "isNew": false,
+      "family": "grok",
+      "groupOf": "video",
+      "inputVideoPolicy": {
+        "capSeconds": 15,
+        "applies": false,
+        "boundable": true,
+        "reason": null,
+        "formula": "not billed on input duration",
+        "referenceClipLimit": null,
+        "billedClipLimit": null
+      },
+      "effectiveCeilingUsd": 0.2,
+      "effectiveCeilingMicroUsd": 200000,
+      "defaultCostUsd": 0.15,
+      "defaultCostMicroUsd": 150000,
+      "ceilingUsd": 0.2,
+      "ceilingMicroUsd": 200000,
+      "ceilingBasis": "cost-table-max",
+      "pricingClass": "bounded",
+      "staticallyBillable": true,
+      "unbounded": false,
+      "unboundedKind": null,
+      "unboundedEvidence": [],
+      "costDrivers": [
+        "resolution",
+        "extend_count"
+      ],
+      "priceVaries": true,
+      "catalogCostUsd": 0.05,
+      "catalogDynamicPricing": true,
+      "estimateEndpoint": "/api/v1/models/grok-imagine-extend/estimate-cost",
+      "endpoint": "/api/v1/grok-imagine-extend",
+      "durationMinSeconds": null,
+      "durationMaxSeconds": null,
+      "referenceLimits": {},
+      "maxPerSecondRateUsd": null,
+      "priceTables": [
+        {
+          "dimensions": [
+            "Resolution",
+            "Extends"
+          ],
+          "rows": [
+            {
+              "combination": [
+                "480p",
+                "1"
+              ],
+              "costUsd": 0.025
+            },
+            {
+              "combination": [
+                "480p",
+                "2"
+              ],
+              "costUsd": 0.05
+            },
+            {
+              "combination": [
+                "480p",
+                "4"
+              ],
+              "costUsd": 0.1
+            },
+            {
+              "combination": [
+                "720p",
+                "1"
+              ],
+              "costUsd": 0.05
+            },
+            {
+              "combination": [
+                "720p",
+                "2"
+              ],
+              "costUsd": 0.1
+            },
+            {
+              "combination": [
+                "720p",
+                "4"
+              ],
+              "costUsd": 0.2
+            }
+          ]
+        }
+      ]
+    },
+    "grok-imagine-text-to-video": {
+      "category": "Text to Video",
+      "title": "Grok Imagine Text to Video",
+      "resolutions": [
+        "480p",
+        "720p"
+      ],
+      "resolutionSource": "price-table",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
+      "availability": "AVAILABLE",
+      "comingSoonReason": null,
+      "isNew": false,
+      "family": "grok",
+      "groupOf": "video",
+      "inputVideoPolicy": {
+        "capSeconds": 15,
+        "applies": false,
+        "boundable": true,
+        "reason": null,
+        "formula": "not billed on input duration",
+        "referenceClipLimit": null,
+        "billedClipLimit": null
+      },
+      "effectiveCeilingUsd": 1.5,
+      "effectiveCeilingMicroUsd": 1500000,
+      "defaultCostUsd": 0.15,
+      "defaultCostMicroUsd": 150000,
+      "ceilingUsd": 1.5,
+      "ceilingMicroUsd": 1500000,
+      "ceilingBasis": "max(cost-table-max, per-second-rate x max-duration)",
+      "pricingClass": "bounded",
+      "staticallyBillable": true,
+      "unbounded": false,
+      "unboundedKind": null,
+      "unboundedEvidence": [],
+      "costDrivers": [
+        "duration",
+        "resolution"
+      ],
+      "priceVaries": true,
+      "catalogCostUsd": 0.15,
+      "catalogDynamicPricing": true,
+      "estimateEndpoint": "/api/v1/models/grok-imagine-text-to-video/estimate-cost",
+      "endpoint": "/api/v1/grok-imagine-text-to-video",
+      "durationMinSeconds": 6,
+      "durationMaxSeconds": 30,
+      "referenceLimits": {},
+      "maxPerSecondRateUsd": 0.05,
+      "priceTables": [
+        {
+          "dimensions": [
+            "Resolution",
+            "Duration"
+          ],
+          "rows": [
+            {
+              "combination": [
+                "480p",
+                "5s"
+              ],
+              "costUsd": 0.12
+            },
+            {
+              "combination": [
+                "480p",
+                "8s"
+              ],
+              "costUsd": 0.2
+            },
+            {
+              "combination": [
+                "480p",
+                "10s"
+              ],
+              "costUsd": 0.25
+            },
+            {
+              "combination": [
+                "720p",
+                "5s"
+              ],
+              "costUsd": 0.25
+            },
+            {
+              "combination": [
+                "720p",
+                "8s"
+              ],
+              "costUsd": 0.4
+            },
+            {
+              "combination": [
+                "720p",
+                "10s"
+              ],
+              "costUsd": 0.5
+            }
+          ]
+        }
+      ]
+    },
+    "grok-imagine-image-to-video": {
+      "category": "Image to Video",
+      "title": "Grok Imagine Image to Video",
+      "resolutions": [
+        "480p",
+        "720p"
+      ],
+      "resolutionSource": "price-table",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
+      "availability": "AVAILABLE",
+      "comingSoonReason": null,
+      "isNew": false,
+      "family": "grok",
+      "groupOf": "video",
+      "inputVideoPolicy": {
+        "capSeconds": 15,
+        "applies": false,
+        "boundable": true,
+        "reason": null,
+        "formula": "not billed on input duration",
+        "referenceClipLimit": null,
+        "billedClipLimit": null
+      },
+      "effectiveCeilingUsd": 1.5,
+      "effectiveCeilingMicroUsd": 1500000,
+      "defaultCostUsd": 0.15,
+      "defaultCostMicroUsd": 150000,
+      "ceilingUsd": 1.5,
+      "ceilingMicroUsd": 1500000,
+      "ceilingBasis": "max(cost-table-max, per-second-rate x max-duration)",
+      "pricingClass": "bounded",
+      "staticallyBillable": true,
+      "unbounded": false,
+      "unboundedKind": null,
+      "unboundedEvidence": [],
+      "costDrivers": [
+        "duration",
+        "resolution"
+      ],
+      "priceVaries": true,
+      "catalogCostUsd": 0.15,
+      "catalogDynamicPricing": true,
+      "estimateEndpoint": "/api/v1/models/grok-imagine-image-to-video/estimate-cost",
+      "endpoint": "/api/v1/grok-imagine-image-to-video",
+      "durationMinSeconds": 6,
+      "durationMaxSeconds": 30,
+      "referenceLimits": {},
+      "maxPerSecondRateUsd": 0.05,
+      "priceTables": [
+        {
+          "dimensions": [
+            "Resolution",
+            "Duration"
+          ],
+          "rows": [
+            {
+              "combination": [
+                "480p",
+                "5s"
+              ],
+              "costUsd": 0.12
+            },
+            {
+              "combination": [
+                "480p",
+                "8s"
+              ],
+              "costUsd": 0.2
+            },
+            {
+              "combination": [
+                "480p",
+                "10s"
+              ],
+              "costUsd": 0.25
+            },
+            {
+              "combination": [
+                "720p",
+                "5s"
+              ],
+              "costUsd": 0.25
+            },
+            {
+              "combination": [
+                "720p",
+                "8s"
+              ],
+              "costUsd": 0.4
+            },
+            {
+              "combination": [
+                "720p",
+                "10s"
+              ],
+              "costUsd": 0.5
+            }
+          ]
+        }
+      ]
+    },
+    "gpt-image-2-text-to-image": {
+      "category": "Text to Image",
+      "title": "OpenAI GPT Image 2 Text to Image",
+      "resolutions": [
+        "1K",
+        "2K",
+        "4K"
+      ],
+      "resolutionSource": "price-table",
+      "apiPayloadKeys": [],
+      "payloadContractVerified": false,
+      "availability": "AVAILABLE",
+      "comingSoonReason": null,
+      "isNew": false,
+      "family": "gpt",
+      "groupOf": "image",
+      "inputVideoPolicy": {
+        "capSeconds": 15,
+        "applies": false,
+        "boundable": true,
+        "reason": null,
+        "formula": "not billed on input duration",
+        "referenceClipLimit": null,
+        "billedClipLimit": null
+      },
+      "effectiveCeilingUsd": 0.15,
+      "effectiveCeilingMicroUsd": 150000,
+      "defaultCostUsd": 0.09,
+      "defaultCostMicroUsd": 90000,
+      "ceilingUsd": 0.15,
+      "ceilingMicroUsd": 150000,
+      "ceilingBasis": "cost-table-max",
+      "pricingClass": "bounded",
+      "staticallyBillable": true,
+      "unbounded": false,
+      "unboundedKind": null,
+      "unboundedEvidence": [],
+      "costDrivers": [
+        "resolution",
+        "quality"
+      ],
+      "priceVaries": true,
+      "catalogCostUsd": 0.09,
+      "catalogDynamicPricing": true,
+      "estimateEndpoint": "/api/v1/models/gpt-image-2-text-to-image/estimate-cost",
+      "endpoint": "/api/v1/gpt-image-2-text-to-image",
+      "durationMinSeconds": null,
+      "durationMaxSeconds": null,
+      "referenceLimits": {},
+      "maxPerSecondRateUsd": null,
+      "priceTables": [
+        {
+          "dimensions": [
+            "Quality",
+            "Resolution"
+          ],
+          "rows": [
+            {
+              "combination": [
+                "Low",
+                "1K"
+              ],
+              "costUsd": 0.025
+            },
+            {
+              "combination": [
+                "Low",
+                "2K"
+              ],
+              "costUsd": 0.04
+            },
+            {
+              "combination": [
+                "Low",
+                "4K"
+              ],
+              "costUsd": 0.075
+            },
+            {
+              "combination": [
+                "Medium",
+                "1K"
+              ],
+              "costUsd": 0.03
+            },
+            {
+              "combination": [
+                "Medium",
+                "2K"
+              ],
+              "costUsd": 0.045
+            },
+            {
+              "combination": [
+                "Medium",
+                "4K"
+              ],
+              "costUsd": 0.09
+            },
+            {
+              "combination": [
+                "High",
+                "1K"
+              ],
+              "costUsd": 0.06
+            },
+            {
+              "combination": [
+                "High",
+                "2K"
+              ],
+              "costUsd": 0.09
+            },
+            {
+              "combination": [
+                "High",
+                "4K"
+              ],
+              "costUsd": 0.15
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

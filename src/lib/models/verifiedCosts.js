@@ -196,6 +196,7 @@ export function assertLiveCostWithinVerifiedBand({
   liveCostUsd,
   requestedDurationSeconds = null,
   referenceDurationSeconds = null,
+  documentedCeilingUsd = null,
 } = {}) {
   // Reject absent values BEFORE numeric coercion. `Number(null)` is 0 and
   // `Number("")` is 0, which would misreport a MISSING price as a genuine
@@ -267,6 +268,38 @@ export function assertLiveCostWithinVerifiedBand({
   const reference = Number(referenceDurationSeconds);
   if (Number.isFinite(requested) && requested > 0 && Number.isFinite(reference) && reference > 0) {
     upperMultiple = DRIFT_UPPER_MULTIPLE * Math.max(1, requested / reference);
+  }
+
+  // A PUBLISHED MAXIMUM BEATS THE HEURISTIC.
+  //
+  // Everything above infers an upper bound by scaling a representative base,
+  // because historically no real maximum was available. When the pricing document
+  // states one, that inference is strictly worse than the fact and is skipped.
+  //
+  // Concretely: veo3.1-lite-image-to-video is based at $0.30 (720p) and
+  // documented up to $1.50 (4k). The heuristic allows 4x = $1.20 and would reject
+  // a legitimate 4k render at $1.50. Resolution is not duration, so the
+  // duration-aware scaling above cannot rescue it. Deferring to the documented
+  // ceiling both admits the legitimate request and bounds it more tightly than
+  // the heuristic would for models whose real price surface is narrow.
+  //
+  // The ceiling itself is enforced separately by
+  // assertLiveCostWithinDocumentedCeiling, so skipping here does not remove an
+  // upper bound -- it removes a duplicate, weaker one that disagrees.
+  const documentedCeiling = Number(documentedCeilingUsd);
+  const hasDocumentedCeiling = Number.isFinite(documentedCeiling) && documentedCeiling > 0;
+
+  if (hasDocumentedCeiling) {
+    if (live < verified / DRIFT_LOWER_DIVISOR) {
+      return {
+        ok: false,
+        code: "PROVIDER_COST_DRIFT_LOW",
+        reason: `Provider reported $${live.toFixed(4)} for '${providerModelId}', less than 1/${DRIFT_LOWER_DIVISOR} of the independently verified $${verified.toFixed(4)}. Refusing to under-charge; re-verify MuAPI pricing and refresh the cost snapshot.`,
+        liveCostUsd: live,
+        verifiedCostUsd: verified,
+      };
+    }
+    return { ok: true, checked: true, verifiedCostUsd: verified, upperBoundDeferredToDocumentedCeiling: true };
   }
 
   if (live > verified * upperMultiple) {

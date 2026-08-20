@@ -4,6 +4,7 @@ import { requireActivatedAccount } from "@/lib/access/authorization";
 import { prisma } from "@/lib/prisma";
 import { R2StorageService } from "@/lib/storage/r2StorageService";
 import { isTerminalGenerationFailure, userFacingGenerationMessage } from "@/lib/generation/statusMessages";
+import { recoverTimedOutVariantsForWorkspace } from "@/lib/generation/selfHealingRecovery";
 
 async function previewUrl(artifact) {
   if (!artifact) return null;
@@ -14,6 +15,27 @@ async function previewUrl(artifact) {
 export async function GET() {
   let appUser; try { ({ appUser } = await requireActivatedAccount()); } catch (error) { return NextResponse.json({ error: error.code || "UNAUTHENTICATED" }, { status: error.status || 401 }); }
   try {
+    /*
+     * Opportunistic self-healing, before the list is read.
+     *
+     * Every recovery guarantee otherwise depends on /api/internal/reconcile,
+     * which nothing in this repository schedules -- it is driven by an external
+     * cron. If that lapses, a generation whose provider webhook was lost stays
+     * PROCESSING forever with its credits held, and the user sees a permanently
+     * spinning card plus a balance short by credits they never spent.
+     *
+     * Running a narrow pass here means an active user's own traffic recovers
+     * their own stuck work. Awaited rather than fired-and-forgotten so the list
+     * below reflects the recovery in the same response: releasing credits and
+     * then returning a stale "processing" row would show the user a state that
+     * had already changed.
+     *
+     * Bounded to this workspace, to variants already past their timeout, and to a
+     * few rows, with no provider calls -- so it cannot spend money, cannot touch
+     * in-flight work, and cannot turn a page load into a long transaction.
+     */
+    await recoverTimedOutVariantsForWorkspace(appUser.defaultWorkspaceId);
+
     const creations = await prisma.creation.findMany({
       // userId and workspaceId are both intentional: a user's default
       // workspace must never receive a cached/list response from another one.

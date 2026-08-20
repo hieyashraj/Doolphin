@@ -56,7 +56,7 @@ function Control({ children, className = "", ...props }) {
 }
 
 export default function ImageStudio() {
-  const { account } = useAppAccount();
+  const { account, refreshAccount } = useAppAccount();
   const [models, setModels] = useState([]);
   const [assets, setAssets] = useState([]);
   const [draft, setDraft] = useState({ prompt: "", referenceAssetIds: [], exploreImageIds: [] });
@@ -311,6 +311,13 @@ export default function ImageStudio() {
           next.url = images.items?.find((item) => item.creationId === generation.id)?.url;
         }
         if (active) setGeneration((current) => (current?.id === generation.id ? { ...current, ...next } : current));
+
+        // Settlement happens server-side, so the balance shown here is wrong the
+        // moment a job reaches a terminal state: a success commits the hold, a
+        // failure refunds it. Without this the user had to reload to see either.
+        if (active && ["COMPLETED", "FAILED"].includes(data.status)) {
+          void refreshAccount({ force: true }).catch(() => {});
+        }
       } catch {
         // Keep the persisted job in its current state and retry on the next interval.
       }

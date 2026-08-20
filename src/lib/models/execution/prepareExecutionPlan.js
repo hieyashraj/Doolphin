@@ -120,6 +120,11 @@ export async function prepareExecutionPlan({
   modelId,
   normalizedInput,
   outputCount = 1,
+  /**
+   * Measured durations, in seconds, of every video the user supplied. Required
+   * for models billed per second of input video; ignored by all others.
+   */
+  inputVideoDurationsSeconds = null,
   fetchImpl = fetch,
   env = process.env,
   planTtlMs = 15 * 60 * 1000,
@@ -185,13 +190,42 @@ export async function prepareExecutionPlan({
   // 7. Obtain Authoritative Unit Cost using ALREADY PREPARED CANONICAL PAYLOAD JSON BYTES
   const unitPricingQuote = await estimateAuthoritativeModelCost({
     modelDefinition,
+    normalizedInput,
     alreadyPreparedPayload: providerPayload,
     alreadyPreparedPayloadJson: providerPayloadJson,
+    inputVideoDurationsSeconds,
     fetchImpl,
     env,
   });
 
   if (!unitPricingQuote.priced) {
+    // A model whose maximum cost cannot be bounded is a permanent condition, not
+    // a transient pricing outage. Collapsing it into PRICING_UNAVAILABLE would
+    // tell the caller to retry something that can never succeed, and would hide
+    // a deliberate commercial refusal behind what looks like provider flakiness.
+    if (
+      unitPricingQuote.code === ERROR_CODES.MODEL_COST_NOT_BOUNDABLE ||
+      unitPricingQuote.code === ERROR_CODES.MODEL_COMING_SOON
+    ) {
+      throw new ModelPlatformError(
+        unitPricingQuote.code,
+        unitPricingQuote.reason,
+        {
+          reason: unitPricingQuote.reason,
+          // The specific condition (coming soon / input too long / unmeasured
+          // input / too many clips) so the UI can say something actionable rather
+          // than a generic failure.
+          detailCode: unitPricingQuote.detailCode ?? unitPricingQuote.code,
+          pricingClass: unitPricingQuote.pricingClass ?? null,
+          comingSoonReason: unitPricingQuote.comingSoonReason ?? null,
+          capSeconds: unitPricingQuote.capSeconds ?? null,
+          unboundedEvidence: unitPricingQuote.unboundedEvidence ?? [],
+          providerModelId: unitPricingQuote.providerModelId ?? null,
+          retryable: false,
+        }
+      );
+    }
+
     throw new ModelPlatformError(
       ERROR_CODES.PRICING_UNAVAILABLE,
       `Authoritative pricing unavailable for model '${modelDefinition.productPolicy.id}': ${unitPricingQuote.reason}`,
