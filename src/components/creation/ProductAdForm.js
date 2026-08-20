@@ -28,6 +28,7 @@ export default function ProductAdForm({
   aspectRatio,
   setAspectRatio,
   numVideos,
+  maxVideos = 1,
   setNumVideos,
   selectedModel,
   setSelectedModel,
@@ -204,8 +205,9 @@ export default function ProductAdForm({
           <span className="flex-1 text-center font-bold text-[#111111] text-sm">{numVideos}</span>
           <button
             type="button"
-            onClick={() => setNumVideos(Math.min(2, numVideos + 1))}
-            className="w-9 h-9 rounded-full bg-white text-[#111111] flex items-center justify-center font-bold text-base border border-[#111111]/20 hover:bg-[#F2EFE5] active:scale-95 transition-all shadow-sm cursor-pointer"
+            onClick={() => setNumVideos(Math.min(maxVideos, numVideos + 1))}
+            disabled={numVideos >= maxVideos}
+            className="w-9 h-9 rounded-full bg-white text-[#111111] flex items-center justify-center font-bold text-base border border-[#111111]/20 hover:bg-[#F2EFE5] active:scale-95 transition-all shadow-sm cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
           >
             +
           </button>

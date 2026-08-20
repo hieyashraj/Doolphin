@@ -36,7 +36,7 @@ import MyAssetsView from "@/components/MyAssetsView";
 import { useAppAccount } from "@/components/AppAccountProvider";
 import { navigateAppView, normalizeAppQueryParams } from "@/lib/app/app-navigation";
 import { resolvePlatformAvatar } from "@/lib/generation/avatarRegistry";
-import { PLAN_BY_CODE, PURCHASE_PLAN_CODES } from "@/lib/entitlements/plan-catalog";
+import { PLAN_BY_CODE, PUBLIC_PLAN_CODES, RECOMMENDED_PLAN_CODE } from "@/lib/entitlements/plan-catalog";
 
 const MODELS = [
   {
@@ -195,7 +195,15 @@ const MOCK_COMMUNITY = [
   { id: "e9", title: "Casual Creator Dialogue", prompt: "Creator wearing winter beanie speaking directly to camera in home studio setting", url: "/explore/Explore 09.mp4", aspect: "9:16" }
 ];
 
-const PRICING_PLANS = PURCHASE_PLAN_CODES.map((code) => PLAN_BY_CODE[code]);
+// The in-app upgrade modal offers SUBSCRIPTIONS only. Explorer is a one-time
+// trial for accounts that have never activated, so by definition nobody who can
+// see this modal is eligible for it — listing it would advertise a purchase the
+// checkout endpoint is guaranteed to refuse.
+//
+// `popular` is derived here rather than stored in the catalog so the recommended
+// tier is named in exactly one place (RECOMMENDED_PLAN_CODE) for both this modal
+// and the public pricing grid.
+const PRICING_PLANS = PUBLIC_PLAN_CODES.map((code) => ({ ...PLAN_BY_CODE[code], popular: code === RECOMMENDED_PLAN_CODE }));
 
 function calculateScriptDuration(text) {
   if (!text || !text.trim()) return 5;
@@ -828,7 +836,7 @@ function HomeContent() {
               </div>
 
               <div className="flex-1 py-6 overflow-y-auto scrollbar-subtle flex items-center">
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-5 w-full">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-5 w-full">
                   {PRICING_PLANS.map((plan) => (
                     <div
                       key={plan.code}
