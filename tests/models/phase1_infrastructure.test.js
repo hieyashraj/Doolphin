@@ -137,26 +137,23 @@ test("Phase 1 Infrastructure: Golden Model B (Seedance 2.5 Video Extend) paramet
 });
 
 test("Phase 1 Infrastructure: Integration with Doolphin Commercial Pricing Engine (pricing.js)", () => {
-  // CREDIT UNIT: pricing revision 2026-08-credit-rescale-v2. The divisor is
-  // PRICING_REVISION.maxFullyLoadedCostPerCreditMicroUsd = 5_000 ($0.005/credit).
-  // This test previously divided by 21_000 ($0.021/credit) and expected 5 and 20
-  // credits. The unit was deliberately rescaled 4.2x (identical economics, more
-  // credits per dollar) in src/lib/entitlements/pricing.js, so the same COSTS now
-  // quote 4.2x more CREDITS. The costs asserted below are unchanged — only the
-  // credit denomination moved.
+  // CREDIT UNIT: revision 2026-08-credit-value-v3. The divisor is
+  // PRICING_REVISION.maxFullyLoadedCostPerCreditMicroUsd = 25_000 ($0.025/credit).
+  // The costs asserted below are unchanged —
+  // only the credit denomination moved.
   //
-  // Note both expectations move UP, never down: this suite still proves the engine
-  // charges at least enough credits to cover cost at the target margin.
-  const COST_CEILING_MICRO_USD = 5_000;
+  // This suite still proves the engine charges at least enough credits to cover
+  // cost at the target margin.
+  const COST_CEILING_MICRO_USD = 25_000;
 
   // Test $0.05 provider cost quote calculation
   const quoteFlat = calculateCommercialCreditQuote({ providerCostUsd: 0.05, variableInfraCostMicroUsd: 5000n });
   assert.equal(quoteFlat.priced, true);
   assert.equal(quoteFlat.providerCostMicroUsd, "50000");
   assert.equal(quoteFlat.fullyLoadedCostMicroUsd, "55000"); // $0.055 total cost
-  // rawCredits = ceil(55000 / 5000) = 11 credits
-  // quotedCredits = rounded up to a multiple of 5 = 15 credits
-  assert.equal(quoteFlat.totalCredits, 15);
+  // rawCredits = ceil(55000 / 25000) = 3 credits
+  // quotedCredits = rounded up to a multiple of 5 = 5 credits
+  assert.equal(quoteFlat.totalCredits, 5);
   assert.ok(
     quoteFlat.totalCredits * COST_CEILING_MICRO_USD >= Number(quoteFlat.fullyLoadedCostMicroUsd),
     "credits quoted must always cover the fully-loaded cost at the ceiling"
@@ -167,9 +164,9 @@ test("Phase 1 Infrastructure: Integration with Doolphin Commercial Pricing Engin
   assert.equal(quoteVideo.priced, true);
   assert.equal(quoteVideo.providerCostMicroUsd, "400000");
   assert.equal(quoteVideo.fullyLoadedCostMicroUsd, "410000"); // $0.41 total cost
-  // rawCredits = ceil(410000 / 5000) = 82 credits
-  // quotedCredits = rounded up to a multiple of 5 = 85 credits
-  assert.equal(quoteVideo.totalCredits, 85);
+  // rawCredits = ceil(410000 / 25000) = 17 credits
+  // quotedCredits = rounded up to a multiple of 5 = 20 credits
+  assert.equal(quoteVideo.totalCredits, 20);
   assert.ok(
     quoteVideo.totalCredits * COST_CEILING_MICRO_USD >= Number(quoteVideo.fullyLoadedCostMicroUsd),
     "credits quoted must always cover the fully-loaded cost at the ceiling"

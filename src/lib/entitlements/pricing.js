@@ -1,7 +1,7 @@
 import { APPROVED_PLANS } from "./plan-catalog.js";
 
 /**
- * DOOLPHIN COMMERCIAL PRICING ENGINE — revision 2026-08-credit-rescale-v2
+ * DOOLPHIN COMMERCIAL PRICING ENGINE — revision 2026-08-credit-value-v3
  *
  * ============================ THE PROFIT INVARIANT ============================
  * Doolphin must earn a positive, bounded-below margin on EVERY generation,
@@ -17,8 +17,8 @@ import { APPROVED_PLANS } from "./plan-catalog.js";
  *
  *   margin = 1 - cost/revenue  >=  1 - COST_CEILING / NET_REVENUE_FLOOR
  *
- * With COST_CEILING = 5_000 and NET_REVENUE_FLOOR = 10_500 microUSD:
- *   worst-case margin >= 1 - 5000/10500 = 52.38%
+ * With COST_CEILING = 25_000 and NET_REVENUE_FLOOR = 52_000 microUSD:
+ *   worst-case margin >= 1 - 25000/52000 = 51.9%
  *
  * The invariant therefore holds for ANY cost value, because cost only ever
  * enters via the ceiling division above. A model 100x more expensive simply
@@ -27,49 +27,50 @@ import { APPROVED_PLANS } from "./plan-catalog.js";
  *
  * REQUIRED RELATIONSHIP (enforced by test, must never be violated):
  *   NET_REVENUE_FLOOR > COST_CEILING / (1 - targetContributionMargin)
- *   10_500 > 5_000 / 0.70 = 7_143  ✓
+ *   52_000 > 25_000 / 0.70 = 35_714  ✓
  *
  * ---------------------------- HOW THE FLOOR IS DERIVED ----------------------
- * netRevenuePerCreditFloorMicroUsd is the LOWEST net revenue per credit across
- * every purchasable plan, after Polar's merchant-of-record fee (5% + $0.50, the
- * published free-tier rate as of 2026-05). Computed per plan as:
+ * netRevenuePerCreditFloorMicroUsd is set just below the LOWEST net revenue per
+ * credit across every purchasable MONTHLY plan, after Polar's merchant-of-record
+ * fee (5% + $0.50). Computed per plan as (price - (price*5% + $0.50)) / credits:
  *
- *   (price - (price * 5% + $0.50)) / credits
+ *   Explorer $2.99 / 40cr    -> $2.34  net -> 58_512 microUSD/credit
+ *   Starter  $29   / 500cr   -> $27.05 net -> 54_100 microUSD/credit  <-- lowest
+ *   Growth   $79   / 1_300cr -> $74.55 net -> 57_346 microUSD/credit
+ *   Agency   $179  / 3_000cr -> $169.55 net -> 56_517 microUSD/credit
  *
- *   Explorer $2.99 / 200cr    -> $2.34  net -> 11_700 microUSD/credit
- *   Starter  $29   / 2_500cr  -> $27.05 net -> 10_820 microUSD/credit
- *   Growth   $79   / 7_000cr  -> $74.55 net -> 10_650 microUSD/credit
- *   Agency   $179  / 16_000cr -> $169.55 net -> 10_597 microUSD/credit  <-- lowest
+ * Floor is 52_000, below the lowest (54_100) so the invariant is conservative
+ * for every plan. Adding a plan whose net-revenue-per-credit falls below this
+ * floor is a margin regression and is blocked by test. Annual plans deliberately
+ * sit below the floor (a 20% prepayment discount buys credits more cheaply) but
+ * are still bounded well above the cost ceiling — proven per-plan by test.
  *
- * Floor is set to 10_500 (rounded DOWN below the lowest) so the invariant is
- * conservative for every plan. Adding a plan whose net-revenue-per-credit falls
- * below this floor is a margin regression and is blocked by test.
- *
- * ------------------------- WHY THE UNIT WAS RESCALED -------------------------
- * The prior revision used 21_000 microUSD ($0.021) per credit. The unit value is
- * pure presentation — charging 4.2x more credits for 4.2x cheaper credits is
- * economically identical — but small credit balances ("700 credits") read as
- * stingy next to competitors who denominate in smaller units. Rescaling to
- * $0.005/credit yields "2,500 credits" for the same $29 at the same margin.
+ * ------------------------- WHY THE UNIT IS $0.06/CREDIT ----------------------
+ * The credit unit is pure presentation — charging Nx more credits for credits
+ * worth 1/N as much is economically identical. Revision history:
+ *   v1: $0.021/credit  (Starter = 700 credits — read as stingy)
+ *   v2: $0.005/credit  (Starter = 2,500; Agency = 16,000 — 5-digit counts read
+ *                       as exaggerated/"scammy", and a 4K clip cost ~1,900cr)
+ *   v3: this revision. 1 credit ≈ $0.06 of customer list value. Starter = 500,
+ *       Agency = 3,000 (the same figure Higgsfield's top tier uses), a standard
+ *       5s video = 35 credits, and the priciest sellable generation stays under
+ *       ~400 credits. Believable, category-standard counts at identical margin.
  *
  * COST_CEILING covers PROVIDER cost + attributable variable infra (R2 storage,
- * egress, verification). Fixed monthly opex (Vercel/Supabase/Resend, ~$40/mo)
- * is deliberately NOT amortised into this constant: at current volume it is
- * ~$0.0008/credit, i.e. under 16% of the ceiling and ~0.3% of a typical
- * generation's cost, and any estimate of it today rests on unvalidated signup
- * projections. The 52% worst-case margin absorbs it many times over. Revisit
- * once real volume data exists rather than encoding a guess as fact.
+ * egress, verification). Fixed monthly opex (~$40/mo) is deliberately NOT
+ * amortised in: at current volume it is a fraction of a percent of a typical
+ * generation's cost, and the ~52% worst-case margin absorbs it many times over.
  *
  * Marketing/CAC is intentionally excluded: it is a cost per acquired CUSTOMER
  * amortised over lifetime value, not a cost per credit burned. Baking it in
  * would overcharge loyal high-usage users to subsidise acquisition.
  */
 export const PRICING_REVISION = Object.freeze({
-  id: "2026-08-credit-rescale-v2",
-  customerListValuePerCreditMicroUsd: 11_000n,
-  netRevenuePerCreditFloorMicroUsd: 10_500n,
+  id: "2026-08-credit-value-v3",
+  customerListValuePerCreditMicroUsd: 60_000n,
+  netRevenuePerCreditFloorMicroUsd: 52_000n,
   targetContributionMarginBps: 3000,
-  maxFullyLoadedCostPerCreditMicroUsd: 5_000n,
+  maxFullyLoadedCostPerCreditMicroUsd: 25_000n,
   polarTransactionFeeBps: 500,
   polarFixedFeeMicroUsd: 500_000n,
 });

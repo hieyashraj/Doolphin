@@ -114,8 +114,8 @@ maybeTest("real-time: the credit charge is derived from the provider's reported 
 
   assert.equal(quote.priced, true, `expected a priced quote, got: ${quote.reason || "no reason"}`);
   assert.equal(quote.isDynamic, true, "must be flagged as dynamically priced");
-  // $1.20 provider + $0.02 infra = $1.22 -> ceil(1_220_000/5_000)=244 -> round to 245
-  assert.equal(quote.quotedCredits, 245, "credits must follow the provider-reported cost");
+  // $1.20 provider + $0.02 infra = $1.22 -> ceil(1_220_000/25_000)=49 -> round to 50
+  assert.equal(quote.quotedCredits, 50, "credits must follow the provider-reported cost");
 });
 
 maybeTest("real-time: a DIFFERENT provider price yields a proportionally different charge", async () => {
@@ -130,14 +130,14 @@ maybeTest("real-time: a DIFFERENT provider price yields a proportionally differe
     env: SANDBOX_ENV,
   });
   assert.equal(quote.priced, true, `expected a priced quote, got: ${quote.reason || "no reason"}`);
-  // $2.00 + $0.02 = $2.02 -> ceil(2_020_000/5_000)=404 -> round to 405
-  assert.equal(quote.quotedCredits, 405);
+  // $2.00 + $0.02 = $2.02 -> ceil(2_020_000/25_000)=81 -> round to 85
+  assert.equal(quote.quotedCredits, 85);
 });
 
 maybeTest("real-time: an implausibly high provider price is refused, not passed to the customer", async () => {
   // veo3.1-fast-image-to-video is $0.60 in MuAPI's catalog. A quote of $4.80 is
   // 8x that — far outside the drift band — which is the signature of a units bug
-  // rather than a real price. Charging a customer 965 credits on the strength of
+  // rather than a real price. Charging a customer ~195 credits on the strength of
   // an unvalidated number is exactly what the guard exists to prevent.
   const { fetchImpl } = mockEstimateResponder({ cost: 4.8 });
   const quote = await estimateAuthoritativeModelCost({
@@ -160,8 +160,8 @@ maybeTest("real-time: alternate provider field names for cost are all honoured",
       env: SANDBOX_ENV,
     });
     assert.equal(quote.priced, true, `field shape ${JSON.stringify(body)} must be understood`);
-    // $0.75 + $0.02 = $0.77 -> 154 -> 155
-    assert.equal(quote.quotedCredits, 155, `field shape ${JSON.stringify(body)} produced wrong credits`);
+    // $0.75 + $0.02 = $0.77 -> ceil(770_000/25_000)=31 -> 35
+    assert.equal(quote.quotedCredits, 35, `field shape ${JSON.stringify(body)} produced wrong credits`);
   }
 });
 
@@ -288,8 +288,8 @@ maybeTest("fixed price: MuAPI's exact per-call cost is billed, with no network c
       Math.abs(quote.providerCostUsd - 0.4) < 1e-9,
       `must bill MuAPI's exact $0.40, got $${quote.providerCostUsd}`
     );
-    // $0.40 + $0.02 infra = $0.42 -> ceil(420_000/5_000)=84 -> round to 85
-    assert.equal(quote.quotedCredits, 85, `duration ${duration}s must not change a fixed price`);
+    // $0.40 + $0.02 infra = $0.42 -> ceil(420_000/25_000)=17 -> round to 20
+    assert.equal(quote.quotedCredits, 20, `duration ${duration}s must not change a fixed price`);
     assert.equal(quote.billedDurationSeconds, null, "a fixed price has no duration basis");
   }
 });

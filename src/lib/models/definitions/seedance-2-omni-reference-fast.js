@@ -50,9 +50,9 @@ export const seedance2OmniReferenceFastDefinition = {
   businessPolicy: {
     targetContributionMarginBps: 3000,
     variableInfraCostMicroUsd: 20000n, // $0.020 infra & verification reserve
-    // Credit floor. Scaled with the 2026-08-credit-rescale-v2 revision, in
-    // which 1 credit represents $0.005 of fully-loaded cost (was $0.021).
-    minimumCredits: 45
+    // Credit floor, at revision 2026-08-credit-value-v3 ($0.025/credit). Kept
+    // below a standard generation's real cost so it never overcharges.
+    minimumCredits: 9
   },
 
   /**

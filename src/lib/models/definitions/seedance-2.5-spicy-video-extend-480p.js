@@ -44,7 +44,7 @@ export const seedanceSpicyVideoExtendDefinition = {
   businessPolicy: {
     targetContributionMarginBps: 3000,
     variableInfraCostMicroUsd: 10000n, // $0.010 infra allowance
-    minimumCredits: 10
+    minimumCredits: 2
   },
 
   /**

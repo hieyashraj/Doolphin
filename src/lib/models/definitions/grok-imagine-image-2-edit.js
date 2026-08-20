@@ -42,7 +42,7 @@ export const grokImagineImage2EditDefinition = {
   businessPolicy: {
     targetContributionMarginBps: 3000,
     variableInfraCostMicroUsd: 5000n, // $0.005 storage/bandwidth reserve
-    minimumCredits: 5
+    minimumCredits: 1
   },
 
   /**
