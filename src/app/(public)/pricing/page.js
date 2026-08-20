@@ -425,7 +425,9 @@ function PricingContent() {
         router.push("/verify-email");
         return;
       }
-      setError(data.error || "Checkout is unavailable right now. Please try again.");
+      // Surface the server's specific reason when it provides one (e.g. exactly
+      // which Polar variable is missing) instead of a generic dead end.
+      setError([data.error, data.detail].filter(Boolean).join(" — ") || "Checkout is unavailable right now. Please try again.");
     } catch {
       setError("We could not reach checkout. Check your connection and try again.");
     } finally {
