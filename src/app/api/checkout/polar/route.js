@@ -61,8 +61,15 @@ export async function POST(request) {
     // Must resolve environment-specific Polar product UUID from server config
     const productId = config.products?.[planCode];
     if (!productId) {
-      // Safe 5xx failure: refuse checkout, execute zero external Polar API requests
-      return NextResponse.json({ code: "BILLING_PLAN_UNCONFIGURED", error: "Billing plan configuration missing" }, { status: 503 });
+      // Safe 5xx failure: refuse checkout, execute zero external Polar API requests.
+      // The detail names the exact missing variable (never a value) so a missing
+      // product ID is diagnosable at a glance instead of a generic dead end.
+      const tier = config.env === "production" ? "PRODUCTION" : "SANDBOX";
+      return NextResponse.json({
+        code: "BILLING_PLAN_UNCONFIGURED",
+        error: "Billing plan configuration missing",
+        detail: `No Polar product configured for ${planCode} in the ${config.env} environment. Set POLAR_${tier}_PRODUCT_${planCode} (or the generic POLAR_PRODUCT_${planCode}) in Vercel.`,
+      }, { status: 503 });
     }
 
     // Activation is applied asynchronously by the Polar webhook, so a user
