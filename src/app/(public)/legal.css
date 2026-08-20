@@ -13,13 +13,42 @@
 .legal-document {
   width: min(760px, calc(100% - 48px));
   margin: 0 auto;
-  padding: 76px 0 40px;
+  padding: 40px 0 40px;
+}
+
+/* Branded hero band — cream canvas, eyebrow, serif title and a lavender rule
+   that ties the long-form pages back to the marketing site. */
+.legal-hero {
+  margin-top: 36px;
+  padding: 40px 34px 34px;
+  border: 1.5px solid var(--line);
+  border-radius: 26px;
+  background: linear-gradient(180deg, #ffffff 0%, #f6f2e5 100%);
+  box-shadow: 6px 6px 0 rgba(21, 21, 18, 0.9);
+}
+
+.legal-hero .eyebrow {
+  color: #77746d;
+}
+
+.legal-hero-rule {
+  display: block;
+  width: 68px;
+  height: 6px;
+  margin-top: 26px;
+  border-radius: 999px;
+  background: var(--lavender, #e6d9ff);
+  box-shadow: 0 0 0 1.5px var(--ink, #151512);
 }
 
 .legal-document h1 {
-  margin: 16px 0 40px;
+  margin: 14px 0 0;
   font: 400 clamp(38px, 5.4vw, 66px) / 0.9 "Instrument Serif", Georgia, serif;
   letter-spacing: -0.055em;
+}
+
+.legal-body {
+  margin-top: 8px;
 }
 
 .legal-document h2 {
@@ -46,7 +75,8 @@
 
 /* The opening block (last-updated line and preamble) sits above the first
    section rule and reads as lead-in copy. */
-.legal-document h1 + p {
+.legal-body > p:first-child {
+  margin-top: 34px;
   font-size: 13px;
   font-weight: 700;
   letter-spacing: 0.06em;
@@ -73,13 +103,47 @@
   font-size: 14px !important;
 }
 
+/* Back-to-home affordance so the reader is never stranded at the end of a long
+   document. */
+.legal-back {
+  margin-top: 30px !important;
+  font-size: 14px !important;
+}
+
+.legal-back a {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 18px;
+  border: 1.5px solid var(--ink, #151512);
+  border-radius: 12px;
+  background: var(--lavender, #e6d9ff);
+  box-shadow: 3px 3px 0 var(--ink, #151512);
+  font-weight: 700;
+  text-decoration: none;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+
+.legal-back a:hover {
+  transform: translate(2px, 2px);
+  box-shadow: 1px 1px 0 var(--ink, #151512);
+  background: #dbcaff;
+  color: inherit;
+}
+
 @media (max-width: 760px) {
   .legal-document {
-    padding-top: 52px;
+    padding-top: 20px;
   }
 
-  .legal-document h1 {
-    margin-bottom: 28px;
+  .legal-hero {
+    margin-top: 24px;
+    padding: 30px 22px 26px;
+    box-shadow: 4px 4px 0 rgba(21, 21, 18, 0.9);
+  }
+
+  .legal-hero-rule {
+    margin-top: 20px;
   }
 
   .legal-document h2 {
