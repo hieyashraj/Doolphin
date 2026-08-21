@@ -82,6 +82,10 @@ jobs:
         if: always()
         run: node --test tests/studio-availability.test.js tests/image-model-registry.test.js tests/plan-model-access.test.js tests/explore-images.test.js
 
+      - name: "Area · Full model bench (all catalog models selectable and priceable)"
+        if: always()
+        run: node --test tests/full-model-bench.test.js
+
       - name: "Area · Generation pipeline and provider contracts"
         if: always()
         run: node --test tests/generation-pipeline.test.js tests/realtime-pricing-mechanism.test.js tests/catalog-reconciliation.test.js tests/provider-submission-lease.test.js tests/muapi-webhook-security.test.js tests/muapi-webhook-trust.test.js tests/muapi-credentials.test.js
