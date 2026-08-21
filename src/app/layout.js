@@ -17,15 +17,32 @@ export const metadata = {
   ],
   icons: {
     icon: [
-      { url: "/favicon.ico" },
-      { url: "/favicon-96x96.png", sizes: "96x96", type: "image/png" },
+      { url: "/favicon.ico", sizes: "any" },
+      { url: "/favicon-32x32.png", sizes: "32x32", type: "image/png" },
+      { url: "/favicon-16x16.png", sizes: "16x16", type: "image/png" },
       { url: "/favicon.svg", type: "image/svg+xml" }
     ],
     apple: [
       { url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" }
     ]
   },
-  manifest: "/site.webmanifest"
+  manifest: "/site.webmanifest",
+  metadataBase: new URL("https://doolphin.vercel.app"),
+  themeColor: "#0E0F15",
+  openGraph: {
+    title: "Doolphin — AI Video Generator, Studio-Grade Quality",
+    description: "AI video for ideas that deserve to move. Every studio, every model, on every plan.",
+    url: "https://doolphin.vercel.app",
+    siteName: "Doolphin",
+    images: [{ url: "/doolphin-og-1200x630.jpg", width: 1200, height: 630, alt: "Doolphin" }],
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Doolphin — AI Video Generator",
+    description: "AI video for ideas that deserve to move.",
+    images: ["/doolphin-og-1200x630.jpg"],
+  },
 };
 
 export default function RootLayout({ children }) {
