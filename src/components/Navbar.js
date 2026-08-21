@@ -182,7 +182,6 @@ function SidebarContent() {
                 </div>
                 <div className="truncate">
                   <h2 className="text-2xl font-bold text-[#111111] tracking-tight font-serif leading-tight truncate">Doolphin</h2>
-                  <p className="text-[10px] text-[#77746D] font-bold tracking-widest uppercase">AI UGC Studio</p>
                 </div>
               </Link>
 
@@ -340,14 +339,14 @@ function SidebarContent() {
                     </button>
                   </div>
 
-                  {/* Account Security Info */}
+                  {/* Naming our auth vendor and describing our database policies
+                      is internal detail no consumer product exposes. Replaced
+                      with the two things a user can actually act on. */}
                   <div className="bg-white p-6 rounded-2xl space-y-3 border border-[#111111] shadow-sm">
-                    <div className="flex items-center gap-2 text-[#44423D]">
-                      <FiAlertTriangle size={18} />
-                      <h4 className="text-xs font-bold uppercase tracking-wider">Account Data & Security</h4>
-                    </div>
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-[#44423D]">Security</h4>
                     <p className="text-xs text-[#44423D] font-medium leading-relaxed">
-                      Your workspace account and billing data are protected by Supabase authentication and strict encrypted database policies.
+                      Signed in as <span className="font-bold">{profileEmail || "your account"}</span>. To change your password, sign out and use
+                      &ldquo;Forgot password&rdquo; on the sign-in screen.
                     </p>
                   </div>
                 </div>

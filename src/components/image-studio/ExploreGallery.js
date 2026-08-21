@@ -39,7 +39,7 @@ export default function ExploreGallery({
             </span>
           </div>
           <p className="mt-1 text-xs text-[#66635C]">
-            Starter reference media curated by Doolphin. Click to use as a reference for your draft.
+            Click any image to use it as a reference for your next generation.
           </p>
         </div>
 
@@ -115,17 +115,14 @@ export default function ExploreGallery({
                       </div>
                     )}
 
-                    {/* Source Badge */}
-                    <div className="absolute right-2.5 top-2.5 rounded-full bg-[#111111]/70 px-2 py-0.5 text-[10px] font-semibold tracking-wider text-white backdrop-blur-sm">
-                      CURATED
-                    </div>
-
                     {/* Hover Overlay */}
                     <div className="absolute inset-0 flex flex-col justify-between bg-gradient-to-t from-[#111111]/80 via-[#111111]/20 to-transparent p-3 opacity-0 transition-opacity duration-200 group-hover:opacity-100 focus-within:opacity-100">
                       <div></div>
                       <div>
+                        {/* Raw pixel dimensions and the decimal aspect ratio were
+                            shown here ("1672 × 941 • 1.777"), which means nothing
+                            to a user choosing a reference image. */}
                         <p className="text-sm font-bold text-white drop-shadow-sm">{item.title}</p>
-                        <p className="text-[11px] text-white/80">{item.width} × {item.height} • {item.aspectRatio}</p>
 
                         <div className="mt-2.5 flex items-center gap-2">
                           <button

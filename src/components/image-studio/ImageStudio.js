@@ -377,8 +377,7 @@ export default function ImageStudio() {
       >
         <div className="mb-5 flex items-center justify-between">
           <div>
-            <p className="text-xs font-bold tracking-[0.16em] text-[#77746D]">IMAGE STUDIO</p>
-            <h1 className="mt-0.5 font-serif text-2xl font-bold">Create an image</h1>
+            <h1 className="font-serif text-2xl font-bold">Create an image</h1>
             <p className="mt-0.5 text-xs text-[#66635C]">Your balance: {account?.credits ?? "—"} credits</p>
           </div>
           {generation && workspaceView !== "explore" && (

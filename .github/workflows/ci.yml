@@ -5,8 +5,12 @@ name: CI
 # only thing that ever compiled the app was a Vercel production deploy, which
 # means a broken build was discovered by shipping it.
 on:
+  # Runs ONCE per change. This previously triggered on every branch push AND on
+  # the pull request, so a single change produced two runs and, on failure, two
+  # "all jobs have failed" emails. A pull request is the only place a branch needs
+  # gating, and main is what deploys.
   push:
-    branches: ["**"]
+    branches: [main]
   pull_request:
   workflow_dispatch:
 

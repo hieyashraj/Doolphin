@@ -420,16 +420,10 @@ function HomeContent() {
             <div className="space-y-5 w-full">
               <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-2 border-b border-[#111111]/10 pb-3">
                 <div>
-                  <span className="text-xs font-bold tracking-[0.2em] uppercase text-[#77746D]">
-                    CREATION MODES
-                  </span>
                   <h2 className="text-2xl sm:text-3xl font-serif font-bold text-[#111111] tracking-tight">
-                    Featured Studio Modes
+                    Start creating
                   </h2>
                 </div>
-                <p className="text-sm text-[#55534E] font-medium">
-                  Select a studio mode to generate AI videos
-                </p>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
@@ -492,13 +486,10 @@ function HomeContent() {
 
             {/* 2. BOTTOM SECTION: COMMUNITY SHOWCASE GRID */}
             <div className="space-y-5 w-full pt-4">
-              <div className="space-y-1.5 border-b border-[#111111]/10 pb-4">
-                <h2 className="text-2xl sm:text-3xl font-serif font-extrabold tracking-widest text-[#111111] uppercase">
-                  COMMUNITY
+              <div className="border-b border-[#111111]/10 pb-4">
+                <h2 className="text-2xl sm:text-3xl font-serif font-bold tracking-tight text-[#111111]">
+                  Community
                 </h2>
-                <p className="text-sm sm:text-base text-[#55534E] font-medium">
-                  Images and videos from our community
-                </p>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5 sm:gap-6">
