@@ -1,0 +1,111 @@
+name: QA
+
+# AUTOMATED QA REPORT, GROUPED BY PRODUCT AREA.
+#
+# `ci.yml` answers "does it build and do all tests pass". This workflow answers
+# "which PART of the product is broken" — each step below is a named area, so a
+# failure names the feature instead of dumping one wall of output. It is the
+# regression suite for the flows that were verified by hand (sign-up, email
+# verification, purchase, activation, credits) so they never need re-testing
+# manually.
+#
+# EMAIL NOISE: GitHub emails you when a run fails. This workflow runs ONCE per
+# change (push to main, or a pull request) rather than on every branch push, so a
+# single change cannot generate several failure notifications. To silence them
+# entirely: GitHub → Settings → Notifications → Actions → untick "Email".
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: qa-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  qa:
+    name: Product QA
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    env:
+      # Inert placeholders. Nothing here reaches a network: every test in this
+      # suite is pure logic or reads source text. No provider (MuAPI) call is
+      # ever made, so running QA cannot spend provider credits or real money.
+      DATABASE_URL: postgresql://ci:ci@127.0.0.1:5432/ci?schema=public
+      DIRECT_URL: postgresql://ci:ci@127.0.0.1:5432/ci?schema=public
+      NEXTAUTH_URL: http://localhost:3000
+      NEXTAUTH_SECRET: ci-placeholder-not-a-real-secret
+      NEXT_PUBLIC_SUPABASE_URL: https://ci-placeholder.supabase.co
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_ci_placeholder
+      SUPABASE_SERVICE_ROLE_KEY: ci-placeholder-service-role
+      MUAPI_API_KEY: ci-placeholder
+      WEBHOOK_URL: http://localhost:3000
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci
+
+      # Every area below carries `if: always()` so one failing area still reports
+      # the state of all the others — a single run tells you everything.
+
+      - name: "Area · Account creation and identity"
+        if: always()
+        run: node --test tests/onboarding-identity.test.js tests/auth-foundation.test.js tests/verify-email-otp-flow.test.js tests/auth-ux-regression.test.js
+
+      - name: "Area · Auth security and abuse prevention"
+        if: always()
+        run: node --test tests/auth-hardening.test.js tests/auth-entitlement-security.test.js tests/authorization-security-no-bypass.test.js tests/authorization-jwt-claims-fix.test.js tests/admin-access-gate.test.js
+
+      - name: "Area · Access gate (unpaid users cannot reach the studio)"
+        if: always()
+        run: node --test tests/activated-user-access.test.js tests/authenticated-navigation-regression.test.js tests/v1-disabled-endpoints.test.js
+
+      - name: "Area · Billing, purchase and activation"
+        if: always()
+        run: node --test tests/polar-billing-flow.test.js tests/billing-plan-catalog.test.js tests/credit-release-idempotency.test.js
+
+      - name: "Area · Pricing and credit correctness (profit invariants)"
+        if: always()
+        run: node --test tests/pricing-profit-invariant.test.js tests/image-pricing.test.js tests/generation-cost-registry.test.js tests/cost-strategy-integrity.test.js tests/static-cost-catalog-guard.test.js tests/verified-cost-drift-guard.test.js
+
+      - name: "Area · Studios are functional, not empty shells"
+        if: always()
+        run: node --test tests/studio-availability.test.js tests/image-model-registry.test.js tests/plan-model-access.test.js tests/explore-images.test.js
+
+      - name: "Area · Generation pipeline and provider contracts"
+        if: always()
+        run: node --test tests/generation-pipeline.test.js tests/realtime-pricing-mechanism.test.js tests/catalog-reconciliation.test.js tests/provider-submission-lease.test.js tests/muapi-webhook-security.test.js tests/muapi-webhook-trust.test.js tests/muapi-credentials.test.js
+
+      - name: "Area · Model platform contracts (phases 1-4)"
+        if: always()
+        run: node --test tests/models/*.test.js
+
+      - name: "Area · Durability and recovery"
+        if: always()
+        run: node --test tests/generation-finalization-recovery.test.js tests/generation-persistence-replay-drill.test.js tests/late-completion-immutability.test.js tests/reconciliation-eligibility.test.js tests/reconciliation-schedule.test.js tests/reconciliation-route-security.test.js
+
+      - name: "Area · Storage, packaging and performance guards"
+        if: always()
+        run: node --test tests/storage-key-namespace.test.js tests/module-packaging.test.js tests/performance-regressions.test.js
+
+      - name: "Gate · Legal documents contain no placeholder copy"
+        if: always()
+        run: node scripts/check-legal-placeholders.mjs
+
+      - name: "Gate · Plan economics are profitable"
+        if: always()
+        run: node scripts/analyze-plan-economics.mjs
+
+      - name: "Gate · Production build compiles"
+        if: always()
+        run: npm run build

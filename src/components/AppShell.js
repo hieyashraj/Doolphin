@@ -45,11 +45,7 @@ export default function AppShell({ children }) {
       <main className="relative z-10 flex min-w-0 flex-1 flex-col overflow-hidden rounded-[28px] border border-[#111111]/15 bg-[#FAF8ED]">
         {/* PERSISTENT STICKY TOP UTILITY BAR */}
         <header className="sticky top-0 z-30 flex h-14 w-full shrink-0 items-center justify-between border-b border-[#111111]/10 bg-[#FAF8ED]/95 px-4 backdrop-blur-md md:px-6">
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-bold tracking-[0.16em] uppercase text-[#77746D]">
-              Doolphin Studio
-            </span>
-          </div>
+          <div className="flex items-center gap-2" />
 
           <div className="flex items-center gap-2.5">
             <button

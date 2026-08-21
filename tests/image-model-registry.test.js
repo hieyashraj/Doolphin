@@ -2,25 +2,46 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { IMAGE_MODELS, getImageModel, listImageModels } from "../src/lib/generation-models/imageRegistry.js";
 
-test("eleven contract-proven image models are staging-only and provider-contract failures stay disabled", () => {
+// This test previously asserted the models were "staging-only" and that
+// deployments.production was DISABLED for ALL of them. That WAS the defect: on
+// the live deployment it made every image model unselectable, so Image Studio
+// rendered "No model available" with a dead Generate button. The contract is now:
+// the 11 contract-verified models with a verified pricing basis are enabled in
+// BOTH environments; the 2 without one stay disabled everywhere.
+const CONTRACT_VERIFIED_COUNT = 11;
+const UNPRICED_IDS = ["muapi.seedream-5-pro-t2i", "muapi.grok-imagine-image-2"];
+
+test("eleven contract-proven image models are enabled in every environment; unpriced ones stay disabled", () => {
   assert.equal(IMAGE_MODELS.length, 13);
   assert.equal(new Set(IMAGE_MODELS.map((model) => model.id)).size, 13);
   for (const model of IMAGE_MODELS) {
     assert.equal(model.mediaType, "IMAGE");
     assert.equal(model.provider, "MUAPI");
-    assert.equal(model.deployments.production, "DISABLED");
     assert.equal(model.settlementMode, "ATOMIC_JOB");
     assert.equal(model.qaProfile.derivativeFailureIsNonTerminal, true);
+    // Enablement is explicit per model, and only these two values are valid.
+    const expected = UNPRICED_IDS.includes(model.id) ? "DISABLED" : "ENABLED";
+    assert.equal(model.deployments.production, expected, `${model.id} production state`);
   }
   assert.ok(getImageModel("muapi.gpt-image-2-t2i"));
   assert.equal(getImageModel("muapi.seedream-5-pro-t2i").endpoint, null);
   assert.equal(getImageModel("muapi.grok-imagine-t2i").providerCapabilities.output.expectedCount, 1);
+
+  // Selectable in staging...
   const staging = listImageModels({ DOOLPHIN_ENV: "staging", VERCEL_ENV: "preview" });
-  assert.equal(staging.filter((model) => model.available).length, 11);
-  assert.equal(staging.find((model) => model.id === "muapi.seedream-5-pro-t2i").available, false);
-  assert.equal(staging.find((model) => model.id === "muapi.grok-imagine-image-2").available, false);
-  assert.equal(listImageModels({ VERCEL_ENV: "preview" }).every((model) => model.available === false), true);
-  assert.equal(listImageModels({ DOOLPHIN_ENV: "staging", VERCEL_ENV: "production" }).every((model) => model.available === false), true);
+  assert.equal(staging.filter((model) => model.available).length, CONTRACT_VERIFIED_COUNT);
+  // ...and, critically, on the real production deployment as well.
+  for (const env of [{ VERCEL_ENV: "production" }, { VERCEL_ENV: "preview" }, {}]) {
+    const listed = listImageModels(env);
+    assert.equal(
+      listed.filter((model) => model.available).length,
+      CONTRACT_VERIFIED_COUNT,
+      `expected ${CONTRACT_VERIFIED_COUNT} selectable models for env ${JSON.stringify(env)}`
+    );
+    for (const id of UNPRICED_IDS) {
+      assert.equal(listed.find((model) => model.id === id).available, false, `${id} must never be selectable`);
+    }
+  }
 });
 
 test("payload builders enforce product capability contracts and explicit native defaults", () => {

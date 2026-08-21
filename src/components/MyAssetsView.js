@@ -178,8 +178,11 @@ export default function MyAssetsView() {
               key={val}
               onClick={() => setTypeFilter(val)}
               className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold border transition-colors ${
+                // Selected state uses the brand lavender with ink text. It was
+                // solid #111 on white text, which read as an unlabelled black
+                // block at this size — the selected filter was unreadable.
                 typeFilter === val
-                  ? "bg-[#111111] text-white border-[#111111]"
+                  ? "bg-[#E6D9FF] text-[#111111] border-[#111111] shadow-[2px_2px_0_#111111]"
                   : "bg-white text-[#55534E] border-[#111111]/15 hover:bg-[#FAF8ED]"
               }`}
             >

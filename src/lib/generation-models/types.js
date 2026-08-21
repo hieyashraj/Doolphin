@@ -37,8 +37,22 @@ export function deploymentState(model, env = process.env) {
   return model.deployments[deploymentEnvironment(env)] || "DISABLED";
 }
 
+/**
+ * Whether a model may be offered to a user in the current environment.
+ *
+ * A model is generatable when the state for THIS environment explicitly says so:
+ *   "STAGING_ENABLED" — cleared for the staging environment
+ *   "ENABLED"         — cleared for production (contract + pricing verified)
+ * Anything else (notably the "DISABLED" / "DISABLED_PENDING_STAGING_POC"
+ * defaults) is refused, so enablement stays an explicit, reviewed decision per
+ * model rather than an environment-wide switch.
+ *
+ * HISTORY: this used to hard-require `deploymentEnvironment === "staging"`, which
+ * meant EVERY image model was unavailable on the production deployment — the
+ * Image Studio model dropdown rendered "No model available" and the Generate
+ * button could never enable. Production is now a first-class enabled state,
+ * granted per model in the registry.
+ */
 export function canGenerate(model, env = process.env) {
-  // Production remains blocked even if a malformed environment variable says
-  // otherwise. Model enablement requires an explicit future staging POC gate.
-  return deploymentEnvironment(env) === "staging" && deploymentState(model, env) === "STAGING_ENABLED";
+  return ["STAGING_ENABLED", "ENABLED"].includes(deploymentState(model, env));
 }
