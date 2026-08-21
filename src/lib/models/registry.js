@@ -2,6 +2,7 @@ import { grokImagineImage2EditDefinition } from "./definitions/grok-imagine-imag
 import { seedanceSpicyVideoExtendDefinition } from "./definitions/seedance-2.5-spicy-video-extend-480p.js";
 import { seedance2OmniReferenceFastDefinition } from "./definitions/seedance-2-omni-reference-fast.js";
 import { resolveAuthoritativeProviderSpec } from "./providerCatalog.js";
+import { GENERATED_MODELS_BY_ID } from "./videoModelFactory.js";
 import { ModelPlatformError, ERROR_CODES } from "./errors.js";
 
 /**
@@ -13,10 +14,26 @@ import { ModelPlatformError, ERROR_CODES } from "./errors.js";
  * Resolved Model Definition
  */
 
-const LOCAL_MODEL_DEFINITIONS = Object.freeze({
+/**
+ * Three hand-authored definitions carry model-specific rules a generated
+ * definition cannot infer — Seedance 2 Omni's 720p-only guard and 9-image
+ * reference cap, for example. They therefore take PRECEDENCE over the generated
+ * definition for the same provider model, and are spread last below.
+ *
+ * Everything else comes from the provider's own catalog export via
+ * videoModelFactory, which is what makes the full bench (323 video + 136 image
+ * models) actually selectable instead of the Video Studio falling back to a
+ * hardcoded list of placeholder names.
+ */
+const HAND_AUTHORED_DEFINITIONS = {
   [grokImagineImage2EditDefinition.productPolicy.id]: grokImagineImage2EditDefinition,
   [seedanceSpicyVideoExtendDefinition.productPolicy.id]: seedanceSpicyVideoExtendDefinition,
   [seedance2OmniReferenceFastDefinition.productPolicy.id]: seedance2OmniReferenceFastDefinition,
+};
+
+const LOCAL_MODEL_DEFINITIONS = Object.freeze({
+  ...GENERATED_MODELS_BY_ID,
+  ...HAND_AUTHORED_DEFINITIONS,
 });
 
 export async function getModel(modelId, { fetchImpl, env = process.env, forceRefresh = false } = {}) {

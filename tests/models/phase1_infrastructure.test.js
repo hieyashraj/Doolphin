@@ -50,14 +50,24 @@ test("Phase 1 Infrastructure: Catalog resolution hierarchy (Memory -> Store -> B
 test("Phase 1 Infrastructure: 3-Layer Model Registry studio filtering and lookups", async () => {
   clearCatalogMemoryCache();
 
+  // These counts were 1 image / 2 video because only three model definitions had
+  // ever been hand-authored — which is exactly why the Video Studio had no real
+  // bench to offer. The registry now also carries every model in the provider's
+  // catalog export (src/lib/models/videoModelFactory.js), so the assertion is on
+  // the shape of the bench plus the presence of the hand-authored definitions,
+  // which must still be registered and must still win for their provider model.
   const imageModels = await listModelsByStudio("image-studio");
-  assert.equal(imageModels.length, 1);
-  assert.equal(imageModels[0].productPolicy.id, "muapi.grok-imagine-image-2-edit");
+  assert.ok(imageModels.length >= 130, `expected the full image bench, got ${imageModels.length}`);
+  assert.ok(imageModels.some((m) => m.productPolicy.id === "muapi.grok-imagine-image-2-edit"), "hand-authored Grok edit definition must remain registered");
+  for (const model of imageModels) assert.ok(model.productPolicy.studios.includes("image-studio"));
 
   const videoModels = await listModelsByStudio("video-studio");
-  assert.equal(videoModels.length, 2);
+  assert.ok(videoModels.length >= 300, `expected the full video bench, got ${videoModels.length}`);
   assert.ok(videoModels.some((m) => m.productPolicy.id === "muapi.seedance-2.5-spicy-video-extend-480p"));
   assert.ok(videoModels.some((m) => m.productPolicy.id === "muapi.seedance2.omni-reference-fast"));
+  // Ordering contract: listModelsByStudio sorts by displayOrder, and the three
+  // hand-authored definitions keep their explicit low order so they surface first.
+  assert.ok(videoModels[0].productPolicy.displayOrder <= videoModels[videoModels.length - 1].productPolicy.displayOrder);
 
   const modelByAlias = await getModel("grok-edit");
   assert.ok(modelByAlias);
