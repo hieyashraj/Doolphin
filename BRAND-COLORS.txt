@@ -1,0 +1,5 @@
+DOOLPHIN BRAND COLORS
+Cream:    #F6F4EA
+Black:    #0E0F15
+Lavender: #CDBCF4
+Sage:     #699684
