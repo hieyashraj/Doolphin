@@ -71,7 +71,7 @@ function createMockDb() {
   const store = {
     billingWebhookEvent: new Map(),
     user: new Map([
-      ["usr_123", { id: "usr_123", supabaseUserId: "sup_123", defaultWorkspaceId: "ws_123", activationStatus: "UNVERIFIED", subscriptionStatus: "NONE" }]
+      ["usr_123", { id: "usr_123", supabaseUserId: "sup_123", email: "buyer@example.test", normalizedEmail: "buyer@example.test", defaultWorkspaceId: "ws_123", activationStatus: "UNVERIFIED", subscriptionStatus: "NONE" }]
     ]),
     billingCustomer: new Map(),
     entitlement: new Map(),
@@ -143,6 +143,8 @@ function createMockDb() {
         user: {
           findUnique: async ({ where }) => {
             if (where.supabaseUserId) return Array.from(txStore.user.values()).find(u => u.supabaseUserId === where.supabaseUserId) || null;
+            if (where.normalizedEmail) return Array.from(txStore.user.values()).find(u => u.normalizedEmail === where.normalizedEmail) || null;
+            if (where.email) return Array.from(txStore.user.values()).find(u => u.email === where.email) || null;
             if (where.id) return txStore.user.get(where.id) || null;
             return null;
           },
@@ -393,6 +395,35 @@ test("METADATA FINANCIAL FALLBACK REMOVAL (4 Explicit Scenarios)", async () => {
   }, mockHeader("msg_unknownprod_4"), db4);
   assert.equal(res4.status, "IGNORED_UNRECOGNIZED_PRODUCT");
   assertGrants(db4, [], "unknown product_id + Agency metadata");
+
+  delete process.env.POLAR_PRODUCT_STARTER_MONTHLY;
+});
+
+test("RESILIENT ACTIVATION: a paid subscription order activates via customer email even when metadata and billing_reason are absent", async () => {
+  process.env.POLAR_PRODUCT_STARTER_MONTHLY = "prod_starter_789";
+
+  // The realistic production failure: Polar delivers order.paid with the product
+  // and the buyer's email, but WITHOUT the supabaseUserId metadata and WITHOUT a
+  // billing_reason. This previously fell through and never activated the account.
+  const db = createMockDb();
+  const res = await processPolarBillingEvent({
+    id: "msg_resilient_1",
+    type: "order.paid",
+    data: {
+      id: "ord_res_1",
+      product_id: "prod_starter_789",
+      subscription_id: "sub_res_1",
+      customer_id: "cust_res_1",
+      customer: { email: "buyer@example.test" },
+      // no metadata.supabaseUserId, no billing_reason
+    },
+  }, mockHeader("msg_resilient_1"), db);
+
+  assert.equal(res.status, "PROCESSED", "a paid order must activate even without metadata/billing_reason");
+  assert.equal(res.entitlement.planCode, "STARTER_MONTHLY");
+  assertGrants(db, [STARTER_CREDITS], "email-linked activation grants exactly the plan allowance");
+  assert.equal(db._store.user.get("usr_123").activationStatus, "ACTIVATED");
+  assert.equal(db._store.user.get("usr_123").subscriptionStatus, "ACTIVE");
 
   delete process.env.POLAR_PRODUCT_STARTER_MONTHLY;
 });

@@ -72,7 +72,12 @@ export function canonicalPayload(eventPayload, webhookId) {
   const subscriptionId = data.subscription_id || data.subscription?.id || (eventPayload.type.startsWith("subscription.") ? data.id : null);
   const customerId = data.customer_id || data.customer?.id || null;
   const orderId = data.order_id || (eventPayload.type.startsWith("order.") ? data.id : null);
-  const supabaseUserId = data.metadata?.supabaseUserId || data.customer_metadata?.supabaseUserId || data.subscription?.metadata?.supabaseUserId;
+  const supabaseUserId = data.metadata?.supabaseUserId || data.customer_metadata?.supabaseUserId || data.subscription?.metadata?.supabaseUserId || data.checkout?.metadata?.supabaseUserId;
+  // Polar attaches checkout metadata to the checkout/subscription, not always to
+  // the order. The buyer's email is always on the order, and our accounts have a
+  // unique normalized email, so it is a reliable fallback for linking a paid
+  // order to its user when the metadata did not ride along.
+  const customerEmail = data.customer?.email || data.customer_email || data.customer?.email_address || data.user?.email || null;
 
   const currentPeriodStart = data.current_period_start || data.subscription?.current_period_start || data.starts_at;
   const currentPeriodEnd = data.current_period_end || data.subscription?.current_period_end || data.ends_at;
@@ -87,6 +92,7 @@ export function canonicalPayload(eventPayload, webhookId) {
     orderId,
     customerId,
     supabaseUserId,
+    customerEmail,
     currentPeriodStart: currentPeriodStart ? new Date(currentPeriodStart) : null,
     currentPeriodEnd: currentPeriodEnd ? new Date(currentPeriodEnd) : null,
     createdAt: data.created_at ? new Date(data.created_at) : new Date(),
@@ -213,19 +219,55 @@ export async function processPolarBillingEvent(eventPayload, headers, db = null)
   }
 }
 
+// Links a paid Polar order to its Doolphin user. Prefers the supabaseUserId that
+// checkout stamps into metadata, but falls back to the order's customer email
+// (accounts have a unique normalized email) so activation never silently fails
+// just because Polar did not echo the metadata onto the order payload.
+async function resolveBillingUser(operation, tx) {
+  if (operation.supabaseUserId) {
+    const byId = await tx.user.findUnique({ where: { supabaseUserId: operation.supabaseUserId } });
+    if (byId) return byId;
+  }
+  const email = (operation.customerEmail || "").trim().toLowerCase();
+  if (email) {
+    const byNormalized = await tx.user.findUnique({ where: { normalizedEmail: email } });
+    if (byNormalized) return byNormalized;
+    const byEmail = await tx.user.findUnique({ where: { email } });
+    if (byEmail) return byEmail;
+  }
+  return null;
+}
+
 async function handleOrderPaid(operation, tx) {
   const plan = PLANS[operation.planCode];
   if (!plan || !operation.orderId) {
     return { status: "IGNORED_UNRECOGNIZED_PRODUCT", reason: "Product/Plan not recognized" };
   }
 
+  // Polar always documents billing_reason, but it is not guaranteed on every
+  // order payload/version. When it is absent or unexpected, infer it from the
+  // data we do have so a paid subscription order still activates the account:
+  // a one-time product is a purchase; a subscription order is the initial
+  // creation unless we already track its subscription (then it is a renewal).
+  let effectiveReason = operation.billingReason;
+  if (!["purchase", "subscription_create", "subscription_cycle", "subscription_update"].includes(effectiveReason)) {
+    if (plan.interval === "ONE_TIME") {
+      effectiveReason = "purchase";
+    } else if (operation.subscriptionId) {
+      const known = await tx.entitlement.findUnique({ where: { polarSubscriptionId: operation.subscriptionId } });
+      effectiveReason = known ? "subscription_cycle" : "subscription_create";
+    } else {
+      effectiveReason = "subscription_create";
+    }
+  }
+
   // A. ONE-TIME PURCHASE (EXPLORER ONLY)
-  if (operation.billingReason === "purchase" || plan.interval === "ONE_TIME") {
+  if (effectiveReason === "purchase" || plan.interval === "ONE_TIME") {
     if (operation.planCode !== "EXPLORER") {
       return { status: "IGNORED_UNSUPPORTED_ONETIME_PRODUCT", reason: "Only Explorer is an approved one-time purchase" };
     }
 
-    const user = await tx.user.findUnique({ where: { supabaseUserId: operation.supabaseUserId } });
+    const user = await resolveBillingUser(operation, tx);
     if (!user?.defaultWorkspaceId) throw new IdempotencyIntegrityConflict("Billing identity is not linked to a workspace");
 
     if (operation.customerId) {
@@ -292,8 +334,8 @@ async function handleOrderPaid(operation, tx) {
   }
 
   // B. INITIAL SUBSCRIPTION PURCHASE (billing_reason = subscription_create)
-  if (operation.billingReason === "subscription_create") {
-    const user = await tx.user.findUnique({ where: { supabaseUserId: operation.supabaseUserId } });
+  if (effectiveReason === "subscription_create") {
+    const user = await resolveBillingUser(operation, tx);
     if (!user?.defaultWorkspaceId) throw new IdempotencyIntegrityConflict("Billing identity is not linked to a workspace");
 
     if (operation.customerId) {
@@ -365,7 +407,7 @@ async function handleOrderPaid(operation, tx) {
   }
 
   // C. RECURRING RENEWAL (billing_reason = subscription_cycle)
-  if (operation.billingReason === "subscription_cycle") {
+  if (effectiveReason === "subscription_cycle") {
     let entitlement = null;
     if (operation.subscriptionId) {
       entitlement = await tx.entitlement.findUnique({ where: { polarSubscriptionId: operation.subscriptionId } });
@@ -404,7 +446,7 @@ async function handleOrderPaid(operation, tx) {
   }
 
   // D. PLAN SWITCH / UPDATE (billing_reason = subscription_update)
-  if (operation.billingReason === "subscription_update") {
+  if (effectiveReason === "subscription_update") {
     return { status: "PROCESSED_UNSUPPORTED_PLAN_UPDATE", reason: "Plan updates require manual proration review" };
   }
 
