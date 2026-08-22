@@ -12,6 +12,7 @@ import { parseStrictJsonOutput, transcriptPasses } from "@/lib/generation/qualit
 import { CreditEscrowService } from "@/lib/billing/CreditEscrowService";
 import { isReconciliationEligibleVariant } from "@/lib/generation/reconciliationEligibility";
 import { isModelPlatformV1Creation, settleModelPlatformWorkflow } from "@/lib/models/execution/workflowSettlement.js";
+import { getAppStudioPreset } from "@/lib/app-studio/config.js";
 
 const WHISPER_ENDPOINT = "https://api.muapi.ai/api/v1/openai-whisper";
 const VISION_ENDPOINT = "https://api.muapi.ai/api/v1/gemini-2-5-flash";
@@ -192,6 +193,7 @@ export async function startQualityVerification({ seedanceJob, videoUrl, buffer, 
         durationSeconds: outputDuration,
         width: outputWidth,
         height: outputHeight,
+        composition: getAppStudioPreset(creation.presetId).composition,
       });
       const brollBuffer = await fs.promises.readFile(brollPath);
       const composedKey = buildStorageKey({ workspaceId: creation.workspaceId, creationId: creation.id, fileType: "composed_video", extension: "mp4" });
@@ -199,7 +201,7 @@ export async function startQualityVerification({ seedanceJob, videoUrl, buffer, 
       const composedStored = await R2StorageService.checkObjectExists(composedKey);
       composedArtifact = await prisma.generatedArtifact.upsert({
         where: { creationVariantId_type_storageKey: { creationVariantId: variant.id, type: "COMPOSED_VIDEO", storageKey: composedKey } },
-        create: { workspaceId: creation.workspaceId, creationVariantId: variant.id, type: "COMPOSED_VIDEO", storageKey: composedKey, checksumSha256: composedStored.checksumSha256, mimeType: "video/mp4", fileSizeBytes: composedStored.fileSizeBytes, width: outputWidth, height: outputHeight, durationMs: Math.round(outputDuration * 1000), frameRate: videoStream?.r_frame_rate || null, videoCodec: "h264", audioCodec: "aac", validationStatus: "PENDING", validationMetadata: JSON.stringify({ appAssetIds: appAssets.map((asset) => asset.id), composition: "exact_app_broll" }), sourceProviderUrlHost: "local_ffmpeg", },
+        create: { workspaceId: creation.workspaceId, creationVariantId: variant.id, type: "COMPOSED_VIDEO", storageKey: composedKey, checksumSha256: composedStored.checksumSha256, mimeType: "video/mp4", fileSizeBytes: composedStored.fileSizeBytes, width: outputWidth, height: outputHeight, durationMs: Math.round(outputDuration * 1000), frameRate: videoStream?.r_frame_rate || null, videoCodec: "h264", audioCodec: "aac", validationStatus: "PENDING", validationMetadata: JSON.stringify({ appAssetIds: appAssets.map((asset) => asset.id), composition: getAppStudioPreset(creation.presetId).composition }), sourceProviderUrlHost: "local_ffmpeg", },
         update: {},
       });
       currentVideoPath = brollPath;

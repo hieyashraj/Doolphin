@@ -52,7 +52,7 @@ export async function extractVerificationFrames(filePath, outputDirectory, frame
   return fs.readdirSync(outputDirectory).filter((name) => /^frame_\d+\.jpg$/.test(name)).sort().map((name) => `${outputDirectory}/${name}`);
 }
 
-export async function composeExactBroll({ baseVideoPath, brollInputs, outputPath, durationSeconds, width, height }) {
+export async function composeExactBroll({ baseVideoPath, brollInputs, outputPath, durationSeconds, width, height, composition = "INSERT" }) {
   if (!brollInputs.length) return baseVideoPath;
   const args = ["-v", "error", "-i", baseVideoPath];
   for (const input of brollInputs) {
@@ -68,8 +68,15 @@ export async function composeExactBroll({ baseVideoPath, brollInputs, outputPath
     const end = Math.min(durationSeconds - 0.5, start + segmentLength);
     const prepared = `b${index}`;
     const output = `v${index}`;
-    filters.push(`[${index + 1}:v]scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,setpts=PTS-STARTPTS+${start}/TB[${prepared}]`);
-    filters.push(`[${previous}][${prepared}]overlay=0:0:enable='between(t,${start},${end})':eof_action=pass[${output}]`);
+    if (composition === "PIP") {
+      const pipWidth = Math.max(240, Math.round(width * 0.42));
+      const pipHeight = Math.max(240, Math.round(height * 0.42));
+      filters.push(`[${index + 1}:v]scale=${pipWidth}:${pipHeight}:force_original_aspect_ratio=decrease,pad=${pipWidth}:${pipHeight}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,setpts=PTS-STARTPTS+${start}/TB[${prepared}]`);
+      filters.push(`[${previous}][${prepared}]overlay=main_w-overlay_w-40:40:enable='between(t,${start},${end})':eof_action=pass[${output}]`);
+    } else {
+      filters.push(`[${index + 1}:v]scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,setpts=PTS-STARTPTS+${start}/TB[${prepared}]`);
+      filters.push(`[${previous}][${prepared}]overlay=0:0:enable='between(t,${start},${end})':eof_action=pass[${output}]`);
+    }
     previous = output;
   });
   args.push("-filter_complex", filters.join(";"), "-map", `[${previous}]`, "-map", "0:a?", "-c:v", "libx264", "-preset", "fast", "-crf", "18", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", "-t", String(durationSeconds), "-y", outputPath);

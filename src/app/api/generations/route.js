@@ -175,7 +175,7 @@ async function handleGenerationSubmission(req) {
         userId: session.user.id,
         generationType: request.studio,
         workflowVersion: "2.0.0",
-        presetId: request.studio.toLowerCase(),
+        presetId: request.presetId || request.studio.toLowerCase(),
         title: `${request.studio.replace("_STUDIO", "").replace("_", " ")} video`,
         spokenScript: request.script.text,
         prompt: request.instructions.raw || request.script.text,
