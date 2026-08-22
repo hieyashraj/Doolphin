@@ -21,6 +21,71 @@ import { EXPLORE_IMAGES, getExploreImageById } from "@/lib/explore-images-data";
 
 const compatible = (value, values) => (values.includes(value) ? value : values[0]);
 
+function apiErrorMessage(data, fallback) {
+  const validationMessages = Array.isArray(data?.errors)
+    ? data.errors.map((entry) => (typeof entry === "string" ? entry : entry?.message)).filter(Boolean)
+    : [];
+  return validationMessages.join(" ") || data?.error || data?.message || fallback;
+}
+
+async function readApiJson(response, fallback) {
+  const contentType = response.headers.get("content-type") || "";
+  if (!contentType.toLowerCase().includes("application/json")) {
+    throw new Error(`${fallback} The server returned an unexpected response (${response.status}).`);
+  }
+  const data = await response.json();
+  if (!response.ok) throw new Error(apiErrorMessage(data, `${fallback} (${response.status}).`));
+  return data;
+}
+
+function hasValidCapabilities(model) {
+  const caps = model?.productCapabilities;
+  const references = caps?.referenceImages;
+  const validOptions = (control, valueType) =>
+    control &&
+    typeof control.visible === "boolean" &&
+    Array.isArray(control.values) &&
+    (!control.visible || (control.values.length > 0 && control.values.every((value) => typeof value === valueType)));
+
+  return Boolean(
+    model &&
+      typeof model.id === "string" &&
+      model.id &&
+      typeof model.displayName === "string" &&
+      references &&
+      typeof references.visible === "boolean" &&
+      Number.isInteger(references.min) &&
+      Number.isInteger(references.max) &&
+      references.min >= 0 &&
+      references.max >= references.min &&
+      validOptions(caps.aspectRatio, "string") &&
+      validOptions(caps.outputResolution, "string") &&
+      validOptions(caps.requestedOutputCount, "number") &&
+      caps.requestedOutputCount.values.every((value) => Number.isInteger(value) && value > 0)
+  );
+}
+
+function referenceMinimumMessage(minimum) {
+  return `This model requires at least ${minimum} reference image${minimum === 1 ? "" : "s"}. Add one from Explore or My Assets.`;
+}
+
+async function loadDeliveredImages(creationId, expectedCount) {
+  const delivered = [];
+  for (let page = 0; page < 100; page += 1) {
+    const response = await fetch(`/api/my-images?page=${page}`);
+    const data = await readApiJson(response, "Generated images could not be loaded yet.");
+    if (!Array.isArray(data.items)) throw new Error("Generated images could not be loaded because the API response was invalid.");
+    const matches = data.items.filter(
+      (item) => item?.creationId === creationId && typeof item.url === "string" && item.url
+    );
+    delivered.push(...matches);
+    if ((expectedCount > 0 && delivered.length >= expectedCount) || !data.hasMore) break;
+    if (delivered.length > 0 && matches.length === 0) break;
+    if (page === 99) throw new Error("Generated images could not be located in the library yet.");
+  }
+  return delivered.sort((left, right) => (left.outputIndex ?? 0) - (right.outputIndex ?? 0));
+}
+
 function normalize(model, draft) {
   const caps = model.productCapabilities;
   const refVisible = Boolean(caps?.referenceImages?.visible);
@@ -79,23 +144,34 @@ export default function ImageStudio() {
 
   const refreshAssets = async () => {
     const response = await fetch("/api/assets");
-    const data = await response.json();
-    setAssets((data.assets || []).filter((asset) => asset.mimeType?.startsWith("image/")));
+    const data = await readApiJson(response, "Your image assets could not be loaded.");
+    if (!Array.isArray(data.assets)) throw new Error("Your image assets could not be loaded because the API response was invalid.");
+    setAssets(data.assets.filter((asset) => asset?.mimeType?.startsWith("image/")));
   };
 
   useEffect(() => {
-    Promise.all([fetch("/api/image-models").then((response) => response.json()), refreshAssets()])
+    Promise.all([
+      fetch("/api/image-models").then((response) => readApiJson(response, "Image models could not be loaded.")),
+      refreshAssets()
+    ])
       .then(([modelData]) => {
-        const enabled = (modelData.models || []).filter((item) => item.available);
+        if (!Array.isArray(modelData.models)) throw new Error("Image models could not be loaded because the API response was invalid.");
+        const invalid = modelData.models.find((item) => item?.available && !hasValidCapabilities(item));
+        if (invalid) throw new Error(`Image model ${invalid.displayName || invalid.id || "configuration"} has invalid capabilities. Please retry or contact support.`);
+        const enabled = modelData.models.filter((item) => item.available);
+        if (!enabled.length) throw new Error("No image models are currently enabled. Please retry later or contact support.");
         setModels(enabled);
-        if (enabled[0]) setDraft((current) => normalize(enabled[0], current));
+        setDraft((current) => normalize(enabled[0], current));
       })
-      .catch(() => setError("Image Studio is temporarily unavailable. Please retry."))
+      .catch((discoveryError) => setError(discoveryError.message || "Image Studio is temporarily unavailable. Please retry."))
       .finally(() => setLoading(false));
   }, []);
 
   const model = models.find((item) => item.id === draft.modelId);
   const caps = model?.productCapabilities;
+  const totalAttachedReferences = (draft.referenceAssetIds?.length || 0) + (draft.exploreImageIds?.length || 0);
+  const minimumReferences = caps?.referenceImages?.visible ? caps.referenceImages.min : 0;
+  const missingRequiredReferences = totalAttachedReferences < minimumReferences;
   const selectedAssets = assets.filter((asset) => (draft.referenceAssetIds || []).includes(asset.id));
   const selectedExploreItems = (draft.exploreImageIds || []).map((id) => getExploreImageById(id)).filter(Boolean);
 
@@ -177,6 +253,12 @@ export default function ImageStudio() {
 
   useEffect(() => {
     if (!model || !draft.prompt.trim()) return undefined;
+    if (missingRequiredReferences) {
+      setQuote(null);
+      setQuoteState("idle");
+      setError(referenceMinimumMessage(minimumReferences));
+      return undefined;
+    }
     setQuoteState("calculating");
     const timer = setTimeout(async () => {
       try {
@@ -185,27 +267,35 @@ export default function ImageStudio() {
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ version: "image-generation.v1", ...draft })
         });
+        const contentType = response.headers.get("content-type") || "";
+        if (!contentType.toLowerCase().includes("application/json")) {
+          throw new Error(`Pricing could not be calculated because the server returned an unexpected response (${response.status}).`);
+        }
         const data = await response.json();
         if (!response.ok) {
           setQuote(null);
           setQuoteState(data.code === "INSUFFICIENT_CREDITS" ? "insufficient" : "unavailable");
           setError(
-            data.error ||
-              (data.code === "INSUFFICIENT_CREDITS"
+            apiErrorMessage(
+              data,
+              data.code === "INSUFFICIENT_CREDITS"
                 ? "Add credits to generate this image."
-                : "Pricing is temporarily unavailable.")
+                : "Pricing is temporarily unavailable."
+            )
           );
           return;
         }
+        setError("");
         setQuote(data.quote);
         setQuoteState("ready");
-      } catch {
+      } catch (preflightError) {
+        setQuote(null);
         setQuoteState("unavailable");
-        setError("Pricing is temporarily unavailable. Please retry.");
+        setError(preflightError.message || "Pricing is temporarily unavailable. Please retry.");
       }
     }, 450);
     return () => clearTimeout(timer);
-  }, [draft, model, quoteAttempt]);
+  }, [draft, model, quoteAttempt, missingRequiredReferences, minimumReferences]);
 
   const upload = async (files) => {
     const file = files?.[0];
@@ -259,6 +349,10 @@ export default function ImageStudio() {
   };
 
   const generate = async () => {
+    if (missingRequiredReferences) {
+      setError(referenceMinimumMessage(minimumReferences));
+      return;
+    }
     if (!quote || quoteState !== "ready" || generation) return;
     setQuoteState("submitting");
     setWorkspaceView("result");
@@ -269,9 +363,13 @@ export default function ImageStudio() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ quoteId: quote.id, idempotencyKey: idempotencyKey.current })
       });
+      const contentType = response.headers.get("content-type") || "";
+      if (!contentType.toLowerCase().includes("application/json")) {
+        throw new Error(`Generation could not start because the server returned an unexpected response (${response.status}).`);
+      }
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Generation could not start.");
-      setGeneration({ id: data.creationId, status: data.status || "PROCESSING" });
+      if (!response.ok) throw new Error(apiErrorMessage(data, "Generation could not start."));
+      setGeneration({ id: data.creationId, status: data.status || "PROCESSING", urls: [] });
       setQuoteState("generating");
     } catch (generationError) {
       idempotencyKey.current = null;
@@ -289,11 +387,19 @@ export default function ImageStudio() {
   };
 
   useEffect(() => {
-    if (!generation?.id || ["COMPLETED", "FAILED"].includes(generation.status)) return undefined;
+    if (
+      !generation?.id ||
+      generation.status === "FAILED" ||
+      (generation.status === "COMPLETED" && generation.urls?.length)
+    ) return undefined;
     let active = true;
     const poll = async () => {
       try {
         const response = await fetch(`/api/images/generations/${generation.id}/result`, { method: "POST" });
+        const contentType = response.headers.get("content-type") || "";
+        if (!contentType.toLowerCase().includes("application/json")) {
+          throw new Error(`Generation status returned an unexpected response (${response.status}).`);
+        }
         const data = await response.json();
         if (!response.ok) {
           if (response.status === 404) {
@@ -302,17 +408,39 @@ export default function ImageStudio() {
                 ? { ...current, status: "FAILED", message: "This generation is no longer available." }
                 : current
             );
+          } else if (active) {
+            setGeneration((current) =>
+              current?.id === generation.id
+                ? { ...current, message: apiErrorMessage(data, "Generation status is temporarily unavailable; retrying.") }
+                : current
+            );
           }
           return;
         }
         const next = { ...data };
         if (data.status === "COMPLETED") {
-          const images = await fetch("/api/my-images").then((result) => result.json());
-          next.url = images.items?.find((item) => item.creationId === generation.id)?.url;
+          next.status = "FINALIZING";
+          next.message = "Generation is complete. Finalizing delivery of your image files…";
+          try {
+            const delivered = await loadDeliveredImages(generation.id, Number(data.artifactCount) || 0);
+            if (delivered.length) {
+              next.status = "COMPLETED";
+              next.urls = delivered.map((item) => item.url);
+              next.message = "";
+            }
+          } catch (deliveryError) {
+            next.message = `${deliveryError.message || "Generated images could not be loaded yet."} Finalizing delivery and retrying…`;
+          }
         }
         if (active) setGeneration((current) => (current?.id === generation.id ? { ...current, ...next } : current));
-      } catch {
-        // Keep the persisted job in its current state and retry on the next interval.
+      } catch (pollError) {
+        if (active) {
+          setGeneration((current) =>
+            current?.id === generation.id
+              ? { ...current, message: pollError.message || "Generation status is temporarily unavailable; retrying." }
+              : current
+          );
+        }
       }
     };
     void poll();
@@ -321,7 +449,7 @@ export default function ImageStudio() {
       active = false;
       clearInterval(timer);
     };
-  }, [generation?.id, generation?.status]);
+  }, [generation?.id, generation?.status, generation?.urls?.length]);
 
   const buttonText = !draft.prompt.trim()
     ? "Generate"
@@ -338,8 +466,6 @@ export default function ImageStudio() {
     : quote
     ? `Generate · ${quote.credits} credits`
     : "Generate";
-
-  const totalAttachedReferences = (draft.referenceAssetIds?.length || 0) + (draft.exploreImageIds?.length || 0);
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col overflow-hidden rounded-[26px] border border-[#111111]/15 bg-[#FAF8ED] text-[#111111] shadow-sm md:flex-row">
@@ -416,6 +542,7 @@ export default function ImageStudio() {
                     Reference images{" "}
                     <span className="font-normal text-[#77746D]">
                       {totalAttachedReferences}/{caps.referenceImages.max}
+                      {minimumReferences > 0 ? ` · minimum ${minimumReferences}` : ""}
                     </span>
                   </p>
                 </div>
@@ -606,6 +733,7 @@ export default function ImageStudio() {
               disabled={
                 !model ||
                 !draft.prompt.trim() ||
+                missingRequiredReferences ||
                 quoteState === "calculating" ||
                 quoteState === "unavailable" ||
                 quoteState === "insufficient" ||
@@ -638,15 +766,26 @@ export default function ImageStudio() {
             />
             <h2 className="mt-4 font-serif text-2xl font-bold">
               {generation.status === "COMPLETED"
-                ? "Your image is ready"
+                ? generation.urls?.length > 1 ? "Your images are ready" : "Your image is ready"
                 : generation.status === "FAILED"
                 ? "Image generation didn’t complete"
+                : generation.status === "FINALIZING"
+                ? "Finalizing delivery"
                 : "Creating your image"}
             </h2>
 
-            {generation.status === "COMPLETED" && generation.url ? (
+            {generation.status === "COMPLETED" && generation.urls?.length ? (
               <>
-                <img src={generation.url} alt="Generated image" className="mt-5 max-h-[55vh] rounded-2xl border border-[#111111]/15 shadow-md" />
+                <div className={`mt-5 grid w-full max-w-5xl gap-4 ${generation.urls.length > 1 ? "sm:grid-cols-2" : "grid-cols-1"}`}>
+                  {generation.urls.map((url, index) => (
+                    <img
+                      key={`${url}-${index}`}
+                      src={url}
+                      alt={generation.urls.length > 1 ? `Generated image ${index + 1}` : "Generated image"}
+                      className="mx-auto max-h-[55vh] max-w-full rounded-2xl border border-[#111111]/15 object-contain shadow-md"
+                    />
+                  ))}
+                </div>
                 <div className="mt-5 flex items-center justify-center gap-3">
                   <Link href="/app?tab=library" className="inline-flex items-center gap-2 rounded-xl border border-[#111111]/15 bg-white px-4 py-2 text-xs font-bold shadow-sm hover:bg-[#EFECE1]">
                     Open My Library
@@ -671,7 +810,7 @@ export default function ImageStudio() {
               </>
             ) : (
               <p className="mt-2 text-xs text-[#66635C]">
-                You can keep working or return to My Library later.
+                {generation.message || "You can keep working or return to My Library later."}
               </p>
             )}
           </div>
