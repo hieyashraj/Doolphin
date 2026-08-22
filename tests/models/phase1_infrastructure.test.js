@@ -52,8 +52,8 @@ test("Phase 1 Infrastructure: 3-Layer Model Registry studio filtering and lookup
 
   // The product listing is deliberately bounded by reviewed adapters inside
   // the 71-model DOCX portfolio. All 71 retain descriptors, 13 reviewed video
-  // adapters may dispatch, and 9 are currently exposed because the existing
-  // form can satisfy their required inputs.
+  // adapters may dispatch, and 5 are currently exposed because the existing
+  // Video Studio form can satisfy their required inputs.
   const imageModels = await listModelsByStudio("image-studio");
   assert.equal(imageModels.length, 2);
   assert.ok(imageModels.some((m) => m.productPolicy.id === "muapi.gpt-image-2-t2i"));
@@ -61,7 +61,7 @@ test("Phase 1 Infrastructure: 3-Layer Model Registry studio filtering and lookup
   for (const model of imageModels) assert.ok(model.productPolicy.studios.includes("image-studio"));
 
   const videoModels = await listModelsByStudio("video-studio");
-  assert.equal(videoModels.length, 9);
+  assert.equal(videoModels.length, 5);
   assert.equal(videoModels.some((m) => m.productPolicy.id === "muapi.seedance-2.5-spicy-video-extend-480p"), false);
   assert.ok(videoModels.some((m) => m.productPolicy.id === "muapi.seedance2.omni-reference-fast"));
   assert.ok(videoModels.every((m) => m.productPolicy.curated && m.capabilityDescriptor?.dispatchable));

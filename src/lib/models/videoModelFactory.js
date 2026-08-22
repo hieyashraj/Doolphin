@@ -35,6 +35,11 @@ function workflowCompatibleStudios(descriptor, entry) {
   return studios;
 }
 
+function curatedDisplayName(descriptor, entry) {
+  if (descriptor.providerId === "seedance-2-omni-reference-no-video-fast") return "Seedance 2 Omni Reference Fast";
+  return entry.displayName;
+}
+
 function buildDefinition(descriptor, displayOrder) {
   const entry = catalog.models[descriptor.providerId];
   if (!entry) throw new Error(`[CuratedPortfolio] '${descriptor.providerId}' did not reconcile to the provider catalog`);
@@ -55,7 +60,7 @@ function buildDefinition(descriptor, displayOrder) {
     }),
     productPolicy: Object.freeze({
       id: descriptor.id,
-      displayName: entry.displayName,
+      displayName: curatedDisplayName(descriptor, entry),
       studios: Object.freeze(workflowCompatibleStudios(descriptor, entry)),
       generationMode: entry.mode,
       normalizedMode: descriptor.mode,

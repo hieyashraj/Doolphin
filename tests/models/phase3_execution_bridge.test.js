@@ -87,22 +87,30 @@ test("Phase 3.2 Deep Immutability: Mutating top-level scalar, nested object, nes
   assert.equal(plan.providerPayload.mask_indexs[0], originalMask0);
 });
 
-test("Phase 3.2 Server-Controlled Webhook Transport: Webhook URL is strictly server-controlled and ignores user input", async () => {
-  const rawInput = {
+test("Phase 3.2 Server-Controlled Webhook Transport: Webhook URL is strictly server-controlled and rejects user input", async () => {
+  const maliciousInput = {
     prompt: "Edit image",
     sourceRequestId: "req_999",
-    // User attempts to inject custom malicious webhook
     webhookUrl: "https://evil-attacker.com/steal-webhooks",
   };
 
+  await assert.rejects(
+    () => prepareExecutionPlan({
+      modelId: "muapi.grok-imagine-image-2-edit",
+      normalizedInput: maliciousInput,
+      env: TEST_ENV_SANDBOX,
+      fetchImpl: offlineProviderFetch,
+    }),
+    (error) => error instanceof ModelPlatformError && error.code === ERROR_CODES.INVALID_MODEL_INPUT,
+  );
+
   const plan = await prepareExecutionPlan({
     modelId: "muapi.grok-imagine-image-2-edit",
-    normalizedInput: rawInput,
+    normalizedInput: { prompt: "Edit image", sourceRequestId: "req_999" },
     env: TEST_ENV_SANDBOX,
     fetchImpl: offlineProviderFetch,
   });
 
-  // Prove user input did NOT override server webhook transport URL and secrets are omitted from prepared plan
   assert.equal(plan.transport.webhookUrl, undefined);
   assert.equal(plan.transport.webhookStrategy, "DOOLPHIN_MUAPI_V1");
 });

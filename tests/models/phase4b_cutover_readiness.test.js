@@ -781,7 +781,7 @@ test("Phase 4B.1 Studio Workflow Bridge: Canonical compiled prompt is passed dir
 
   assert.equal(normalized.prompt, compiledPrompt);
   assert.notEqual(normalized.prompt, "[object Object]");
-  assert.equal(normalized.extraInputs.images[0], "https://r2.doolphin.com/avatar.jpg");
+  assert.equal(normalized.referenceImages[0], "https://r2.doolphin.com/avatar.jpg");
   assert.equal(normalized.earliestSignedAssetExpiryMs, nowMs + 30 * 60 * 1000);
 });
 

@@ -35,7 +35,7 @@ export async function getModel(modelId, { fetchImpl, env = process.env, forceRef
   let localDef = LOCAL_MODEL_DEFINITIONS[modelId] || null;
   if (!localDef) {
     for (const def of Object.values(LOCAL_MODEL_DEFINITIONS)) {
-      if (def.productPolicy.legacyAliases.includes(modelId)) {
+      if (def.providerSpec.providerModelId === modelId || def.productPolicy.legacyAliases.includes(modelId)) {
         localDef = def;
         break;
       }
