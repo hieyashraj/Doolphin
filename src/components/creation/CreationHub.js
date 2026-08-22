@@ -26,13 +26,13 @@ import AppStudioForm from "./AppStudioForm";
 import ProgressTimeline from "./ProgressTimeline";
 import { PRESETS_LIBRARY } from "@/lib/presetsData";
 import CreationDetailModal from "./CreationDetailModal";
-import { listAppStudioGenerationModels, listProductStudioGenerationModels, listGenerationModels } from "@/lib/generation/modelRegistry";
 import toast from "react-hot-toast";
 import LazyVideo from "@/components/LazyVideo";
 import { useAppAccount } from "@/components/AppAccountProvider";
 import { IN_FLIGHT_VARIANT_STATUSES, VIDEO_GENERATION_TYPES, videoSlotsForPlan } from "@/lib/generation/concurrencyLimit";
-import { APP_STUDIO_PRESETS, getAppStudioPreset } from "@/lib/app-studio/config";
-import { PRODUCT_STUDIO_PRESETS, getProductStudioPreset } from "@/lib/product-studio/config";
+import { APP_STUDIO_MODELS, APP_STUDIO_PRESETS, getAppStudioPreset } from "@/lib/app-studio/config";
+import { PRODUCT_STUDIO_MODELS, PRODUCT_STUDIO_PRESETS, getProductStudioPreset } from "@/lib/product-studio/config";
+import { INITIAL_VIDEO_MODELS, normaliseVideoModels } from "@/lib/studio/clientModelRegistry";
 
 const PRESET_MODES = [
   {
@@ -61,7 +61,7 @@ const PRESET_MODES = [
   }
 ];
 
-const MODELS = listGenerationModels();
+const MODELS = INITIAL_VIDEO_MODELS;
 
 const STUDIO_IDS = {
   video_maker: "VIDEO_STUDIO",
@@ -202,6 +202,7 @@ export default function CreationHub({
   const [draftSaveStatus, setDraftSaveStatus] = useState("");
   const [sceneMotion, setSceneMotion] = useState("");
   const [selectedModel, setSelectedModel] = useState(MODELS[0]);
+  const [videoModels, setVideoModels] = useState(MODELS);
   const [duration, setDuration] = useState("Auto");
   const [resolution, setResolution] = useState("720p");
   const [aspectRatio, setAspectRatio] = useState("9:16");
@@ -218,11 +219,36 @@ export default function CreationHub({
   const [additionalInstructions, setAdditionalInstructions] = useState("");
   const [draftAvatar, setDraftAvatar] = useState(selectedAvatar || null);
 
-  const appStudioModels = useMemo(() => listAppStudioGenerationModels({
-    hasScreenshot: appImages.some((asset) => !asset.mimeType?.startsWith("video/")),
-    hasRecording: appImages.some((asset) => asset.mimeType?.startsWith("video/")),
-  }), [appImages]);
-  const productStudioModels = useMemo(() => listProductStudioGenerationModels(), []);
+  // These are compact, client-safe product contracts.  Their provider payload
+  // adapters and all request validation stay on the server.
+  const appStudioModels = APP_STUDIO_MODELS;
+  const productStudioModels = PRODUCT_STUDIO_MODELS;
+
+  // Load the full, plan-filtered video bench only after hydration.  A catalog
+  // request failure must leave a working registered fallback instead of
+  // crashing the shared studio workspace.
+  useEffect(() => {
+    let active = true;
+    const loadVideoModels = async () => {
+      try {
+        const response = await fetch("/api/models?studio=video-studio");
+        if (!response.ok) return;
+        const payload = await response.json();
+        const nextModels = normaliseVideoModels(payload?.models);
+        if (!active) return;
+        setVideoModels(nextModels);
+        setSelectedModel((current) => {
+          if (activeModeId !== "video_maker") return current;
+          return nextModels.find((model) => model.id === current?.id) || nextModels[0] || current;
+        });
+      } catch {
+        // The initial registered model remains available while connectivity is
+        // restored. Submission still performs authoritative server preflight.
+      }
+    };
+    void loadVideoModels();
+    return () => { active = false; };
+  }, []);
   // Switching to App Studio (or replacing a screenshot with a recording) can
   // make a previously selected model incompatible. Move to a compatible model
   // immediately instead of deferring an opaque preflight error until the user
@@ -1006,7 +1032,7 @@ export default function CreationHub({
               onRemoveImage={handleRemoveImage}
               audioSource={audioSource}
               setAudioSource={setAudioSource}
-              modelsList={MODELS}
+              modelsList={videoModels}
             />
           )}
 

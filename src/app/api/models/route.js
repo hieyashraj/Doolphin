@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireActivatedAccount } from "@/lib/access/authorization";
 import { listGeneratedModelsByStudio, toClientModel, CATALOG_REVISION } from "@/lib/models/videoModelFactory";
+import { getGenerationModel } from "@/lib/generation/modelRegistry";
 import { restrictedFamiliesForPlan, isModelAllowedForPlan } from "@/lib/entitlements/modelAccess";
 
 /**
@@ -36,7 +37,19 @@ export async function GET(request) {
         modelFamily: definition.productPolicy.family,
       })
     )
-    .map(toClientModel);
+    .map((definition) => {
+      const clientModel = toClientModel(definition);
+      const model = getGenerationModel(clientModel.id);
+      return {
+        ...clientModel,
+        resolutions: model?.resolutions || ["720p"],
+        aspectRatios: model?.aspectRatios || ["9:16", "16:9"],
+        minDuration: model?.minDuration ?? 4,
+        maxDuration: model?.maxDuration ?? 10,
+        maxImages: model?.maxImages ?? 1,
+        maxVideoReferences: model?.maxVideoReferences ?? 0,
+      };
+    });
 
   return NextResponse.json({
     studio,
