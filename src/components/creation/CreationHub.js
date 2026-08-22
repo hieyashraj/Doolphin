@@ -418,7 +418,13 @@ export default function CreationHub({
     studioDrafts.current[activeModeId] = currentDraft();
     loadDraft(studioDrafts.current[nextModeId] || blankDraft());
     setActiveModeId(nextModeId);
-    setPreflight(null);
+    // A studio change invalidates every quote derived from the previous
+    // composition.  `setPreflight` used to be called here even though no such
+    // state exists, throwing a client-side ReferenceError whenever App or
+    // Product Studio was selected and taking down the shared workspace.
+    setPreparedQuote(null);
+    setPreparedQuoteRequest(null);
+    setQuoteUnavailableRequest(null);
     setSubmitError(null);
     onStudioModeChange?.(nextModeId);
   };

@@ -23,3 +23,11 @@ test("CreationHub does not bundle the server provider catalog into its initial c
   assert.match(source, /clientModelRegistry/);
   assert.match(source, /\/api\/models\?studio=video-studio/);
 });
+
+test("studio switching clears quote state without invoking an undefined setter", () => {
+  const source = fs.readFileSync(new URL("../src/components/creation/CreationHub.js", import.meta.url), "utf8");
+  assert.doesNotMatch(source, /setPreflight\s*\(/);
+  assert.match(source, /setPreparedQuote\(null\)/);
+  assert.match(source, /setPreparedQuoteRequest\(null\)/);
+  assert.match(source, /setQuoteUnavailableRequest\(null\)/);
+});
