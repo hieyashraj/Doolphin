@@ -24,7 +24,7 @@
   ],
   "scripts": {
     "dev": "next dev --webpack",
-    "build": "prisma generate && next build && node -r dotenv/config scripts/check-next-route-cjs.cjs",
+    "build": "prisma generate && next build --webpack && node -r dotenv/config scripts/check-next-route-cjs.cjs",
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
