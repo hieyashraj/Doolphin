@@ -36,7 +36,7 @@ function scenarioRequest(studio, primaryState, deliveryState, referenceState, ou
   return {
     version: "1",
     studio,
-    modelId,
+    modelId: studio === "PRODUCT_STUDIO" ? "muapi.seedance-2.5-omni-reference" : modelId,
     modelLocked: true,
     script: { text: "This workflow keeps my campaign simple.", language: "auto", maxCharacters: 300 },
     instructions: { raw: instructions },

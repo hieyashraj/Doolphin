@@ -3,6 +3,7 @@ import { z } from "zod";
 import { getGenerationModel } from "./modelRegistry.js";
 import { calculateAuthoritativeGenerationQuote } from "./modelCostRegistry.js";
 import { APP_STUDIO_MAX_DURATION, getAppStudioModel, getAppStudioPreset } from "../app-studio/config.js";
+import { PRODUCT_STUDIO_MAX_DURATION, getProductStudioModel, getProductStudioPreset } from "../product-studio/config.js";
 
 export const STUDIO_TYPES = ["VIDEO_STUDIO", "PRODUCT_STUDIO", "APP_STUDIO"];
 export const DELIVERY_TYPES = ["AVATAR_DIALOGUE", "VOICEOVER", "MIXED"];
@@ -11,10 +12,14 @@ export const ASSET_ROLES = [
   "PRIMARY_PRODUCT",
   "PRODUCT_PACKAGING",
   "PRODUCT_USAGE_REFERENCE",
+  "PRODUCT_REFERENCE",
+  "PRODUCT_MOTION_REFERENCE",
+  "PRODUCT_AUDIO_REFERENCE",
   "APP_PRIMARY_SCREEN",
   "APP_SCREEN_RECORDING",
   "STYLE_REFERENCE",
 ];
+const PRODUCT_IMAGE_ROLES = new Set(["PRIMARY_PRODUCT", "PRODUCT_PACKAGING", "PRODUCT_USAGE_REFERENCE"]);
 
 const assetSchema = z.object({
   assetId: z.string().min(1),
@@ -149,7 +154,7 @@ export function normalizeAndValidateGenerationRequest(input) {
   }
   request.modelId = model.id;
 
-  if (request.studio !== "APP_STUDIO" && !request.script.text) {
+  if (request.studio === "VIDEO_STUDIO" && !request.script.text) {
     errors.push(validationError("SCRIPT_REQUIRED", "Write a script before generating this video."));
   }
   if (request.studio === "APP_STUDIO") {
@@ -158,6 +163,14 @@ export function normalizeAndValidateGenerationRequest(input) {
     request.presetId = getAppStudioPreset(request.presetId).id;
     if (request.settings.durationMode === "EXPLICIT" && Number(request.settings.durationSeconds) > APP_STUDIO_MAX_DURATION) {
       errors.push(validationError("APP_STUDIO_DURATION_EXCEEDED", `App Studio supports a maximum ${APP_STUDIO_MAX_DURATION}-second video.`));
+    }
+  }
+  if (request.studio === "PRODUCT_STUDIO") {
+    const productModel = getProductStudioModel(request.modelId);
+    if (!productModel) errors.push(validationError("PRODUCT_STUDIO_MODEL_REQUIRED", "Choose Seedance 2.5 or Seedance 2.0 for Product Studio."));
+    request.presetId = getProductStudioPreset(request.presetId).id;
+    if (request.settings.durationMode === "EXPLICIT" && Number(request.settings.durationSeconds) > PRODUCT_STUDIO_MAX_DURATION) {
+      errors.push(validationError("PRODUCT_STUDIO_DURATION_EXCEEDED", `Product Studio supports a maximum ${PRODUCT_STUDIO_MAX_DURATION}-second video.`));
     }
   }
 
@@ -187,20 +200,24 @@ export function normalizeAndValidateGenerationRequest(input) {
     return false;
   });
 
-  const providerImageAssets = request.assets.filter((asset) => asset.role !== "APP_SCREEN_RECORDING");
+  const providerImageAssets = request.assets.filter((asset) => !["APP_SCREEN_RECORDING", "PRODUCT_MOTION_REFERENCE", "PRODUCT_AUDIO_REFERENCE"].includes(asset.role));
   const nonActorCount = providerImageAssets.length - actors.length;
   if (providerImageAssets.length > model.maxImages || nonActorCount > model.maxImages - 1) {
     errors.push(validationError("ASSET_LIMIT_EXCEEDED", `This model supports one avatar plus at most ${model.maxImages - 1} other images.`));
   }
 
   if (request.studio === "PRODUCT_STUDIO") {
-    const products = request.assets.filter((asset) => asset.role.startsWith("PRIMARY_PRODUCT") || asset.role.startsWith("PRODUCT_"));
+    const products = request.assets.filter((asset) => PRODUCT_IMAGE_ROLES.has(asset.role));
     if (!products.length) errors.push(validationError("PRODUCT_REQUIRED", "Product Studio requires at least one product image."));
     if (products.some((asset) => !asset.groupId || asset.groupId === "product_group_1" || asset.groupId.startsWith("unconfirmed_"))) errors.push(validationError("PRODUCT_GROUP_REQUIRED", "Name and confirm every product group before generation."));
     const groups = [...new Set(products.map((asset) => asset.groupId).filter(Boolean))];
     if (groups.length > 1 && /\b(first|second|third|last|other)\s+(one|product)\b/i.test(request.instructions.raw)) {
       errors.push(validationError("AMBIGUOUS_PRODUCT_REFERENCE", `Name the product group directly (${groups.join(", ")}) instead of using an ordinal reference.`));
     }
+    const motionReferences = request.assets.filter((asset) => asset.role === "PRODUCT_MOTION_REFERENCE");
+    const audioReferences = request.assets.filter((asset) => asset.role === "PRODUCT_AUDIO_REFERENCE");
+    if (motionReferences.length > (model.maxVideoReferences || 0)) errors.push(validationError("TOO_MANY_REFERENCES", `${model.displayName} supports at most ${model.maxVideoReferences || 0} product motion references.`));
+    if (audioReferences.length > model.maxAudioReferences) errors.push(validationError("TOO_MANY_REFERENCES", `${model.displayName} supports at most ${model.maxAudioReferences} audio references.`));
   }
 
   if (request.studio === "APP_STUDIO") {
@@ -222,7 +239,7 @@ export function normalizeAndValidateGenerationRequest(input) {
     errors.push(validationError("UNSUPPORTED_ASPECT_RATIO", `${model.displayName} supports: ${model.aspectRatios.join(", ")}.`));
   }
 
-  const estimatedSpeechSeconds = estimateSpeechDurationSeconds(request.script.text);
+  const estimatedSpeechSeconds = request.script.text ? estimateSpeechDurationSeconds(request.script.text) : 0;
   if (estimatedSpeechSeconds > model.maxDuration) {
     errors.push(validationError("SCRIPT_TIMING_EXCEEDED", `The script needs about ${estimatedSpeechSeconds}s at a natural pace, exceeding the ${model.maxDuration}s model limit.`));
   }

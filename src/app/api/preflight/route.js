@@ -187,6 +187,7 @@ async function handlePreflight(req) {
       const providerAssets = [
         ...(normalizedInput.extraInputs?.images || []),
         ...(normalizedInput.extraInputs?.videos || []),
+        ...(normalizedInput.extraInputs?.audios || []),
         ...(normalizedInput.sourceVideo ? [normalizedInput.sourceVideo] : []),
       ];
       const reachability = await assertProviderAssetsAreFetchable(providerAssets);

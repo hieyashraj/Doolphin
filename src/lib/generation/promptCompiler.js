@@ -1,5 +1,7 @@
 const PRODUCT_ROLES = new Set(["PRIMARY_PRODUCT", "PRODUCT_PACKAGING", "PRODUCT_USAGE_REFERENCE"]);
 import { getAppStudioPreset } from "../app-studio/config.js";
+import { getProductStudioPreset } from "../product-studio/config.js";
+import { normalizeProductAnalysis, planProductInteraction } from "../product-studio/interactionPlanner.js";
 
 function describeAsset(asset, imageIndex, studio) {
   const tag = `@image${imageIndex}`;
@@ -8,6 +10,9 @@ function describeAsset(asset, imageIndex, studio) {
   }
   if (PRODUCT_ROLES.has(asset.role)) {
     return `${tag} is the confirmed "${asset.alias}" view of product group "${asset.groupId}"; preserve its packaging, colors, shape, label, and logo.`;
+  }
+  if (asset.role === "PRODUCT_REFERENCE") {
+    return `${tag} is a supporting product, wardrobe, environment, pose, or style reference named "${asset.alias}". Follow its visual direction without replacing the hero product or the selected actor.`;
   }
   if (asset.role === "APP_PRIMARY_SCREEN") {
     return `${tag} is a confirmed ${asset.analysis?.deviceType || "app"} interface screen named "${asset.alias}"; preserve its UI structure and do not invent replacement text.`;
@@ -25,7 +30,11 @@ function defaultShotPlan(request) {
     const instruction = request.instructions.raw.toLowerCase();
     const explicitlyNamed = groups.filter((group) => instruction.includes(group.toLowerCase()));
     const featured = explicitlyNamed.length ? explicitlyNamed : groups;
-    return `The selected avatar naturally introduces and handles ${featured.map((group) => `"${group}"`).join(" and ")}. ${explicitlyNamed.length ? "Only the explicitly named product group is mandatory." : "No group was excluded, so every selected product group must receive clear screen time."} Use natural interaction shots and clean close-up moments suitable for exact uploaded product B-roll. ${delivery === "VOICEOVER" ? "Deliver the script as voiceover while the avatar demonstrates silently." : "The avatar delivers the on-camera portions."}`;
+    const hero = request.assets.find((asset) => PRODUCT_ROLES.has(asset.role));
+    const analysis = normalizeProductAnalysis(hero?.analysis);
+    const plan = planProductInteraction({ analysis, presetId: request.presetId, instructions: request.instructions.raw });
+    const preset = getProductStudioPreset(request.presetId);
+    return `${preset.direction} The selected avatar naturally introduces ${featured.map((group) => `"${group}"`).join(" and ")}. Resolved product interaction (${plan.source}): ${plan.modes.join(" → ")}. ${explicitlyNamed.length ? "Only the explicitly named product group is mandatory." : "No group was excluded, so every selected product group must receive clear screen time."} The product must physically participate in the scene with realistic grip, occlusion, shadows, scale and perspective; it must never be a flat sticker or substitute product. ${delivery === "VOICEOVER" ? "Deliver the script as voiceover while the avatar demonstrates silently." : request.script.text ? "The avatar delivers the on-camera portions." : "Make this a natural silent visual product ad."}`;
   }
   if (request.studio === "APP_STUDIO") {
     const preset = getAppStudioPreset(request.presetId);
@@ -40,7 +49,7 @@ function defaultShotPlan(request) {
 }
 
 export function compileCanonicalPrompt(request) {
-  const imageAssets = request.assets.filter((asset) => asset.role !== "APP_SCREEN_RECORDING");
+  const imageAssets = request.assets.filter((asset) => !["APP_SCREEN_RECORDING", "PRODUCT_MOTION_REFERENCE", "PRODUCT_AUDIO_REFERENCE"].includes(asset.role));
   const roleMap = imageAssets.map((asset, index) => ({
     imageIndex: index + 1,
     tag: `@image${index + 1}`,
@@ -58,10 +67,12 @@ export function compileCanonicalPrompt(request) {
     "ASSET MAP",
     ...imageAssets.map((asset, index) => describeAsset(asset, index + 1, request.studio)),
     "",
-    "DIALOGUE",
-    `${request.instructions.confirmedDelivery === "VOICEOVER" ? "The voiceover says" : "The creator says"} exactly: \"${request.script.text.replaceAll('"', '\\"')}\"`,
-    `Do not paraphrase, add, remove, translate, or replace words. Generate native speech.${request.instructions.confirmedDelivery === "VOICEOVER" ? " Do not create unrelated visible lip speech." : " Synchronize accurate lip movement during on-camera dialogue."}`,
-    "",
+    ...(request.script.text ? [
+      "DIALOGUE",
+      `${request.instructions.confirmedDelivery === "VOICEOVER" ? "The voiceover says" : "The creator says"} exactly: \"${request.script.text.replaceAll('"', '\\"')}\"`,
+      `Do not paraphrase, add, remove, translate, or replace words. Generate native speech.${request.instructions.confirmedDelivery === "VOICEOVER" ? " Do not create unrelated visible lip speech." : " Synchronize accurate lip movement during on-camera dialogue."}`,
+      "",
+    ] : request.studio === "PRODUCT_STUDIO" ? ["DIALOGUE", "No dialogue was supplied. Keep this product ad naturally silent unless the user explicitly requests sound.", ""] : []),
     "SHOT PLAN",
     defaultShotPlan(request),
   ];
@@ -72,6 +83,13 @@ export function compileCanonicalPrompt(request) {
   if (request.studio === "APP_STUDIO") {
     const preset = getAppStudioPreset(request.presetId);
     sections.push(`APP STUDIO PRESET: ${preset.name}. Composition strategy: ${preset.composition}.`);
+  }
+  if (request.studio === "PRODUCT_STUDIO") {
+    const hero = request.assets.find((asset) => PRODUCT_ROLES.has(asset.role));
+    const analysis = normalizeProductAnalysis(hero?.analysis);
+    const interaction = planProductInteraction({ analysis, presetId: request.presetId, instructions: request.instructions.raw });
+    const preset = getProductStudioPreset(request.presetId);
+    sections.push(`PRODUCT STUDIO PRESET: ${preset.name}. Product analysis: ${analysis.category}. Interaction plan (${interaction.source}): ${interaction.modes.join(" → ")}. Fidelity-critical shots must preserve the uploaded product's actual logo, packaging, typography, colors and printed graphics where they are clearly visible.`);
   }
   sections.push(
     `Delivery mode: ${request.instructions.confirmedDelivery}.`,

@@ -1,8 +1,7 @@
-import fs from "node:fs";
-
-const bootstrapCatalogRaw = JSON.parse(
-  fs.readFileSync(new URL("./catalog/bootstrap-catalog.json", import.meta.url), "utf-8")
-);
+// Static JSON import keeps the bootstrap fallback available to both Next build
+// compilers. `fs.readFileSync(new URL(...))` becomes a Webpack asset URL at
+// build time and breaks route collection before Product Studio can preflight.
+import bootstrapCatalogRaw from "./catalog/bootstrap-catalog.json" with { type: "json" };
 
 const nowIso = new Date().toISOString();
 const bootstrapCatalog = Object.freeze({

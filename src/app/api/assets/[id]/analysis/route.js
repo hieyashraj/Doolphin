@@ -25,10 +25,18 @@ const analysisSchema = z.object({
   pacingCues: z.array(z.string().max(200)).max(30),
   confidence: z.number().min(0).max(1),
   warnings: z.array(z.string().max(500)).max(30),
+  category: z.string().max(200).default("unknown"),
+  wearable: z.boolean().default(false),
+  edible: z.boolean().default(false),
+  drinkable: z.boolean().default(false),
+  topical: z.boolean().default(false),
+  electronic: z.boolean().default(false),
+  recommendedInteraction: z.array(z.string().max(80)).max(10).default([]),
+  importantFidelityRegions: z.array(z.string().max(160)).max(20).default([]),
 });
 
-const ANALYSIS_PROMPT = `Analyze this single UGC video input asset. Return only valid JSON with this exact shape:
-{"identity":"short subject/product/app identity","suggestedName":"human-readable alias","visibleText":["OCR text"],"deviceType":"mobile|tablet|desktop|browser|mixed|none|unknown","productViewType":"front|back|packaging|detail|usage|none|unknown","peoplePresent":0,"lighting":"short","framing":"short","cameraAngle":"short","environment":"short","colors":["short"],"pacingCues":["short"],"confidence":0.0,"warnings":["short"]}
+const ANALYSIS_PROMPT = `Analyze this single uploaded image for an app, creator, or physical product workflow. Return only valid JSON with this exact shape:
+{"identity":"short subject/product/app identity","suggestedName":"human-readable alias","visibleText":["OCR text"],"deviceType":"mobile|tablet|desktop|browser|mixed|none|unknown","productViewType":"front|back|packaging|detail|usage|none|unknown","peoplePresent":0,"lighting":"short","framing":"short","cameraAngle":"short","environment":"short","colors":["short"],"pacingCues":["short"],"confidence":0.0,"warnings":["short"],"category":"visible product category or unknown","wearable":false,"edible":false,"drinkable":false,"topical":false,"electronic":false,"recommendedInteraction":["hold"],"importantFidelityRegions":["visible logo or label"]}
 Do not invent unreadable text. peoplePresent must be an integer and confidence must be from 0 to 1.`;
 
 function parseAnalysisOutput(payload) {

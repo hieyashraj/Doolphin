@@ -26,12 +26,13 @@ import AppStudioForm from "./AppStudioForm";
 import ProgressTimeline from "./ProgressTimeline";
 import { PRESETS_LIBRARY } from "@/lib/presetsData";
 import CreationDetailModal from "./CreationDetailModal";
-import { listAppStudioGenerationModels, listGenerationModels } from "@/lib/generation/modelRegistry";
+import { listAppStudioGenerationModels, listProductStudioGenerationModels, listGenerationModels } from "@/lib/generation/modelRegistry";
 import toast from "react-hot-toast";
 import LazyVideo from "@/components/LazyVideo";
 import { useAppAccount } from "@/components/AppAccountProvider";
 import { IN_FLIGHT_VARIANT_STATUSES, VIDEO_GENERATION_TYPES, videoSlotsForPlan } from "@/lib/generation/concurrencyLimit";
 import { APP_STUDIO_PRESETS, getAppStudioPreset } from "@/lib/app-studio/config";
+import { PRODUCT_STUDIO_PRESETS, getProductStudioPreset } from "@/lib/product-studio/config";
 
 const PRESET_MODES = [
   {
@@ -84,6 +85,7 @@ const blankDraft = () => ({
   productImages: [],
   appImages: [],
   productGroupName: "",
+  productPresetId: PRODUCT_STUDIO_PRESETS[0].id,
   spokenScript: "",
   additionalInstructions: "",
   draftAvatar: null
@@ -108,6 +110,7 @@ const serializeDraft = (draft) => ({
   productImages: serializableAssets(draft.productImages),
   appImages: serializableAssets(draft.appImages),
   productGroupName: asString(draft.productGroupName, 80),
+  productPresetId: asString(draft.productPresetId, 80),
   spokenScript: asString(draft.spokenScript, 300),
   additionalInstructions: asString(draft.additionalInstructions),
   draftAvatar: draft.draftAvatar && typeof draft.draftAvatar === "object" ? draft.draftAvatar : null
@@ -131,6 +134,7 @@ const restoreDraft = (savedDraft) => {
     productImages: serializableAssets(savedDraft.productImages),
     appImages: serializableAssets(savedDraft.appImages),
     productGroupName: asString(savedDraft.productGroupName, 80),
+    productPresetId: PRODUCT_STUDIO_PRESETS.some((preset) => preset.id === savedDraft.productPresetId) ? savedDraft.productPresetId : fallback.productPresetId,
     spokenScript: asString(savedDraft.spokenScript, 300),
     additionalInstructions: asString(savedDraft.additionalInstructions),
     draftAvatar: savedDraft.draftAvatar && typeof savedDraft.draftAvatar === "object" ? savedDraft.draftAvatar : null
@@ -208,6 +212,7 @@ export default function CreationHub({
   const [productImages, setProductImages] = useState([]);
   const [appImages, setAppImages] = useState([]);
   const [productGroupName, setProductGroupName] = useState("");
+  const [productPresetId, setProductPresetId] = useState(PRODUCT_STUDIO_PRESETS[0].id);
   const [appPresetId, setAppPresetId] = useState(APP_STUDIO_PRESETS[0].id);
   const [spokenScript, setSpokenScript] = useState("");
   const [additionalInstructions, setAdditionalInstructions] = useState("");
@@ -217,18 +222,20 @@ export default function CreationHub({
     hasScreenshot: appImages.some((asset) => !asset.mimeType?.startsWith("video/")),
     hasRecording: appImages.some((asset) => asset.mimeType?.startsWith("video/")),
   }), [appImages]);
+  const productStudioModels = useMemo(() => listProductStudioGenerationModels(), []);
   // Switching to App Studio (or replacing a screenshot with a recording) can
   // make a previously selected model incompatible. Move to a compatible model
   // immediately instead of deferring an opaque preflight error until the user
   // presses Generate.
   useEffect(() => {
-    if (activeModeId !== "app" || appStudioModels.some((model) => model.id === selectedModel?.id)) return;
-    const nextModel = appStudioModels[0];
+    const scopedModels = activeModeId === "app" ? appStudioModels : activeModeId === "product" ? productStudioModels : null;
+    if (!scopedModels || scopedModels.some((model) => model.id === selectedModel?.id)) return;
+    const nextModel = scopedModels[0];
     if (!nextModel) return;
     setSelectedModel(nextModel);
     setResolution(nextModel.resolutions[0]);
     setAspectRatio(nextModel.aspectRatios[0]);
-  }, [activeModeId, appStudioModels, selectedModel?.id]);
+  }, [activeModeId, appStudioModels, productStudioModels, selectedModel?.id]);
 
   useEffect(() => {
     if (selectedAvatar) setDraftAvatar(selectedAvatar);
@@ -288,7 +295,7 @@ export default function CreationHub({
 
   const currentDraft = () => ({
     sceneMotion, selectedModel, duration, resolution, aspectRatio, numVideos,
-    uploadedImages, productImages, appImages, productGroupName,
+    uploadedImages, productImages, appImages, productGroupName, productPresetId,
     spokenScript, additionalInstructions, draftAvatar
   });
 
@@ -303,6 +310,7 @@ export default function CreationHub({
     setProductImages(draft.productImages);
     setAppImages(draft.appImages);
     setProductGroupName(draft.productGroupName);
+    setProductPresetId(draft.productPresetId);
     setSpokenScript(draft.spokenScript);
     setAdditionalInstructions(draft.additionalInstructions);
     setDraftAvatar(draft.draftAvatar);
@@ -363,7 +371,7 @@ export default function CreationHub({
   }, [
     draftStorageReady, activeModeId, sceneMotion, selectedModel, duration,
     resolution, aspectRatio, numVideos, uploadedImages, productImages,
-    appImages, productGroupName, spokenScript, additionalInstructions, draftAvatar
+    appImages, productGroupName, productPresetId, spokenScript, additionalInstructions, draftAvatar
   ]);
 
   useEffect(() => {
@@ -432,10 +440,16 @@ export default function CreationHub({
         name: getAppStudioPreset(appPresetId).name,
         subtitle: "App & SaaS Showcase",
       }
-    : PRESET_MODES.find((m) => m.id === activeModeId) || PRESET_MODES[0];
+    : activeModeId === "product"
+      ? {
+          ...(PRESET_MODES.find((m) => m.id === "product") || PRESET_MODES[0]),
+          name: getProductStudioPreset(productPresetId).name,
+          subtitle: "Product Ad Generator",
+        }
+      : PRESET_MODES.find((m) => m.id === activeModeId) || PRESET_MODES[0];
 
-  const providerImageCount = () =>
-    1 + uploadedImages.length + productImages.length + appImages.filter((asset) => !asset.mimeType?.startsWith("video/")).length;
+  const providerImageLimit = activeModeId === "product" ? (selectedModel?.maxImages || 9) : 9;
+  const providerImageCount = () => 1 + uploadedImages.filter((asset) => !asset.mimeType?.startsWith("video/") && !asset.mimeType?.startsWith("audio/")).length + productImages.length + appImages.filter((asset) => !asset.mimeType?.startsWith("video/")).length;
 
   const updateUploadedAsset = (assetId, changes) => {
     const update = (list) => list.map((asset) => (asset.assetId === assetId ? { ...asset, ...changes } : asset));
@@ -502,9 +516,9 @@ export default function CreationHub({
 
   const uploadFiles = async (files, roleFactory) => {
     setSubmitError(null);
-    const imageFiles = files.filter((file) => !file.type.startsWith("video/"));
-    if (providerImageCount() + imageFiles.length > 9) {
-      throw new Error("Seedance supports one avatar plus at most eight image inputs. Remove an image before uploading another.");
+    const imageFiles = files.filter((file) => !file.type.startsWith("video/") && !file.type.startsWith("audio/"));
+    if (providerImageCount() + imageFiles.length > providerImageLimit) {
+      throw new Error(`${selectedModel?.name || "This model"} supports one avatar plus at most ${providerImageLimit - 1} other image inputs. Remove an image before uploading another.`);
     }
     const uploaded = [];
     for (const [index, file] of files.entries()) {
@@ -571,8 +585,10 @@ export default function CreationHub({
   const handleImageUpload = async (event) => {
     try {
       const files = Array.from(event.target.files || []);
-      const assets = await uploadFiles(files, (_file, index) => ({
-        role: "STYLE_REFERENCE",
+      const assets = await uploadFiles(files, (file, index) => ({
+        role: activeModeId === "product"
+          ? file.type.startsWith("video/") ? "PRODUCT_MOTION_REFERENCE" : file.type.startsWith("audio/") ? "PRODUCT_AUDIO_REFERENCE" : "PRODUCT_REFERENCE"
+          : "STYLE_REFERENCE",
         alias: `style_reference_${uploadedImages.length + index + 1}`,
         groupId: null
       }));
@@ -592,9 +608,9 @@ export default function CreationHub({
       setSubmitError("That saved asset is no longer available for generation.");
       return;
     }
-    const imageAsset = !storedAsset.mimeType?.startsWith("video/");
-    if (imageAsset && providerImageCount() >= 9) {
-      setSubmitError("Seedance supports one avatar plus at most eight image inputs. Remove an image before adding another.");
+    const imageAsset = !storedAsset.mimeType?.startsWith("video/") && !storedAsset.mimeType?.startsWith("audio/");
+    if (imageAsset && providerImageCount() >= providerImageLimit) {
+      setSubmitError(`${selectedModel?.name || "This model"} supports one avatar plus at most ${providerImageLimit - 1} other image inputs. Remove an image before adding another.`);
       return;
     }
     const existing = target === "product" ? productImages : target === "app" ? appImages : uploadedImages;
@@ -610,7 +626,9 @@ export default function CreationHub({
         }
       : target === "app"
         ? { role: storedAsset.mimeType?.startsWith("video/") ? "APP_SCREEN_RECORDING" : "APP_PRIMARY_SCREEN", alias: `app_asset_${index + 1}`, groupId: "app_flow_1" }
-        : { role: "STYLE_REFERENCE", alias: `style_reference_${index + 1}`, groupId: null };
+        : activeModeId === "product"
+          ? { role: storedAsset.mimeType?.startsWith("video/") ? "PRODUCT_MOTION_REFERENCE" : storedAsset.mimeType?.startsWith("audio/") ? "PRODUCT_AUDIO_REFERENCE" : "PRODUCT_REFERENCE", alias: `product_reference_${index + 1}`, groupId: null }
+          : { role: "STYLE_REFERENCE", alias: `style_reference_${index + 1}`, groupId: null };
     
     // Ensure default fallback structure for unconfirmed library analysis
     const fallbackAnalysis = storedAsset.analysis || {
@@ -672,7 +690,7 @@ export default function CreationHub({
     return {
       version: "1",
       studio: STUDIO_IDS[activeModeId],
-      presetId: activeModeId === "app" ? appPresetId : activeModeId,
+      presetId: activeModeId === "app" ? appPresetId : activeModeId === "product" ? productPresetId : activeModeId,
       modelId: selectedModel.id,
       modelLocked: true,
       script: { text: spokenScript.trim(), language: "auto", maxCharacters: 300 },
@@ -804,7 +822,7 @@ export default function CreationHub({
   // still keeping the cost in the primary action current.
   useEffect(() => {
     const hasRequiredMedia = activeModeId === "video_maker" || (activeModeId === "product" ? productImages.length > 0 : appImages.length > 0);
-    if (!spokenScript.trim() || !hasRequiredMedia || isSubmitting || quoteIsCurrent || quoteUnavailable) return undefined;
+    if ((activeModeId === "video_maker" && !spokenScript.trim()) || !hasRequiredMedia || isSubmitting || quoteIsCurrent || quoteUnavailable) return undefined;
     const timeout = window.setTimeout(() => { void handlePreflight(); }, 600);
     return () => window.clearTimeout(timeout);
   // canonicalRequestKey is deliberately the invalidation boundary.
@@ -997,6 +1015,9 @@ export default function CreationHub({
               productImages={productImages}
               productGroupName={productGroupName}
               setProductGroupName={setProductGroupName}
+              presetId={productPresetId}
+              setPresetId={setProductPresetId}
+              productPresets={PRODUCT_STUDIO_PRESETS}
               onProductUpload={handleProductUpload}
               onChooseLibraryProduct={(asset) => addLibraryAsset("product", asset)}
               selectedActor={draftAvatar}
@@ -1020,7 +1041,7 @@ export default function CreationHub({
               setNumVideos={setNumVideos}
               selectedModel={selectedModel}
               setSelectedModel={selectModel}
-              modelsList={MODELS}
+              modelsList={productStudioModels}
             />
           )}
 

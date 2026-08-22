@@ -207,10 +207,9 @@ export async function startQualityVerification({ seedanceJob, videoUrl, buffer, 
       currentVideoPath = brollPath;
     }
 
-    const montagePath = path.join(tempDirectory, "montage.jpg");
     const framePaths = await extractVerificationFrames(currentVideoPath, tempDirectory);
-    await createVerificationMontage(framePaths, montagePath);
-    const montageBuffer = await fs.promises.readFile(montagePath);
+    const montage = await createVerificationMontage({ assets, framePaths });
+    const montageBuffer = montage.buffer;
     const montageKey = buildStorageKey({ workspaceId: creation.workspaceId, creationId: creation.id, fileType: "verification_montage", extension: "jpg" });
     await R2StorageService.uploadObject({ storageKey: montageKey, buffer: montageBuffer, contentType: "image/jpeg" });
     const montageSignedUrl = await R2StorageService.generateSignedUrl({ storageKey: montageKey, expiresInSeconds: 3600 });
@@ -220,7 +219,13 @@ export async function startQualityVerification({ seedanceJob, videoUrl, buffer, 
         creationVariantId: variant.id, provider: "MUAPI", internalModelId: "muapi.openai-whisper", providerModelVersion: "whisper-large-v3", endpoint: WHISPER_ENDPOINT, status: "PREPARED", stageIdempotencyKey: `whisper_${variant.id}`, inputFingerprint: fingerprint({ videoUrl }), registryRevision: seedanceJob.registryRevision, pricingRevision: seedanceJob.pricingRevision, adapterVersion: seedanceJob.adapterVersion, routingSnapshot: seedanceJob.routingSnapshot, capabilitySnapshot: seedanceJob.capabilitySnapshot, sanitizedRequestPayload: JSON.stringify({ file: "[REDACTED_VIDEO_URL]" }), estimatedCostMinMicroUsd: BigInt(2000), estimatedCostMaxMicroUsd: BigInt(2000),
       },
     });
-    const visionPrompt = `Analyze this video verification montage for a video titled "${creation.title}". 1. Does it look like a video product ad or UGC video? 2. Is there severe visual distortion or glitched frames? Answer in JSON format: {"isProductVideo": boolean, "hasDistortion": boolean, "summary": string}`;
+    const productVerification = creation.generationType === "PRODUCT_STUDIO";
+    if (productVerification) {
+      await prisma.creationVariant.updateMany({ where: { id: variant.id, status: "PROCESSING" }, data: { currentStage: "processing_product_fidelity" } });
+    }
+    const visionPrompt = productVerification
+      ? `Analyze this product-video verification montage for "${creation.title}". The first tiles are the selected actor and exact uploaded product references; later tiles are generated-video frames. Verify the selected actor and same product appear, interaction is physically natural rather than a flat overlay, and clearly visible package/logo/color/shape are not substituted. Do not claim OCR-perfect text fidelity. Answer only JSON: {"isProductVideo":boolean,"hasDistortion":boolean,"productIdentityPreserved":boolean,"naturalInteraction":boolean,"summary":string}.`
+      : `Analyze this video verification montage for a video titled "${creation.title}". 1. Does it look like a video product ad or UGC video? 2. Is there severe visual distortion or glitched frames? Answer in JSON format: {"isProductVideo": boolean, "hasDistortion": boolean, "summary": string}`;
     const visionJob = await prisma.providerJob.create({
       data: {
         creationVariantId: variant.id, provider: "MUAPI", internalModelId: "muapi.gemini-2.5-flash-verifier", providerModelVersion: "gemini-2.5-flash", endpoint: VISION_ENDPOINT, status: "PREPARED", stageIdempotencyKey: `vision_${variant.id}`, inputFingerprint: fingerprint({ montageSignedUrl, visionPrompt }), registryRevision: seedanceJob.registryRevision, pricingRevision: seedanceJob.pricingRevision, adapterVersion: seedanceJob.adapterVersion, routingSnapshot: seedanceJob.routingSnapshot, capabilitySnapshot: seedanceJob.capabilitySnapshot, sanitizedRequestPayload: JSON.stringify({ prompt: visionPrompt, image: "[MONTAGE]" }), estimatedCostMinMicroUsd: BigInt(3000), estimatedCostMaxMicroUsd: BigInt(3000),
@@ -260,9 +265,10 @@ export async function handleVerificationResult(job, providerPayload) {
     const visionAnalysis = parseStrictJsonOutput(visionPayload);
 
     const spokenScript = variant.creation.spokenScript || "";
-    const speechOk = transcriptPasses(transcript, spokenScript);
-    const visionOk = Boolean(visionAnalysis.isProductVideo) && !visionAnalysis.hasDistortion;
-    const evidence = { whisperTranscript: transcript, visionAnalysis, speechOk, visionOk };
+    const speechOk = transcriptPasses(spokenScript, transcript);
+    const productFidelityOk = variant.creation.generationType !== "PRODUCT_STUDIO" || (Boolean(visionAnalysis.productIdentityPreserved) && Boolean(visionAnalysis.naturalInteraction));
+    const visionOk = Boolean(visionAnalysis.isProductVideo) && !visionAnalysis.hasDistortion && productFidelityOk;
+    const evidence = { whisperTranscript: transcript, visionAnalysis, speechOk, visionOk, productFidelityOk };
 
     if (speechOk && visionOk) {
       const finalArtifact = await finalizeDeliverable({ variant, rawArtifact, evidence, ownerId: finalizationOwner });

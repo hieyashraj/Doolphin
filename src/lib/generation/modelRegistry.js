@@ -1,5 +1,6 @@
 import { GENERATED_MODEL_DEFINITIONS, STUDIO_ASPECT_RATIOS } from "../models/videoModelFactory.js";
 import { APP_STUDIO_MODELS } from "../app-studio/config.js";
+import { PRODUCT_STUDIO_MODELS } from "../product-studio/config.js";
 
 /**
  * THE MODEL BENCH THE STUDIO UI AND THE REQUEST CONTRACT SHARE.
@@ -117,6 +118,7 @@ function buildEntry(definition) {
     minDuration: override.minDuration ?? DEFAULT_VIDEO_CAPABILITIES.minDuration,
     maxDuration: override.maxDuration ?? DEFAULT_VIDEO_CAPABILITIES.maxDuration,
     maxImages: override.maxImages ?? imageCapacityFor(definition),
+    maxVideoReferences: override.maxVideoReferences ?? 0,
     maxAudioReferences: override.maxAudioReferences ?? DEFAULT_VIDEO_CAPABILITIES.maxAudioReferences,
     supportsNativeAudio: override.supportsNativeAudio ?? DEFAULT_VIDEO_CAPABILITIES.supportsNativeAudio,
     supportsVideoReferences: override.supportsVideoReferences ?? DEFAULT_VIDEO_CAPABILITIES.supportsVideoReferences,
@@ -152,6 +154,7 @@ export function listGenerationModels() {
     minDuration: model.minDuration,
     maxDuration: model.maxDuration,
     maxImages: model.maxImages,
+    maxVideoReferences: model.maxVideoReferences,
     requiresImage: model.requiresImage,
     requiresVideo: model.requiresVideo,
   }));
@@ -179,6 +182,30 @@ export function listAppStudioGenerationModels({ hasScreenshot = false, hasRecord
       minDuration: appModel.minDuration,
       maxDuration: appModel.maxDuration,
       maxImages: appModel.maxImages,
+      requiresImage: true,
+      requiresVideo: false,
+    };
+  }).filter(Boolean);
+}
+
+/** Product Studio has the same real Omni adapters, but a distinct policy:
+ *  product work is capped at fifteen seconds even when an upstream endpoint
+ *  advertises a longer maximum. */
+export function listProductStudioGenerationModels() {
+  return PRODUCT_STUDIO_MODELS.map((productModel) => {
+    const model = getGenerationModel(productModel.id);
+    if (!model) return null;
+    return {
+      ...model,
+      name: productModel.name,
+      description: productModel.description,
+      resolutions: productModel.resolutions,
+      aspectRatios: productModel.aspectRatios,
+      minDuration: productModel.minDuration,
+      maxDuration: productModel.maxDuration,
+      maxImages: productModel.maxImages,
+      maxVideoReferences: productModel.maxVideos,
+      maxAudioReferences: productModel.maxAudios,
       requiresImage: true,
       requiresVideo: false,
     };

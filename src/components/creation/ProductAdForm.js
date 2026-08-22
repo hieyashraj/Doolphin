@@ -9,6 +9,9 @@ export default function ProductAdForm({
   productImages = [],
   productGroupName,
   setProductGroupName,
+  presetId,
+  setPresetId,
+  productPresets = [],
   onProductUpload,
   onChooseLibraryProduct,
   selectedActor,
@@ -36,6 +39,10 @@ export default function ProductAdForm({
 }) {
   return (
     <div className="studio-form space-y-3 font-sans text-[#111111]">
+      <div className="space-y-1.5">
+        <label className="block text-base font-semibold text-[#111111]">Creative preset</label>
+        <StudioSelect label="Creative preset" value={presetId} values={productPresets.map((preset) => preset.id)} onChange={setPresetId} formatLabel={(value) => productPresets.find((preset) => preset.id === value)?.name || value} className="w-full max-w-none justify-between bg-[#F2EFE5]" />
+      </div>
       {/* Upload your product * (i) */}
       <div className="space-y-1.5">
         <div className="flex items-center gap-1.5">
@@ -96,10 +103,10 @@ export default function ProductAdForm({
         </button>
       </div>
 
-      {/* Write your script * */}
+      {/* Write your script */}
       <div className="space-y-1.5">
         <label className="block text-base font-semibold text-[#111111]">
-          Write your script <span className="text-red-500">*</span>
+          Write your script <span className="text-[#77746D] text-sm font-normal">(optional)</span>
         </label>
         <div className="relative">
           <textarea
@@ -107,8 +114,7 @@ export default function ProductAdForm({
             onChange={(e) => setSpokenScript(e.target.value)}
             maxLength={300}
             rows={3}
-            required
-            placeholder="Write the exact spoken script for your product ad (max 300 chars). Spoken verbatim."
+            placeholder="Optional exact spoken script for your product ad (max 300 chars)."
             className="w-full bg-[#F2EFE5] focus:bg-white p-3.5 text-sm font-medium text-[#111111] placeholder-[#8C887B] border border-[#111111]/15 focus:border-[#111111] focus:outline-none focus:ring-2 focus:ring-[#111111] caret-[#111111] transition-all resize-none rounded-xl"
           />
           <div className="absolute bottom-2.5 right-3 text-xs text-[#77746D] font-mono">
@@ -142,12 +148,12 @@ export default function ProductAdForm({
         <div className="flex items-center gap-1.5">
           <label className="block text-base font-semibold text-[#111111]">Additional references</label>
           <FiHelpCircle size={14} className="text-[#77746D]" title="Optional reference imagery" />
-          {onChooseLibraryReference && <AssetLibraryPicker label="My Assets" accept={["image/"]} onSelect={onChooseLibraryReference} selectedAssetIds={(uploadedImages || []).map((asset) => asset.assetId || asset.id)} />}
+          {onChooseLibraryReference && <AssetLibraryPicker label="My Assets" accept={["image/", "video/", "audio/"]} onSelect={onChooseLibraryReference} selectedAssetIds={(uploadedImages || []).map((asset) => asset.assetId || asset.id)} />}
         </div>
         <div className="flex flex-wrap gap-2">
           {uploadedImages?.filter(i => !productImages.some((product) => (product.id || product.assetId) === (i.id || i.assetId))).map((img) => (
             <div key={img.id} className="relative w-16 h-16 rounded-xl border border-[#111111]/15 overflow-hidden group">
-              <img src={img.preview || img.url} alt="Reference" className="w-full h-full object-cover" />
+              {img.mimeType?.startsWith("video/") ? <video src={img.preview || img.url} muted className="w-full h-full object-cover" /> : img.mimeType?.startsWith("audio/") ? <span className="w-full h-full flex items-center justify-center text-[10px] font-bold">AUDIO</span> : <img src={img.preview || img.url} alt="Reference" className="w-full h-full object-cover" />}
               <button
                 type="button"
                 onClick={() => onRemoveImage(img.id)}
@@ -159,7 +165,7 @@ export default function ProductAdForm({
           ))}
           <label className="w-16 h-16 rounded-xl bg-[#F2EFE5] border border-dashed border-[#111111]/25 hover:border-[#111111]/50 flex items-center justify-center cursor-pointer transition-colors">
             <FiPlus size={20} className="text-[#77746D]" />
-            <input type="file" accept="image/*" multiple onChange={onImageUpload} className="hidden" />
+            <input type="file" accept="image/*,video/mp4,audio/mpeg,audio/wav,audio/mp4" multiple onChange={onImageUpload} className="hidden" />
           </label>
         </div>
       </div>

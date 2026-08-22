@@ -7,7 +7,7 @@ import { prisma } from "../prisma.js";
  */
 
 import { createRequire } from "module";
-const req = createRequire(import.meta.url);
+const req = createRequire(typeof import.meta.url === "string" ? import.meta.url : import.meta.url.href);
 
 let generationQueue = null;
 

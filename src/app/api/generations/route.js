@@ -21,6 +21,7 @@ export const maxDuration = 300;
 function mediaTypeFor(asset) {
   if (asset.role === "ACTOR_REFERENCE") return "IMAGE";
   if (asset.mimeType?.startsWith("video/")) return "VIDEO";
+  if (asset.mimeType?.startsWith("audio/")) return "AUDIO";
   return "IMAGE";
 }
 
@@ -242,7 +243,7 @@ async function handleGenerationSubmission(req) {
           creationVariantId: variant.id,
           workflowType: request.studio,
           workflowVersion: "2.0.0",
-          presetId: request.studio.toLowerCase(),
+          presetId: request.presetId || request.studio.toLowerCase(),
           stageGraph: JSON.stringify(["provider_submission", "provider_generation", "quality_verification", "delivery"]),
           capabilityRequirements: JSON.stringify({ modelId: model.id, locked: true }),
           assetRoleMapping: JSON.stringify(compiled.roleMap.map(({ url, ...item }) => item)),

@@ -7,7 +7,7 @@ function createPrismaClient() {
   const databaseUrl = process.env.DATABASE_URL;
   if (!databaseUrl) throw new Error("DATABASE_URL is required");
   if (databaseUrl.startsWith("postgres://") || databaseUrl.startsWith("postgresql://")) {
-    const req = createRequire(import.meta.url);
+    const req = createRequire(typeof import.meta.url === "string" ? import.meta.url : import.meta.url.href);
     const { PrismaPg } = req("@prisma/adapter-pg");
     const { Pool } = req("pg");
     const pool = new Pool({ connectionString: databaseUrl, connectionTimeoutMillis: 5000, max: 1 });

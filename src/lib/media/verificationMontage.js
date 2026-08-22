@@ -3,7 +3,7 @@ import path from "path";
 import { createRequire } from "module";
 import { R2StorageService } from "@/lib/storage/r2StorageService";
 
-const req = createRequire(import.meta.url);
+const req = createRequire(typeof import.meta.url === "string" ? import.meta.url : import.meta.url.href);
 const sharp = req("sharp");
 
 async function referenceBuffer(asset) {

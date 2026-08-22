@@ -86,7 +86,7 @@ export function mapValidatedStudioWorkflowToNormalizedInvocation({
   }
   const videos = [];
   for (const asset of request.assets || []) {
-    if (asset?.role !== "APP_SCREEN_RECORDING" || !asset.url) continue;
+    if (!["APP_SCREEN_RECORDING", "PRODUCT_MOTION_REFERENCE"].includes(asset?.role) || !asset.url) continue;
     const resolved = resolveProviderAssetUrl(asset.url, { applicationOrigin });
     if (!resolved) {
       throw new Error(`[ModelPlatformBridge] Cannot resolve screen recording '${asset.alias || asset.assetId}' to an absolute provider-fetchable URL without an explicit applicationOrigin`);
@@ -104,7 +104,7 @@ export function mapValidatedStudioWorkflowToNormalizedInvocation({
     || request.assets?.find((asset) => asset?.role === "PRIMARY_PRODUCT")
     || request.assets?.find((asset) => asset?.role === "STYLE_REFERENCE")
     || null;
-  const sourceVideoAsset = request.assets?.find((asset) => asset?.role === "APP_SCREEN_RECORDING") || null;
+  const sourceVideoAsset = request.assets?.find((asset) => asset?.role === "APP_SCREEN_RECORDING" || asset?.role === "PRODUCT_MOTION_REFERENCE") || null;
   const imageUrl = primaryImageAsset?.url
     ? resolveProviderAssetUrl(primaryImageAsset.url, { applicationOrigin })
     : null;
@@ -119,6 +119,14 @@ export function mapValidatedStudioWorkflowToNormalizedInvocation({
     throw new Error(`[ModelPlatformBridge] Cannot resolve screen recording '${sourceVideoAsset.alias || sourceVideoAsset.assetId}' to an absolute provider-fetchable URL without an explicit applicationOrigin`);
   }
 
+  const audios = [];
+  for (const asset of request.assets || []) {
+    if (asset?.role !== "PRODUCT_AUDIO_REFERENCE" || !asset.url) continue;
+    const resolved = resolveProviderAssetUrl(asset.url, { applicationOrigin });
+    if (!resolved) throw new Error(`[ModelPlatformBridge] Cannot resolve product audio reference '${asset.alias || asset.assetId}' to an absolute provider-fetchable URL without an explicit applicationOrigin`);
+    audios.push(resolved);
+  }
+
   return {
     prompt: promptStr.trim(),
     duration,
@@ -131,6 +139,7 @@ export function mapValidatedStudioWorkflowToNormalizedInvocation({
     extraInputs: {
       images,
       videos,
+      audios,
     },
   };
 }

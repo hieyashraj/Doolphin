@@ -3,7 +3,7 @@ import crypto from "crypto";
 import { createRequire } from "module";
 import { assertWritableStorageKey } from "./storageKey.js";
 
-const req = createRequire(import.meta.url);
+const req = createRequire(typeof import.meta.url === "string" ? import.meta.url : import.meta.url.href);
 
 /**
  * Cloudflare R2 Storage Service.
