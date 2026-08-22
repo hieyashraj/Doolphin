@@ -17,6 +17,7 @@ test("reconciliation activeJobs query filters out jobs whose variants are alread
   assert.match(reconcileSource, /variant: \{ is: \{ \.\.\.reconciliationEligibleVariantWhere\(\), status: \{ in: \["QUEUED", "PROCESSING"\] \} \} \}/);
 });
 
-test("workflow timeout updates ProviderJob status to TIMED_OUT when CreationVariant times out", () => {
-  assert.match(reconcileSource, /prisma\.providerJob\.updateMany\(\{ where: \{ creationVariantId: variant\.id, status: \{ in: \["PREPARED", "QUEUED", "PROCESSING"\] \} \}, data: \{ status: "TIMED_OUT"/);
+test("workflow timeout closes every unresolved ProviderJob state and clears submission leases", () => {
+  assert.match(reconcileSource, /prisma\.providerJob\.updateMany\(\{ where: \{ creationVariantId: variant\.id, status: \{ in: \["PREPARED", "SUBMITTING", "SUBMISSION_UNKNOWN", "QUEUED", "PROCESSING"\] \} \}, data: \{ status: "TIMED_OUT"/);
+  assert.match(reconcileSource, /safeError: "Workflow timed out before completion\.", \.\.\.clearSubmissionLease\(\)/);
 });
