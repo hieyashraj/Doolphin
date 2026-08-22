@@ -71,7 +71,7 @@ test("Studio Workflow Bridge: omitted or Auto duration resolves from a fixed-dur
 });
 
 
-test("Studio Workflow Bridge: app recordings remain local composition assets", () => {
+test("Studio Workflow Bridge: app recordings map to reference videos without becoming source videos", () => {
   const model = {
     minDuration: 8,
     durationValues: [8],
@@ -99,13 +99,13 @@ test("Studio Workflow Bridge: app recordings remain local composition assets", (
     compiledPrompt: "Show the app workflow.",
   });
   assert.equal(normalized.sourceVideo, sourceUrl);
-  assert.deepEqual(normalized.referenceVideos, [referenceUrl]);
-  assert.equal(JSON.stringify(normalized).includes(recordingUrl), false);
+  assert.deepEqual(normalized.referenceVideos, [referenceUrl, recordingUrl]);
+  assert.equal(normalized.referenceVideos.includes(recordingUrl), true);
 
   const appOnly = mapStudioWorkflowToNormalizedInvocation(
     { settings: { durationSeconds: 8 }, assets: [assets[2]] },
     { model },
   );
   assert.equal("sourceVideo" in appOnly, false);
-  assert.equal("referenceVideos" in appOnly, false);
+  assert.deepEqual(appOnly.referenceVideos, [recordingUrl]);
 });
