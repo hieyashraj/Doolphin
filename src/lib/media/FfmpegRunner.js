@@ -3,6 +3,7 @@ import { promisify } from "util";
 import fs from "fs";
 import ffmpegStatic from "ffmpeg-static";
 import ffprobeInstaller from "@ffprobe-installer/ffprobe";
+import { resolveAppCompositionGeometry } from "@/lib/app-studio/composition";
 
 const execFileAsync = promisify(execFile);
 // Pinned binary resolution
@@ -54,29 +55,25 @@ export async function extractVerificationFrames(filePath, outputDirectory, frame
 
 export async function composeExactBroll({ baseVideoPath, brollInputs, outputPath, durationSeconds, width, height, composition = "INSERT" }) {
   if (!brollInputs.length) return baseVideoPath;
+  const normalizedComposition = ["PIP", "SIDE_BY_SIDE", "INSERT", "FULL_SCREEN"].includes(composition) ? composition : "INSERT";
   const args = ["-v", "error", "-i", baseVideoPath];
   for (const input of brollInputs) {
     if (input.isVideo) args.push("-stream_loop", "-1", "-i", input.path);
     else args.push("-loop", "1", "-i", input.path);
   }
-  const segmentLength = Math.max(0.6, Math.min(2, durationSeconds * 0.55 / brollInputs.length));
   const firstStart = Math.max(0.8, durationSeconds * 0.25);
+  const availableDuration = Math.max(0.6, durationSeconds - firstStart - 0.5);
+  const segmentLength = Math.min(2, availableDuration / brollInputs.length);
   const filters = [];
   let previous = "0:v";
-  brollInputs.forEach((input, index) => {
+  brollInputs.forEach((_input, index) => {
     const start = firstStart + index * segmentLength;
     const end = Math.min(durationSeconds - 0.5, start + segmentLength);
     const prepared = `b${index}`;
     const output = `v${index}`;
-    if (composition === "PIP") {
-      const pipWidth = Math.max(240, Math.round(width * 0.42));
-      const pipHeight = Math.max(240, Math.round(height * 0.42));
-      filters.push(`[${index + 1}:v]scale=${pipWidth}:${pipHeight}:force_original_aspect_ratio=decrease,pad=${pipWidth}:${pipHeight}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,setpts=PTS-STARTPTS+${start}/TB[${prepared}]`);
-      filters.push(`[${previous}][${prepared}]overlay=main_w-overlay_w-40:40:enable='between(t,${start},${end})':eof_action=pass[${output}]`);
-    } else {
-      filters.push(`[${index + 1}:v]scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,setpts=PTS-STARTPTS+${start}/TB[${prepared}]`);
-      filters.push(`[${previous}][${prepared}]overlay=0:0:enable='between(t,${start},${end})':eof_action=pass[${output}]`);
-    }
+    const { targetWidth, targetHeight, overlayX, overlayY } = resolveAppCompositionGeometry(normalizedComposition, width, height);
+    filters.push(`[${index + 1}:v]scale=${targetWidth}:${targetHeight}:force_original_aspect_ratio=decrease,pad=${targetWidth}:${targetHeight}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,setpts=PTS-STARTPTS+${start}/TB[${prepared}]`);
+    filters.push(`[${previous}][${prepared}]overlay=${overlayX}:${overlayY}:enable='between(t,${start},${end})':eof_action=pass[${output}]`);
     previous = output;
   });
   args.push("-filter_complex", filters.join(";"), "-map", `[${previous}]`, "-map", "0:a?", "-c:v", "libx264", "-preset", "fast", "-crf", "18", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", "-t", String(durationSeconds), "-y", outputPath);

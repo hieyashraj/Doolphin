@@ -141,6 +141,14 @@ export async function prepareExecutionPlan({
     );
   }
 
+  const outputBounds = modelDefinition.capabilityDescriptor?.outputCount;
+  if (outputBounds && (!Number.isInteger(outputCount) || outputCount < outputBounds.min || outputCount > outputBounds.max)) {
+    throw new ModelPlatformError(
+      ERROR_CODES.INVALID_MODEL_INPUT,
+      `Model '${modelDefinition.productPolicy.id}' supports outputCount ${outputBounds.min}-${outputBounds.max}; received ${outputCount}`
+    );
+  }
+
   // 2. Validate & Transform to Pure Provider Payload EXACTLY ONCE
   const validation = validateAndTransformInvocationInput(
     modelDefinition,
@@ -221,6 +229,8 @@ export async function prepareExecutionPlan({
     providerModelId: modelDefinition.providerSpec.providerModelId,
     providerEndpoint: modelDefinition.providerSpec.endpoint,
     providerSpecHash,
+    adapterRevision: modelDefinition.capabilityDescriptor?.adapterRevision || modelDefinition.adapter?.revision || null,
+    capabilityRevision: modelDefinition.capabilityDescriptor?.capabilityRevision || null,
     provenance,
     providerPayload,
     providerPayloadJson,

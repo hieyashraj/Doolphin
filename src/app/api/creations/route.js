@@ -25,7 +25,7 @@ export async function GET() {
         prompt: true, spokenScript: true, additionalInstructions: true, status: true,
         currentStage: true, progressValue: true, completedAt: true, modelId: true,
         provider: true, aspectRatio: true, resolution: true, duration: true,
-        numberOfVideos: true, errorCode: true, quoteId: true, createdAt: true,
+        numberOfVideos: true, errorCode: true, quoteId: true, createdAt: true, timeoutAt: true,
         variants: {
           orderBy: { variantIndex: "asc" },
           select: {
@@ -40,7 +40,7 @@ export async function GET() {
                 validationStatus: "VALID"
               },
               orderBy: { createdAt: "desc" },
-              select: { type: true, storageKey: true, outputIndex: true }
+              select: { id: true, type: true, storageKey: true, outputIndex: true, mimeType: true, width: true, height: true, durationMs: true }
             }
           }
         },
@@ -71,9 +71,27 @@ export async function GET() {
           || firstImage
         : null;
       const mediaArtifact = videoArtifact || imagePreview;
+      const finalOutputs = completedVariants
+        .flatMap((variant) => variant.artifacts
+          .filter((artifact) => artifact.type === "FINAL_VIDEO" || artifact.type === "FINAL_IMAGE")
+          .map((artifact) => ({ artifact, variantId: variant.id, variantIndex: variant.variantIndex })))
+        .sort((left, right) => left.variantIndex - right.variantIndex || (left.artifact.outputIndex ?? 0) - (right.artifact.outputIndex ?? 0));
+      const outputs = await Promise.all(finalOutputs.map(async ({ artifact, variantId, variantIndex }) => ({
+        id: artifact.id,
+        variantId,
+        variantIndex,
+        outputIndex: artifact.outputIndex ?? 0,
+        type: artifact.type,
+        mediaType: artifact.type === "FINAL_VIDEO" ? "video" : "image",
+        mimeType: artifact.mimeType,
+        width: artifact.width,
+        height: artifact.height,
+        durationMs: artifact.durationMs,
+        url: await previewUrl(artifact),
+      })));
       // Creations produced before the artifact pipeline stored the playable URL
       // directly on Creation. Keep them viewable while newer creations use a
-      // validated FINAL_VIDEO artifact.
+      // freshly signed validated final/derivative artifact URL.
       const url = await previewUrl(mediaArtifact) || creation.url || null;
       const canRetry = isTerminalGenerationFailure(creation.status);
       const retryRequest = canRetry && creation.quoteId ? retryRequestByQuoteId.get(creation.quoteId) : null;
@@ -98,11 +116,13 @@ export async function GET() {
         outputCount: creation.numberOfVideos,
         mediaType: videoArtifact ? "video" : imagePreview ? "image" : null,
         imageCount: finalImages.length,
+        outputs,
         url,
         error: canRetry ? userFacingGenerationMessage(creation.status, creation.errorCode) : null,
         errorCode: creation.errorCode,
         retryRequest: retryRequest ? JSON.parse(retryRequest) : null,
         createdAt: creation.createdAt,
+        timeoutAt: creation.timeoutAt,
         variants: creation.variants.map((variant) => ({
           id: variant.id,
           index: variant.variantIndex,

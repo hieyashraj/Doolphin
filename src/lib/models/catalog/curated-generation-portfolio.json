@@ -1,0 +1,108 @@
+{
+  "revision": "2026-08-docx-curated-v1",
+  "provenance": {
+    "source": "Models and their Pricing.docx",
+    "sha256": "f7983c9b151ea1a1ea8e3ca9a3fcf8032b59f497f97f004efa40ec9dc892d4e2",
+    "selection": "All 71 sections whose paragraph style is Title, in document order",
+    "providerReconciliationSource": "MUAPI MODELS.json",
+    "notes": "Provider IDs strip the two presentation-only muapi/ or leading-slash prefixes found in DOCX headings. Every resulting ID is an exact MUAPI MODELS.json name."
+  },
+  "counts": {
+    "total": 71,
+    "video": 70,
+    "image": 1,
+    "families": {
+      "seedance": 35,
+      "veo": 15,
+      "kling": 11,
+      "sora": 5,
+      "grok": 4,
+      "gpt-image-2": 1
+    }
+  },
+  "families": {
+    "seedance": [
+      { "providerModelId": "seedance-2-omni-reference-no-video-fast", "variant": "2 Omni Reference No Video Fast" },
+      { "providerModelId": "seedance-2-omni-reference-no-video", "variant": "2 Omni Reference No Video" },
+      { "providerModelId": "seedance-2-omni-reference", "variant": "2 Omni Reference" },
+      { "providerModelId": "seedance-2-vip-omni-reference-fast", "variant": "2 VIP Omni Reference Fast" },
+      { "providerModelId": "seedance-2-vip-omni-reference-1080p", "variant": "2 VIP Omni Reference 1080p" },
+      { "providerModelId": "seedance-2-image-to-video", "variant": "2 Image to Video" },
+      { "providerModelId": "seedance-2-image-to-video-fast", "variant": "2 Image to Video Fast" },
+      { "providerModelId": "seedance-2-i2v", "variant": "2 I2V" },
+      { "providerModelId": "seedance-2-i2v-480p", "variant": "2 I2V 480p" },
+      { "providerModelId": "seedance-2-first-last-frame", "variant": "2 First Last Frame" },
+      { "providerModelId": "seedance-2-first-last-frame-fast", "variant": "2 First Last Frame Fast" },
+      { "providerModelId": "seedance-2-video-edit", "variant": "2 Video Edit" },
+      { "providerModelId": "seedance-2-extend", "variant": "2 Extend" },
+      { "providerModelId": "seedance-2-vip-extend", "variant": "2 VIP Extend" },
+      { "providerModelId": "seedance-2-vip-extend-1080p", "variant": "2 VIP Extend 1080p" },
+      { "providerModelId": "seedance-2.5-text-to-video", "variant": "2.5 Text to Video" },
+      { "providerModelId": "seedance-2.5-image-to-video", "variant": "2.5 Image to Video" },
+      { "providerModelId": "seedance-2.5-image-to-video-480p", "variant": "2.5 Image to Video 480p" },
+      { "providerModelId": "seedance-2.5-omni-reference", "variant": "2.5 Omni Reference" },
+      { "providerModelId": "seedance-2.5-text-to-video-4k", "variant": "2.5 Text to Video 4K" },
+      { "providerModelId": "seedance-2.5-omni-reference-480p", "variant": "2.5 Omni Reference 480p" },
+      { "providerModelId": "seedance-2.5-image-to-video-1080p", "variant": "2.5 Image to Video 1080p" },
+      { "providerModelId": "seedance-2.5-image-to-video-4k", "variant": "2.5 Image to Video 4K" },
+      { "providerModelId": "seedance-2.5-omni-reference-4k", "variant": "2.5 Omni Reference 4K" },
+      { "providerModelId": "seedance-2.5-omni-reference-1080p", "variant": "2.5 Omni Reference 1080p" },
+      { "providerModelId": "seedance-2.5-video-edit", "variant": "2.5 Video Edit" },
+      { "providerModelId": "seedance-2.5-spicy-text-to-video-480p", "variant": "2.5 Spicy Text to Video 480p" },
+      { "providerModelId": "seedance-2.5-spicy-text-to-video-1080p", "variant": "2.5 Spicy Text to Video 1080p" },
+      { "providerModelId": "seedance-2.5-intl-text-to-video-1080p", "variant": "2.5 Intl Text to Video 1080p" },
+      { "providerModelId": "seedance-2.5-intl-text-to-video-4k", "variant": "2.5 Intl Text to Video 4K" },
+      { "providerModelId": "seedance-2.5-spicy-text-to-video-4k", "variant": "2.5 Spicy Text to Video 4K" },
+      { "providerModelId": "seedance-2.5-intl-image-to-video", "variant": "2.5 Intl Image to Video" },
+      { "providerModelId": "seedance-2.5-spicy-image-to-video", "variant": "2.5 Spicy Image to Video" },
+      { "providerModelId": "seedance-2.5-intl-image-to-video-1080p", "variant": "2.5 Intl Image to Video 1080p" },
+      { "providerModelId": "seedance-2.5-spicy-image-to-video-1080p", "variant": "2.5 Spicy Image to Video 1080p" }
+    ],
+    "veo": [
+      { "providerModelId": "veo-4-image-to-video", "variant": "4 Image to Video" },
+      { "providerModelId": "veo-4-text-to-video", "variant": "4 Text to Video" },
+      { "providerModelId": "veo3.1-lite-image-to-video", "variant": "3.1 Lite Image to Video" },
+      { "providerModelId": "veo3.1-lite-text-to-video", "variant": "3.1 Lite Text to Video" },
+      { "providerModelId": "veo3.1-4k-video", "variant": "3.1 4K Video" },
+      { "providerModelId": "veo3.1-extend-video", "variant": "3.1 Extend Video" },
+      { "providerModelId": "veo3.1-reference-to-video", "variant": "3.1 Reference to Video" },
+      { "providerModelId": "veo3.1-fast-text-to-video", "variant": "3.1 Fast Text to Video" },
+      { "providerModelId": "veo3.1-fast-image-to-video", "variant": "3.1 Fast Image to Video" },
+      { "providerModelId": "veo3.1-text-to-video", "variant": "3.1 Text to Video" },
+      { "providerModelId": "veo3.1-image-to-video", "variant": "3.1 Image to Video" },
+      { "providerModelId": "veo3-fast-image-to-video", "variant": "3 Fast Image to Video" },
+      { "providerModelId": "veo3-fast-text-to-video", "variant": "3 Fast Text to Video" },
+      { "providerModelId": "veo3-text-to-video", "variant": "3 Text to Video" },
+      { "providerModelId": "veo3-image-to-video", "variant": "3 Image to Video" }
+    ],
+    "kling": [
+      { "providerModelId": "kling-v3-turbo-pro-image-to-video", "variant": "3 Turbo Pro Image to Video" },
+      { "providerModelId": "kling-v3-turbo-pro-text-to-video", "variant": "3 Turbo Pro Text to Video" },
+      { "providerModelId": "kling-v3-turbo-standard-image-to-video", "variant": "3 Turbo Standard Image to Video" },
+      { "providerModelId": "kling-v3.0-omni-4k-image-to-video", "variant": "3 Omni 4K Image to Video" },
+      { "providerModelId": "kling-v3.0-omni-4k-text-to-video", "variant": "3 Omni 4K Text to Video" },
+      { "providerModelId": "kling-v3.0-omni-pro-image-to-video", "variant": "3 Omni Pro Image to Video" },
+      { "providerModelId": "kling-v3.0-omni-standard-image-to-video", "variant": "3 Omni Standard Image to Video" },
+      { "providerModelId": "kling-v2.6-std-motion-control", "variant": "2.6 Standard Motion Control" },
+      { "providerModelId": "kling-v2.6-pro-motion-control", "variant": "2.6 Pro Motion Control" },
+      { "providerModelId": "kling-o1-video-edit-fast", "variant": "O1 Video Edit Fast" },
+      { "providerModelId": "kling-v2.5-turbo-std-i2v", "variant": "2.5 Turbo Standard I2V" }
+    ],
+    "sora": [
+      { "providerModelId": "openai-sora-2-pro-storyboard", "variant": "2 Pro Storyboard" },
+      { "providerModelId": "openai-sora-2-pro-text-to-video", "variant": "2 Pro Text to Video" },
+      { "providerModelId": "openai-sora-2-pro-image-to-video", "variant": "2 Pro Image to Video" },
+      { "providerModelId": "openai-sora-2-image-to-video", "variant": "2 Image to Video" },
+      { "providerModelId": "openai-sora-2-text-to-video", "variant": "2 Text to Video" }
+    ],
+    "grok": [
+      { "providerModelId": "grok-imagine-video-1-5-preview", "variant": "Imagine Video 1.5 Preview" },
+      { "providerModelId": "grok-imagine-extend", "variant": "Imagine Extend" },
+      { "providerModelId": "grok-imagine-text-to-video", "variant": "Imagine Text to Video" },
+      { "providerModelId": "grok-imagine-image-to-video", "variant": "Imagine Image to Video" }
+    ],
+    "gpt-image-2": [
+      { "providerModelId": "gpt-image-2-text-to-image", "variant": "Text to Image", "legacyCanonicalIds": ["muapi.gpt-image-2-t2i"] }
+    ]
+  }
+}

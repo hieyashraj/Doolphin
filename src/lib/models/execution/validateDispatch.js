@@ -94,6 +94,21 @@ export function validateModelPlatformPreparedQuoteForDispatch({
     throw new ModelPlatformError(ERROR_CODES.REGISTRY_REVISION_MISMATCH, "Quote registry revision does not match prepared plan providerSpecHash");
   }
 
+  // New Model Platform quotes bind both the reviewed adapter and capability
+  // descriptor revisions. A deploy between quote and submit must not silently
+  // attribute frozen payload bytes to a different implementation.
+  const adapterRevision = preparedPlan.adapterRevision;
+  const capabilityRevision = preparedPlan.capabilityRevision;
+  if (!adapterRevision || !capabilityRevision) {
+    throw new ModelPlatformError(ERROR_CODES.REGISTRY_REVISION_MISMATCH, "Prepared plan is missing adapter or capability revision binding");
+  }
+  if (adapterRevision !== quote.adapterVersion || adapterRevision !== routingSnapshot.model?.adapterVersion) {
+    throw new ModelPlatformError(ERROR_CODES.REGISTRY_REVISION_MISMATCH, "Quote adapter revision does not match the prepared plan and capability snapshot");
+  }
+  if (capabilityRevision !== routingSnapshot.model?.capabilityRevision) {
+    throw new ModelPlatformError(ERROR_CODES.REGISTRY_REVISION_MISMATCH, "Quote capability revision does not match the prepared plan");
+  }
+
   // A11. provider model identity binding validated
   const validBinding = validateProviderModelIdentityBinding({
     requestedModelId: quote.selectedModelId,
@@ -113,6 +128,8 @@ export function validateModelPlatformPreparedQuoteForDispatch({
     providerEndpoint: executionEndpoint,
     providerSpecHash: preparedPlan.providerSpecHash,
     pricingRevisionId: preparedPlan.workflowPricing.pricingRevisionId,
+    adapterRevision,
+    capabilityRevision,
     workflowPricing: preparedPlan.workflowPricing,
   };
 }

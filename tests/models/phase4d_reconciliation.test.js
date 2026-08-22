@@ -152,16 +152,35 @@ test("Phase 4D.3 Defect 3: Prepared plan authorityVersion validation", async () 
     internalCreditsToReserve: validPlan.workflowPricing.quotedCredits,
     pricingRevision: validPlan.workflowPricing.pricingRevisionId,
     registryRevision: validPlan.providerSpecHash,
+    adapterVersion: validPlan.adapterRevision,
   };
 
   const routingSnapshot = {
     authority: "MODEL_PLATFORM_V1",
+    model: {
+      adapterVersion: validPlan.adapterRevision,
+      capabilityRevision: validPlan.capabilityRevision,
+    },
     providerPayloadFingerprint: validPlan.providerPayloadHash,
     modelPlatformPreparedPlan: validPlan,
   };
 
   const validated = validateModelPlatformPreparedQuoteForDispatch({ quote, request: { settings: { outputCount: 1 } }, routingSnapshot });
   assert.ok(validated);
+
+  const adapterMismatch = structuredClone(routingSnapshot);
+  adapterMismatch.model.adapterVersion = "adapter-old";
+  assert.throws(
+    () => validateModelPlatformPreparedQuoteForDispatch({ quote, request: { settings: { outputCount: 1 } }, routingSnapshot: adapterMismatch }),
+    (err) => err.code === "REGISTRY_REVISION_MISMATCH"
+  );
+
+  const capabilityMismatch = structuredClone(routingSnapshot);
+  capabilityMismatch.model.capabilityRevision = "capability-old";
+  assert.throws(
+    () => validateModelPlatformPreparedQuoteForDispatch({ quote, request: { settings: { outputCount: 1 } }, routingSnapshot: capabilityMismatch }),
+    (err) => err.code === "REGISTRY_REVISION_MISMATCH"
+  );
 
   // Missing authorityVersion fails closed
   const invalidPlan = JSON.parse(JSON.stringify(validPlan));
@@ -287,6 +306,7 @@ test("Phase 4D.3 Dispatch Validation: All 16 Model Platform V1 cutover pre-dispa
     internalCreditsToReserve: livePlan.workflowPricing.quotedCredits,
     pricingRevision: livePlan.workflowPricing.pricingRevisionId,
     registryRevision: livePlan.providerSpecHash,
+    adapterVersion: livePlan.adapterRevision,
   };
 
   const request = {
@@ -295,6 +315,10 @@ test("Phase 4D.3 Dispatch Validation: All 16 Model Platform V1 cutover pre-dispa
 
   const routingSnapshot = {
     authority: "MODEL_PLATFORM_V1",
+    model: {
+      adapterVersion: livePlan.adapterRevision,
+      capabilityRevision: livePlan.capabilityRevision,
+    },
     providerPayloadFingerprint: livePlan.providerPayloadHash,
     modelPlatformPreparedPlan: livePlan,
   };
@@ -483,7 +507,7 @@ test("Phase 4D.3 Settlement: 2 outputs partial success (output 0 rejected + outp
     settlementSchedule: { 0: 0, 1: 50, 2: 90 },
   });
 
-  assert.equal(settlement.settledStatus, "COMPLETED");
+  assert.equal(settlement.settledStatus, "PARTIAL_COMPLETED");
   assert.equal(settlement.earnedCreditsToCharge, 50);
   assert.equal(settlement.unearnedCreditsToRelease, 40);
   assert.equal(settlement.isPartial, true);
@@ -498,7 +522,7 @@ test("Phase 4D.3 Settlement: 2 outputs partial success (output 0 succeeds + outp
     settlementSchedule: { 0: 0, 1: 50, 2: 90 },
   });
 
-  assert.equal(settlement.settledStatus, "COMPLETED");
+  assert.equal(settlement.settledStatus, "PARTIAL_COMPLETED");
   assert.equal(settlement.earnedCreditsToCharge, 50);
   assert.equal(settlement.unearnedCreditsToRelease, 40);
   assert.equal(settlement.isPartial, true);

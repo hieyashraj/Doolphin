@@ -12,6 +12,7 @@ import { claimProviderSubmission, clearSubmissionLease, newSubmissionOwner, subm
 import { HARDENED_RECONCILIATION_ENGINE_REVISION } from "@/lib/generation/reconciliationEligibility";
 import { assertVideoSlotAvailable } from "@/lib/generation/concurrencyLimit";
 import { assertModelAllowedForPlan } from "@/lib/entitlements/modelAccess";
+import { getAppStudioPreset } from "@/lib/app-studio/config";
 
 import { validateModelPlatformPreparedQuoteForDispatch } from "@/lib/models/execution/validateDispatch.js";
 import { isModelPlatformV1Creation, settleModelPlatformWorkflow } from "@/lib/models/execution/workflowSettlement.js";
@@ -21,6 +22,7 @@ export const maxDuration = 300;
 function mediaTypeFor(asset) {
   if (asset.role === "ACTOR_REFERENCE") return "IMAGE";
   if (asset.mimeType?.startsWith("video/")) return "VIDEO";
+  if (asset.mimeType?.startsWith("audio/") || asset.role === "REFERENCE_AUDIO") return "AUDIO";
   return "IMAGE";
 }
 
@@ -87,6 +89,8 @@ async function handleGenerationSubmission(req) {
   let totalCreditsToReserve;
   let registryRevisionId;
   let pricingRevisionId;
+  let adapterRevisionId;
+  let capabilityRevisionId;
 
   const parsedRouting = JSON.parse(quote.routingSnapshot || "{}");
 
@@ -117,6 +121,8 @@ async function handleGenerationSubmission(req) {
     totalCreditsToReserve = validatedPlan.workflowPricing.quotedCredits;
     registryRevisionId = validatedPlan.providerSpecHash;
     pricingRevisionId = validatedPlan.pricingRevisionId;
+    adapterRevisionId = validatedPlan.adapterRevision;
+    capabilityRevisionId = validatedPlan.capabilityRevision;
   } catch (error) {
     return NextResponse.json({
       success: false,
@@ -145,7 +151,12 @@ async function handleGenerationSubmission(req) {
     return NextResponse.json({ success: false, code: "SNAPSHOT_INVALID", error: "The saved generation request is inconsistent with its model quote" }, { status: 409 });
   }
 
-  const compiled = compileCanonicalPrompt(request);
+  const compiled = compileCanonicalPrompt(request, model);
+  const nativeAudioRequested = typeof request.settings.nativeAudio === "boolean"
+    ? request.settings.nativeAudio
+    : typeof request.settings.generateAudio === "boolean"
+    ? request.settings.generateAudio
+    : Boolean(model.nativeAudio?.supported && model.nativeAudio?.default !== false);
   const variantAmounts = Array.from({ length: request.settings.outputCount }, (_, index) => index === 0 ? totalCreditsToReserve : 0);
 
   const webhookBase = process.env.WEBHOOK_URL || process.env.NEXTAUTH_URL || new URL(req.url).origin;
@@ -198,17 +209,20 @@ async function handleGenerationSubmission(req) {
       },
     });
 
-    for (const asset of request.assets) {
+    for (const [selectionIndex, asset] of request.assets.entries()) {
+      const mediaType = mediaTypeFor(asset);
+      const defaultExtension = mediaType === "VIDEO" ? "mp4" : mediaType === "AUDIO" ? "mp3" : "png";
+      const defaultMimeType = mediaType === "VIDEO" ? "video/mp4" : mediaType === "AUDIO" ? "audio/mpeg" : "image/png";
       await tx.creationAsset.create({
         data: {
           creationId: creation.id,
           uploadedByUserId: session.user.id,
           role: asset.role,
-          mediaType: mediaTypeFor(asset),
+          mediaType,
           storageKey: asset.storageKey || asset.url,
-          originalFileName: asset.originalFileName || `${asset.alias}.${mediaTypeFor(asset) === "VIDEO" ? "mp4" : "png"}`,
-          normalizedFileName: asset.originalFileName || `${asset.assetId}.${mediaTypeFor(asset) === "VIDEO" ? "mp4" : "png"}`,
-          mimeType: asset.mimeType || (mediaTypeFor(asset) === "VIDEO" ? "video/mp4" : "image/png"),
+          originalFileName: asset.originalFileName || `${asset.alias}.${defaultExtension}`,
+          normalizedFileName: asset.originalFileName || `${asset.assetId}.${defaultExtension}`,
+          mimeType: asset.mimeType || defaultMimeType,
           detectedMimeType: asset.mimeType || null,
           fileSizeBytes: BigInt(asset.fileSizeBytes || 0),
           width: asset.width || null,
@@ -217,7 +231,7 @@ async function handleGenerationSubmission(req) {
           codec: asset.codec || null,
           checksumSha256: asset.checksumSha256 || crypto.createHash("sha256").update(asset.assetId).digest("hex"),
           validationStatus: "VALID",
-          validationMetadata: JSON.stringify({ alias: asset.alias, groupId: asset.groupId || null, analysis: asset.analysis || null }),
+          validationMetadata: JSON.stringify({ assetId: asset.assetId, selectionIndex, alias: asset.alias, groupId: asset.groupId || null, analysis: asset.analysis || null }),
           validatedAt: new Date(),
         },
       });
@@ -242,12 +256,27 @@ async function handleGenerationSubmission(req) {
           creationVariantId: variant.id,
           workflowType: request.studio,
           workflowVersion: "2.0.0",
-          presetId: request.studio.toLowerCase(),
+          presetId: request.presetId || request.studio.toLowerCase(),
           stageGraph: JSON.stringify(["provider_submission", "provider_generation", "quality_verification", "delivery"]),
-          capabilityRequirements: JSON.stringify({ modelId: model.id, locked: true }),
-          assetRoleMapping: JSON.stringify(compiled.roleMap.map(({ url, ...item }) => item)),
-          speechPlan: JSON.stringify({ script: request.script, delivery: request.instructions.confirmedDelivery, nativeAudio: true }),
-          compositionPlan: JSON.stringify({ studio: request.studio, assets: compiled.compositionAssets.map((asset) => asset.assetId) }),
+          capabilityRequirements: JSON.stringify({
+            modelId: model.id,
+            locked: true,
+            adapterRevision: adapterRevisionId,
+            capabilityRevision: capabilityRevisionId,
+            requiredSlots: model.requiredSlots,
+          }),
+          assetRoleMapping: JSON.stringify(compiled.assetRoleMap.map(({ url, ...item }) => item)),
+          speechPlan: JSON.stringify({
+            script: request.script,
+            delivery: request.instructions.confirmedDelivery,
+            nativeAudio: nativeAudioRequested,
+          }),
+          compositionPlan: JSON.stringify({
+            studio: request.studio,
+            presetId: request.presetId || request.studio.toLowerCase(),
+            composition: request.studio === "APP_STUDIO" ? getAppStudioPreset(request.presetId).composition : null,
+            assets: compiled.compositionAssets.map((asset) => asset.assetId),
+          }),
           routingInput: JSON.stringify({ endpoint: executionEndpoint, payloadFingerprint, variantIndex: index, variationPolicy: "provider_stochastic_no_seed_field" }),
         },
       });
@@ -265,6 +294,12 @@ async function handleGenerationSubmission(req) {
 
       const providerEnv = process.env.DOOLPHIN_ENV === "staging" ? "SANDBOX" : "PRODUCTION";
       const baseRouting = JSON.parse(quote.routingSnapshot || "{}");
+      const boundCapabilitySnapshot = {
+        ...JSON.parse(quote.capabilitySummary || "{}"),
+        adapterRevision: adapterRevisionId,
+        capabilityRevision: capabilityRevisionId,
+        nativeAudioRequested,
+      };
       const providerJob = await tx.providerJob.create({
         data: {
           creationVariantId: variant.id,
@@ -277,9 +312,9 @@ async function handleGenerationSubmission(req) {
           inputFingerprint: payloadFingerprint,
           registryRevision: registryRevisionId,
           pricingRevision: pricingRevisionId,
-          adapterVersion: model.adapterVersion,
+          adapterVersion: adapterRevisionId,
           routingSnapshot: JSON.stringify({ ...baseRouting, providerEnvironment: providerEnv }),
-          capabilitySnapshot: quote.capabilitySummary || "{}",
+          capabilitySnapshot: JSON.stringify(boundCapabilitySnapshot),
           sanitizedRequestPayload: JSON.stringify(sanitizePayload(providerPayloadJson)),
           estimatedCostMinMicroUsd: BigInt(quote.estimatedProviderCostMinMicroUsd || 0) / BigInt(request.settings.outputCount),
           estimatedCostMaxMicroUsd: BigInt(quote.estimatedProviderCostMaxMicroUsd || 0) / BigInt(request.settings.outputCount),

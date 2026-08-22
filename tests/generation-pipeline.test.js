@@ -36,7 +36,7 @@ function scenarioRequest(studio, primaryState, deliveryState, referenceState, ou
   return {
     version: "1",
     studio,
-    modelId,
+    modelId: studio === "APP_STUDIO" ? "muapi.seedance-2-omni-reference" : modelId,
     modelLocked: true,
     script: { text: "This workflow keeps my campaign simple.", language: "auto", maxCharacters: 300 },
     instructions: { raw: instructions },
@@ -62,7 +62,7 @@ test("permanent semantic matrix covers all 384 studio/input combinations", () =>
     assert.equal(validation.request.studio, studio);
     assert.equal(validation.request.settings.outputCount, outputs);
     assert.equal(validation.request.assets[0].role, "ACTOR_REFERENCE");
-    const compiled = compileCanonicalPrompt(validation.request);
+    const compiled = compileCanonicalPrompt(validation.request, validation.model);
     assert.match(compiled.compiledPrompt, /IDENTITY LOCK/);
     assert.match(compiled.compiledPrompt, /says exactly/);
     assert.match(compiled.compiledPrompt, /This workflow keeps my campaign simple/);
@@ -83,14 +83,14 @@ test("three target dry runs preserve deterministic role maps and plans", () => {
   video.instructions.raw = "Natural bedroom selfie, warm morning light, add one short desk B-roll cut.";
   const videoValid = normalizeAndValidateGenerationRequest(video);
   assert.equal(videoValid.valid, true);
-  assert.deepEqual(compileCanonicalPrompt(videoValid.request).roleMap.map((item) => item.tag), ["@image1", "@image2"]);
+  assert.deepEqual(compileCanonicalPrompt(videoValid.request, videoValid.model).roleMap.map((item) => item.tag), ["@image1", "@image2"]);
 
   const product = scenarioRequest("PRODUCT_STUDIO", "multiple_groups", "avatar_dialogue", "none", 1);
   product.script.text = "This serum handles my morning routine, and the night cream keeps it simple before bed.";
   product.instructions.raw = "";
   const productValid = normalizeAndValidateGenerationRequest(product);
   assert.equal(productValid.valid, true);
-  const productPrompt = compileCanonicalPrompt(productValid.request).compiledPrompt;
+  const productPrompt = compileCanonicalPrompt(productValid.request, productValid.model).compiledPrompt;
   assert.match(productPrompt, /Glow Serum/);
   assert.match(productPrompt, /Night Cream/);
   assert.match(productPrompt, /every selected product group/);
@@ -100,10 +100,15 @@ test("three target dry runs preserve deterministic role maps and plans", () => {
   app.instructions.raw = "Start with me holding the phone, then show the scheduling flow.";
   const appValid = normalizeAndValidateGenerationRequest(app);
   assert.equal(appValid.valid, true);
-  const appCompiled = compileCanonicalPrompt(appValid.request);
+  const appCompiled = compileCanonicalPrompt(appValid.request, appValid.model);
   assert.equal(appCompiled.imageUrls.length, 3);
   assert.equal(appCompiled.compositionAssets.some((asset) => asset.role === "APP_SCREEN_RECORDING"), true);
   assert.match(appCompiled.compiledPrompt, /phone/);
+
+  app.assets.push({ assetId: "second-recording", role: "APP_SCREEN_RECORDING", alias: "Onboarding flow", groupId: "app_flow", url: "https://cdn.muapi.ai/tests/onboarding.mp4", mimeType: "video/mp4", analysis: { confirmed: true, deviceType: "mobile" } });
+  const duplicateRecording = normalizeAndValidateGenerationRequest(app);
+  assert.equal(duplicateRecording.valid, false);
+  assert.equal(duplicateRecording.errors.some((error) => error.code === "APP_RECORDING_LIMIT_EXCEEDED"), true);
 });
 
 test("auto duration grows with scene complexity across studios", () => {
@@ -118,7 +123,7 @@ test("auto duration grows with scene complexity across studios", () => {
   assert.equal(complexProductValid.valid, true);
 
   const complexApp = scenarioRequest("APP_STUDIO", "multiple_groups", "mixed", "none", 1);
-  complexApp.assets.push(image("recording", "APP_SCREEN_RECORDING", "Scheduling flow", "app_flow", { deviceType: "mobile" }));
+  complexApp.assets.push({ ...image("recording", "APP_SCREEN_RECORDING", "Scheduling flow", "app_flow", { deviceType: "mobile" }), mimeType: "video/mp4" });
   complexApp.instructions.raw = "Start with the phone, then show the full scheduling flow and finish with a CTA.";
   const complexAppValid = normalizeAndValidateGenerationRequest(complexApp);
   assert.equal(complexAppValid.valid, true);

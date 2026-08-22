@@ -34,6 +34,12 @@ export default function VideoMakerForm({
   modelsList = []
 }) {
   const currentInstructions = additionalInstructions !== undefined ? additionalInstructions : sceneMotion;
+  const explicitDurationValues = selectedModel?.durationValues?.length
+    ? selectedModel.durationValues
+    : [5, 8, 10, 12, 15].filter((value) => value >= (selectedModel?.minDuration ?? 1) && value <= (selectedModel?.maxDuration ?? 60));
+  const durationValues = ["Auto", ...new Set(explicitDurationValues.map(String))];
+  const aspectRatioValues = selectedModel?.aspectRatios || [];
+  const resolutionValues = selectedModel?.resolutions || [];
   const handleInstructionChange = (val) => {
     if (setSceneMotion) setSceneMotion(val);
     if (setAdditionalInstructions) setAdditionalInstructions(val);
@@ -91,23 +97,27 @@ export default function VideoMakerForm({
       {/* Duration */}
       <div className="space-y-1.5">
         <label className="block text-base font-semibold text-[#111111]">Duration</label>
-        <StudioSelect label="Duration" value={duration} values={["Auto", "5", "8", "12", "15"]} onChange={setDuration} formatLabel={(value) => value === "Auto" ? value : `${value}s`} className="w-full max-w-none justify-between bg-[#F2EFE5]" />
+        <StudioSelect label="Duration" value={duration} values={durationValues} onChange={setDuration} formatLabel={(value) => value === "Auto" ? value : `${value}s`} className="w-full max-w-none justify-between bg-[#F2EFE5]" />
         <p className="text-xs text-[#77746D] leading-relaxed">
           Auto lets preflight resolve the final length from your script, scene notes, and attached assets.
         </p>
       </div>
 
-      {/* Resolution */}
-      <div className="space-y-1.5">
-        <label className="block text-base font-semibold text-[#111111]">Resolution</label>
-        <StudioSelect label="Resolution" value={resolution} values={selectedModel?.resolutions || ["720p"]} onChange={setResolution} className="w-full max-w-none justify-between bg-[#F2EFE5]" />
-      </div>
+      {/* Resolution — rendered only when the selected model exposes it. */}
+      {resolutionValues.length > 0 && (
+        <div className="space-y-1.5">
+          <label className="block text-base font-semibold text-[#111111]">Resolution</label>
+          <StudioSelect label="Resolution" value={resolution} values={resolutionValues} onChange={setResolution} className="w-full max-w-none justify-between bg-[#F2EFE5]" />
+        </div>
+      )}
 
-      {/* Aspect Ratio */}
-      <div className="space-y-1.5">
-        <label className="block text-base font-semibold text-[#111111]">Aspect Ratio</label>
-        <StudioSelect label="Aspect ratio" value={aspectRatio} values={["Auto", ...(selectedModel?.aspectRatios || ["9:16"])]} onChange={setAspectRatio} className="w-full max-w-none justify-between bg-[#F2EFE5]" />
-      </div>
+      {/* Aspect ratio — no synthetic Auto value is sent to providers. */}
+      {aspectRatioValues.length > 0 && (
+        <div className="space-y-1.5">
+          <label className="block text-base font-semibold text-[#111111]">Aspect Ratio</label>
+          <StudioSelect label="Aspect ratio" value={aspectRatio} values={aspectRatioValues} onChange={setAspectRatio} className="w-full max-w-none justify-between bg-[#F2EFE5]" />
+        </div>
+      )}
 
       {/* Number of videos stepper */}
       <div className="space-y-1.5">

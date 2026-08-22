@@ -47,10 +47,6 @@ export const APP_STUDIO_PRESETS = Object.freeze([
 ]);
 
 export function getAppStudioModel(modelId) {
-  // Existing drafts created before the curated two-model selector used the
-  // former Seedance 2 fast identifier. Keep them valid through completion;
-  // new App Studio UI choices remain limited to the two entries above.
-  if (modelId === "muapi.seedance2.omni-reference-fast") return APP_STUDIO_MODELS[1];
   return APP_STUDIO_MODELS.find((model) => model.id === modelId) || null;
 }
 
@@ -58,11 +54,21 @@ export function getAppStudioPreset(presetId) {
   return APP_STUDIO_PRESETS.find((preset) => preset.id === presetId) || APP_STUDIO_PRESETS[0];
 }
 
-/** Creates safe, data-led dialogue when the user deliberately leaves the script blank. */
+/** Creates neutral, analysis-led dialogue when the user leaves the script blank. */
 export function buildAppStudioAutoScript({ appAnalysis, presetId } = {}) {
   const preset = getAppStudioPreset(presetId);
   const name = String(appAnalysis?.suggestedName || appAnalysis?.identity || "this app").replace(/[\r\n]+/g, " ").trim().slice(0, 72) || "this app";
-  const visible = Array.isArray(appAnalysis?.visibleText) ? appAnalysis.visibleText.find((value) => typeof value === "string" && value.trim()) : null;
-  const detail = visible ? ` I can see ${String(visible).trim().slice(0, 80)}, so the next step is easy to find.` : " It keeps the next step clear and easy to follow.";
-  return `I have been trying ${name}, and it makes this part of my day feel much simpler.${detail} Let me show you how it works.`.slice(0, 300);
+  const visible = Array.isArray(appAnalysis?.visibleText)
+    ? appAnalysis.visibleText.find((value) => typeof value === "string" && value.trim())
+    : null;
+  const visibleDetail = visible
+    ? `The interface includes “${String(visible).trim().slice(0, 80)}”.`
+    : "The supplied interface shows the real app flow.";
+  const presentation = {
+    PIP: "I’ll keep the interface visible while I walk through it.",
+    SIDE_BY_SIDE: "I’ll walk through it beside the interface.",
+    INSERT: "Let’s cut to the interface and follow the flow.",
+    FULL_SCREEN: "Let’s look at the interface full screen.",
+  }[preset.composition] || "Let’s walk through the supplied interface.";
+  return `Here is ${name}. ${visibleDetail} ${presentation}`.slice(0, 300);
 }

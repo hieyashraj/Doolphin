@@ -2,7 +2,6 @@
 
 import { FiUser, FiPlus, FiHelpCircle } from "react-icons/fi";
 import AssetLibraryPicker from "./AssetLibraryPicker";
-import LazyVideo from "@/components/LazyVideo";
 import StudioModelPicker from "@/components/studio/StudioModelPicker";
 import StudioSelect from "@/components/studio/StudioSelect";
 
@@ -14,6 +13,7 @@ export default function AppStudioForm({
   onOpenActorModal,
   spokenScript,
   setSpokenScript,
+  scriptRequired = false,
   additionalInstructions,
   setAdditionalInstructions,
   uploadedImages,
@@ -33,6 +33,13 @@ export default function AppStudioForm({
   setSelectedModel,
   modelsList = []
 }) {
+  const explicitDurationValues = selectedModel?.durationValues?.length
+    ? selectedModel?.durationValues || []
+    : [5, 8, 10, 12, 15].filter((value) => value >= (selectedModel?.minDuration ?? 1) && value <= (selectedModel?.maxDuration ?? 60));
+  const durationValues = ["Auto", ...new Set(explicitDurationValues.map(String))];
+  const aspectRatioValues = selectedModel?.aspectRatios || [];
+  const resolutionValues = selectedModel?.resolutions || [];
+
   return (
     <div className="studio-form space-y-3 font-sans text-[#111111]">
       {/* Upload your app * (i) */}
@@ -41,20 +48,20 @@ export default function AppStudioForm({
           <label className="block text-base font-semibold text-[#111111]">
             Upload your app <span className="text-red-500">*</span>
           </label>
-          <FiHelpCircle size={14} className="text-[#77746D]" title="Upload a screenshot of your app interface" />
+          <FiHelpCircle size={14} className="text-[#77746D]" title="Upload app screenshots and optionally one MP4 or QuickTime screen recording" />
           {onChooseLibraryApp && <AssetLibraryPicker label="My Assets" accept={["image/", "video/"]} onSelect={onChooseLibraryApp} selectedAssetIds={appImages.map((asset) => asset.assetId || asset.id)} />}
         </div>
         <div className="flex flex-wrap items-center gap-3">
           {appImages.map((appImage) => (
             <div key={appImage.id || appImage.assetId} className="relative w-20 h-20 rounded-xl border border-[#111111]/15 overflow-hidden group">
-              {appImage.mimeType?.startsWith("video/") ? (
-                <LazyVideo src={appImage.preview || appImage.url} className="w-full h-full object-cover" />
+              {String(appImage.detectedMimeType || appImage.mimeType || "").startsWith("video/") ? (
+                <video src={appImage.preview || appImage.url} aria-label={appImage.alias || "App screen recording"} muted playsInline className="w-full h-full object-cover" />
               ) : (
                 <img src={appImage.preview || appImage.url} alt={appImage.alias || "App UI"} className="w-full h-full object-cover" />
               )}
               <button
                 type="button"
-                onClick={() => onRemoveImage(appImage.id)}
+                onClick={() => onRemoveImage(appImage.id || appImage.assetId)}
                 className="absolute top-1 right-1 bg-black/70 text-white rounded-full w-4 h-4 flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-opacity"
               >
                 ✕
@@ -70,7 +77,7 @@ export default function AppStudioForm({
 
       {/* Choose an avatar */}
       <div className="space-y-1.5">
-        <label className="block text-base font-semibold text-[#111111]">Choose an avatar</label>
+        <label className="block text-base font-semibold text-[#111111]">Choose an avatar <span className="text-red-500">*</span></label>
         <button
           type="button"
           onClick={onOpenActorModal}
@@ -95,7 +102,9 @@ export default function AppStudioForm({
       {/* Write your script */}
       <div className="space-y-1.5">
         <label className="block text-base font-semibold text-[#111111]">
-          Write your script <span className="text-[#77746D] text-sm font-normal">(optional)</span>
+          Write your script {scriptRequired
+            ? <span className="text-red-500">*</span>
+            : <span className="text-[#77746D] text-sm font-normal">(optional with a confirmed screenshot)</span>}
         </label>
         <div className="relative">
           <textarea
@@ -103,7 +112,10 @@ export default function AppStudioForm({
             onChange={(e) => setSpokenScript(e.target.value)}
             maxLength={300}
             rows={3}
-            placeholder="Write the exact script for your app demo (max 300 chars). Leave blank for an app-informed draft."
+            required={scriptRequired}
+            placeholder={scriptRequired
+              ? "Write the exact script for this recording-only app demo (max 300 chars)."
+              : "Write the exact script for your app demo (max 300 chars). Leave blank for an app-informed draft."}
             className="w-full bg-[#F2EFE5] focus:bg-white p-3.5 text-sm font-medium text-[#111111] placeholder-[#8C887B] border border-[#111111]/15 focus:border-[#111111] focus:outline-none focus:ring-2 focus:ring-[#111111] caret-[#111111] transition-all resize-none rounded-xl"
           />
           <div className="absolute bottom-2.5 right-3 text-xs text-[#77746D] font-mono">
@@ -123,7 +135,7 @@ export default function AppStudioForm({
             onChange={(e) => setAdditionalInstructions(e.target.value)}
             maxLength={1600}
             rows={4}
-            placeholder="Add any extra direction beyond what the preset enforces.."
+            placeholder="Add any extra direction beyond what the preset enforces."
             className="w-full bg-[#F2EFE5] focus:bg-white p-3.5 text-sm font-medium text-[#111111] placeholder-[#8C887B] border border-[#111111]/15 focus:border-[#111111] focus:outline-none focus:ring-2 focus:ring-[#111111] caret-[#111111] transition-all resize-none rounded-xl"
           />
           <div className="absolute bottom-2.5 right-3 text-xs text-[#77746D] font-mono">
@@ -160,30 +172,34 @@ export default function AppStudioForm({
       </div>
 
       <div className="space-y-1.5">
-        <label className="block text-base font-semibold text-[#111111]">AI Model</label>
+        <label className="block text-base font-semibold text-[#111111]">AI Model <span className="text-red-500">*</span></label>
         <StudioModelPicker models={modelsList} value={selectedModel?.id} onChange={setSelectedModel} />
       </div>
 
       {/* Duration */}
       <div className="space-y-1.5">
         <label className="block text-base font-semibold text-[#111111]">Duration</label>
-        <StudioSelect label="Duration" value={duration} values={["Auto", "5", "8", "12", "15"]} onChange={setDuration} formatLabel={(value) => value === "Auto" ? value : `${value}s`} className="w-full max-w-none justify-between bg-[#F2EFE5]" />
+        <StudioSelect label="Duration" value={duration} values={durationValues} onChange={setDuration} formatLabel={(value) => value === "Auto" ? value : `${value}s`} className="w-full max-w-none justify-between bg-[#F2EFE5]" />
         <p className="text-xs text-[#77746D] leading-relaxed">
           Auto lets the app flow, screen count, and script timing decide the final length.
         </p>
       </div>
 
-      {/* Resolution */}
-      <div className="space-y-1.5">
-        <label className="block text-base font-semibold text-[#111111]">Resolution</label>
-        <StudioSelect label="Resolution" value={resolution} values={selectedModel?.resolutions || ["720p"]} onChange={setResolution} className="w-full max-w-none justify-between bg-[#F2EFE5]" />
-      </div>
+      {/* Resolution — rendered only when the selected model exposes it. */}
+      {resolutionValues.length > 0 && (
+        <div className="space-y-1.5">
+          <label className="block text-base font-semibold text-[#111111]">Resolution</label>
+          <StudioSelect label="Resolution" value={resolution} values={resolutionValues} onChange={setResolution} className="w-full max-w-none justify-between bg-[#F2EFE5]" />
+        </div>
+      )}
 
-      {/* Aspect Ratio */}
-      <div className="space-y-1.5">
-        <label className="block text-base font-semibold text-[#111111]">Aspect Ratio</label>
-        <StudioSelect label="Aspect ratio" value={aspectRatio} values={selectedModel?.aspectRatios || ["9:16"]} onChange={setAspectRatio} className="w-full max-w-none justify-between bg-[#F2EFE5]" />
-      </div>
+      {/* Aspect ratio — unsupported controls are omitted rather than left empty. */}
+      {aspectRatioValues.length > 0 && (
+        <div className="space-y-1.5">
+          <label className="block text-base font-semibold text-[#111111]">Aspect Ratio</label>
+          <StudioSelect label="Aspect ratio" value={aspectRatio} values={aspectRatioValues} onChange={setAspectRatio} className="w-full max-w-none justify-between bg-[#F2EFE5]" />
+        </div>
+      )}
 
       {/* Number of videos stepper */}
       <div className="space-y-1.5">

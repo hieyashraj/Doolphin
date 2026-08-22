@@ -26,12 +26,13 @@ import AppStudioForm from "./AppStudioForm";
 import ProgressTimeline from "./ProgressTimeline";
 import { PRESETS_LIBRARY } from "@/lib/presetsData";
 import CreationDetailModal from "./CreationDetailModal";
-import { listAppStudioGenerationModels, listGenerationModels } from "@/lib/generation/modelRegistry";
+import { getGenerationModel, listAppStudioGenerationModels, listGenerationModels } from "@/lib/generation/modelRegistry";
 import toast from "react-hot-toast";
 import LazyVideo from "@/components/LazyVideo";
 import { useAppAccount } from "@/components/AppAccountProvider";
 import { IN_FLIGHT_VARIANT_STATUSES, VIDEO_GENERATION_TYPES, videoSlotsForPlan } from "@/lib/generation/concurrencyLimit";
 import { APP_STUDIO_PRESETS, getAppStudioPreset } from "@/lib/app-studio/config";
+import { formatCreationElapsed } from "@/lib/generation/recoveryDisplay";
 
 const PRESET_MODES = [
   {
@@ -60,7 +61,7 @@ const PRESET_MODES = [
   }
 ];
 
-const MODELS = listGenerationModels();
+const BUNDLED_MODELS = listGenerationModels();
 
 const STUDIO_IDS = {
   video_maker: "VIDEO_STUDIO",
@@ -68,28 +69,64 @@ const STUDIO_IDS = {
   app: "APP_STUDIO"
 };
 
+const MODEL_STUDIOS = {
+  video_maker: "video-studio",
+  product: "product-studio",
+  app: "app-studio"
+};
+
 const DRAFT_STORAGE_KEY = "doolphin_studio_drafts_v1";
 const DRAFT_STORAGE_VERSION = 1;
 const DRAFT_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 30;
-const DURATION_OPTIONS = new Set(["Auto", "5", "8", "12", "15"]);
 
-const blankDraft = () => ({
-  sceneMotion: "",
-  selectedModel: MODELS[0],
-  duration: "Auto",
-  resolution: "720p",
-  aspectRatio: "9:16",
-  numVideos: 1,
-  uploadedImages: [],
-  productImages: [],
-  appImages: [],
-  productGroupName: "",
-  spokenScript: "",
-  additionalInstructions: "",
-  draftAvatar: null
-});
+const APP_MEDIA_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "video/mp4", "video/quicktime"]);
+const isSupportedAppAsset = (asset) => APP_MEDIA_MIME_TYPES.has(String(asset?.detectedMimeType || asset?.mimeType || asset?.type || "").toLowerCase());
+
+async function readJsonResponse(response, label) {
+  const contentType = response.headers.get("content-type") || "";
+  if (!contentType.includes("application/json")) throw new Error(`${label} returned an invalid response.`);
+  const data = await response.json();
+  if (!response.ok) throw new Error(data?.error || `${label} is unavailable.`);
+  return data;
+}
+
+const compatibleModelsForStudio = (studioMode = "video_maker") => {
+  if (studioMode === "app") return listAppStudioGenerationModels();
+  const modelStudio = MODEL_STUDIOS[studioMode];
+  return modelStudio ? BUNDLED_MODELS.filter((model) => model.studios?.includes(modelStudio)) : [];
+};
+
+const blankDraft = (studioMode = "video_maker") => {
+  const selectedModel = compatibleModelsForStudio(studioMode)[0] || null;
+  return {
+    sceneMotion: "",
+    selectedModel,
+    unavailableModelId: null,
+    duration: "Auto",
+    resolution: selectedModel?.resolutions?.[0] || "",
+    aspectRatio: selectedModel?.aspectRatios?.[0] || "",
+    numVideos: 1,
+    uploadedImages: [],
+    productImages: [],
+    appImages: [],
+    productGroupName: "",
+    appPresetId: APP_STUDIO_PRESETS[0].id,
+    spokenScript: "",
+    additionalInstructions: "",
+    draftAvatar: null
+  };
+};
 
 const asString = (value, maxLength = 10000) => typeof value === "string" ? value.slice(0, maxLength) : "";
+
+const isSupportedDraftDuration = (model, value) => {
+  if (!model) return value === "Auto";
+  if (value === "Auto") return true;
+  const seconds = Number(value);
+  if (!Number.isInteger(seconds)) return false;
+  if (model.durationValues?.length) return model.durationValues.includes(seconds);
+  return seconds >= model.minDuration && seconds <= model.maxDuration;
+};
 
 // Object URLs are valid only for the browser session that created them. Keep
 // server-backed asset metadata, but never restore a stale blob URL.
@@ -99,7 +136,9 @@ const serializableAssets = (assets) => Array.isArray(assets)
 
 const serializeDraft = (draft) => ({
   sceneMotion: asString(draft.sceneMotion),
-  selectedModelId: draft.selectedModel?.id,
+  // Preserve an unavailable saved ID until the user explicitly chooses a
+  // replacement. Autosave must never rewrite it as the first current model.
+  selectedModelId: draft.unavailableModelId || draft.selectedModel?.id,
   duration: draft.duration,
   resolution: draft.resolution,
   aspectRatio: draft.aspectRatio,
@@ -108,29 +147,40 @@ const serializeDraft = (draft) => ({
   productImages: serializableAssets(draft.productImages),
   appImages: serializableAssets(draft.appImages),
   productGroupName: asString(draft.productGroupName, 80),
+  appPresetId: getAppStudioPreset(draft.appPresetId).id,
   spokenScript: asString(draft.spokenScript, 300),
   additionalInstructions: asString(draft.additionalInstructions),
   draftAvatar: draft.draftAvatar && typeof draft.draftAvatar === "object" ? draft.draftAvatar : null
 });
 
-const restoreDraft = (savedDraft) => {
-  const fallback = blankDraft();
+const restoreDraft = (savedDraft, studioMode = "video_maker") => {
+  const fallback = blankDraft(studioMode);
   if (!savedDraft || typeof savedDraft !== "object") return fallback;
 
-  // Models and capabilities can change between visits. Resolve the saved ID
-  // against today's registry and fall back to compatible option values.
-  const selectedModel = MODELS.find((model) => model.id === savedDraft.selectedModelId) || fallback.selectedModel;
+  // Models and capabilities can change between visits. Preserve declared
+  // legacy aliases, but never silently replace an unknown model with the first
+  // current option: generation remains blocked until the user chooses one.
+  const modelStudio = MODEL_STUDIOS[studioMode];
+  const savedModelId = asString(savedDraft.selectedModelId, 200);
+  const resolvedModel = savedModelId ? getGenerationModel(savedModelId) : null;
+  const resolvedClientModel = resolvedModel ? BUNDLED_MODELS.find((model) => model.id === resolvedModel.id) : null;
+  const compatibleModel = resolvedClientModel?.studios?.includes(modelStudio) ? resolvedClientModel : null;
+  const selectedModel = savedModelId ? compatibleModel : fallback.selectedModel;
+  const unavailableModelId = savedModelId && !compatibleModel ? savedModelId : null;
+  const restoredAppImages = serializableAssets(savedDraft.appImages);
   return {
     sceneMotion: asString(savedDraft.sceneMotion),
     selectedModel,
-    duration: DURATION_OPTIONS.has(savedDraft.duration) ? savedDraft.duration : fallback.duration,
-    resolution: selectedModel.resolutions.includes(savedDraft.resolution) ? savedDraft.resolution : selectedModel.resolutions[0],
-    aspectRatio: selectedModel.aspectRatios.includes(savedDraft.aspectRatio) ? savedDraft.aspectRatio : selectedModel.aspectRatios[0],
+    unavailableModelId,
+    duration: isSupportedDraftDuration(selectedModel, savedDraft.duration) ? savedDraft.duration : fallback.duration,
+    resolution: selectedModel?.resolutions?.includes(savedDraft.resolution) ? savedDraft.resolution : (selectedModel?.resolutions?.[0] || ""),
+    aspectRatio: selectedModel?.aspectRatios?.includes(savedDraft.aspectRatio) ? savedDraft.aspectRatio : (selectedModel?.aspectRatios?.[0] || ""),
     numVideos: Number.isInteger(savedDraft.numVideos) && savedDraft.numVideos > 0 && savedDraft.numVideos <= 4 ? savedDraft.numVideos : fallback.numVideos,
     uploadedImages: serializableAssets(savedDraft.uploadedImages),
     productImages: serializableAssets(savedDraft.productImages),
-    appImages: serializableAssets(savedDraft.appImages),
+    appImages: studioMode === "app" ? restoredAppImages.filter(isSupportedAppAsset) : restoredAppImages,
     productGroupName: asString(savedDraft.productGroupName, 80),
+    appPresetId: getAppStudioPreset(savedDraft.appPresetId).id,
     spokenScript: asString(savedDraft.spokenScript, 300),
     additionalInstructions: asString(savedDraft.additionalInstructions),
     draftAvatar: savedDraft.draftAvatar && typeof savedDraft.draftAvatar === "object" ? savedDraft.draftAvatar : null
@@ -147,13 +197,73 @@ export default function CreationHub({
   userCredits
 }) {
   const { account, refreshAccount } = useAppAccount();
+  const [modelsByStudio, setModelsByStudio] = useState(null);
+  const [loadingModelsByStudio, setLoadingModelsByStudio] = useState(() => Object.fromEntries(Object.keys(MODEL_STUDIOS).map((modeId) => [modeId, true])));
+  const [modelLoadErrors, setModelLoadErrors] = useState({});
+  const [modelReloadToken, setModelReloadToken] = useState(0);
   const [activeModeId, setActiveModeId] = useState(() => STUDIO_IDS[studioMode] ? studioMode : "video_maker");
+  const isLoadingModels = Boolean(loadingModelsByStudio[activeModeId]);
+  const modelLoadError = modelLoadErrors[activeModeId] || null;
   const [isPresetModalOpen, setIsPresetModalOpen] = useState(false);
   const [presetSearch, setPresetSearch] = useState("");
 
   // Draggable Sidebar Resizing State
   const [sidebarWidth, setSidebarWidth] = useState(440);
   const [isResizing, setIsResizing] = useState(false);
+  const [isMobileViewport, setIsMobileViewport] = useState(false);
+
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 767px)");
+    const syncViewport = () => setIsMobileViewport(media.matches);
+    syncViewport();
+    media.addEventListener("change", syncViewport);
+    return () => media.removeEventListener("change", syncViewport);
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const studioEntries = Object.entries(MODEL_STUDIOS);
+    setModelsByStudio((current) => current || {});
+    setLoadingModelsByStudio(Object.fromEntries(studioEntries.map(([modeId]) => [modeId, true])));
+    setModelLoadErrors({});
+
+    const loadStudioModels = async ([modeId, studio]) => {
+      const studioName = PRESET_MODES.find((mode) => mode.id === modeId)?.name || "Studio";
+      try {
+        const signal = typeof AbortSignal.any === "function"
+          ? AbortSignal.any([controller.signal, AbortSignal.timeout(15_000)])
+          : controller.signal;
+        const response = await fetch(`/api/models?studio=${encodeURIComponent(studio)}`, { signal });
+        const data = await readJsonResponse(response, `${studioName} model catalog`);
+        if (!Array.isArray(data.models) || data.models.some((model) => !model?.id || !Array.isArray(model.aspectRatios) || !Array.isArray(model.resolutions))) {
+          throw new Error(`The ${studio} model catalog is incomplete.`);
+        }
+        if (!data.models.length) throw new Error(`No enabled AI models are available for ${studio}.`);
+        if (!controller.signal.aborted) {
+          setModelsByStudio((current) => ({ ...(current || {}), [modeId]: data.models }));
+          setModelLoadErrors((current) => {
+            const next = { ...current };
+            delete next[modeId];
+            return next;
+          });
+        }
+      } catch (error) {
+        if (error.name !== "AbortError" && !controller.signal.aborted) {
+          const message = error.name === "TimeoutError"
+            ? `${studioName} model catalog timed out. Retry this studio.`
+            : error.message || `AI models could not be loaded for ${studioName}.`;
+          setModelLoadErrors((current) => ({ ...current, [modeId]: message }));
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setLoadingModelsByStudio((current) => ({ ...current, [modeId]: false }));
+        }
+      }
+    };
+
+    studioEntries.forEach((entry) => void loadStudioModels(entry));
+    return () => controller.abort();
+  }, [modelReloadToken]);
 
   const startResizing = (e) => {
     e.preventDefault();
@@ -188,19 +298,22 @@ export default function CreationHub({
   }, [isResizing]);
   
   // Each studio is snapshotted independently when the user switches modes.
+  // Initial form state must match the URL-selected Studio before hydration.
+  const initialDraft = useRef(blankDraft(STUDIO_IDS[studioMode] ? studioMode : "video_maker")).current;
   const studioDrafts = useRef({
-    video_maker: blankDraft(),
-    product: blankDraft(),
-    app: blankDraft()
+    video_maker: blankDraft("video_maker"),
+    product: blankDraft("product"),
+    app: blankDraft("app")
   });
   const draftSnapshotRef = useRef(null);
   const [draftStorageReady, setDraftStorageReady] = useState(false);
   const [draftSaveStatus, setDraftSaveStatus] = useState("");
-  const [sceneMotion, setSceneMotion] = useState("");
-  const [selectedModel, setSelectedModel] = useState(MODELS[0]);
-  const [duration, setDuration] = useState("Auto");
-  const [resolution, setResolution] = useState("720p");
-  const [aspectRatio, setAspectRatio] = useState("9:16");
+  const [sceneMotion, setSceneMotion] = useState(initialDraft.sceneMotion);
+  const [selectedModel, setSelectedModel] = useState(initialDraft.selectedModel);
+  const [unavailableDraftModelId, setUnavailableDraftModelId] = useState(initialDraft.unavailableModelId);
+  const [duration, setDuration] = useState(initialDraft.duration);
+  const [resolution, setResolution] = useState(initialDraft.resolution);
+  const [aspectRatio, setAspectRatio] = useState(initialDraft.aspectRatio);
   const [numVideos, setNumVideos] = useState(1);
   const [uploadedImages, setUploadedImages] = useState([]);
   const [audioSource, setAudioSource] = useState(""); // reserved for a future voice feature
@@ -208,27 +321,10 @@ export default function CreationHub({
   const [productImages, setProductImages] = useState([]);
   const [appImages, setAppImages] = useState([]);
   const [productGroupName, setProductGroupName] = useState("");
-  const [appPresetId, setAppPresetId] = useState(APP_STUDIO_PRESETS[0].id);
+  const [appPresetId, setAppPresetId] = useState(initialDraft.appPresetId);
   const [spokenScript, setSpokenScript] = useState("");
   const [additionalInstructions, setAdditionalInstructions] = useState("");
   const [draftAvatar, setDraftAvatar] = useState(selectedAvatar || null);
-
-  const appStudioModels = useMemo(() => listAppStudioGenerationModels({
-    hasScreenshot: appImages.some((asset) => !asset.mimeType?.startsWith("video/")),
-    hasRecording: appImages.some((asset) => asset.mimeType?.startsWith("video/")),
-  }), [appImages]);
-  // Switching to App Studio (or replacing a screenshot with a recording) can
-  // make a previously selected model incompatible. Move to a compatible model
-  // immediately instead of deferring an opaque preflight error until the user
-  // presses Generate.
-  useEffect(() => {
-    if (activeModeId !== "app" || appStudioModels.some((model) => model.id === selectedModel?.id)) return;
-    const nextModel = appStudioModels[0];
-    if (!nextModel) return;
-    setSelectedModel(nextModel);
-    setResolution(nextModel.resolutions[0]);
-    setAspectRatio(nextModel.aspectRatios[0]);
-  }, [activeModeId, appStudioModels, selectedModel?.id]);
 
   useEffect(() => {
     if (selectedAvatar) setDraftAvatar(selectedAvatar);
@@ -238,6 +334,7 @@ export default function CreationHub({
 
   const [creations, setCreations] = useState([]);
   const [isLoadingCreations, setIsLoadingCreations] = useState(true);
+  const [creationLoadError, setCreationLoadError] = useState(null);
   const [displayedCredits, setDisplayedCredits] = useState(userCredits);
   const [cancellingCreationIds, setCancellingCreationIds] = useState(() => new Set());
   // Statuses seen on the initial gallery load establish a baseline, preventing
@@ -281,20 +378,34 @@ export default function CreationHub({
 
   const selectModel = (model) => {
     if (!model) return;
+    const modelResolutions = model.resolutions || [];
+    const modelAspectRatios = model.aspectRatios || [];
     setSelectedModel(model);
-    if (!model.resolutions.includes(resolution)) setResolution(model.resolutions[0]);
-    if (!model.aspectRatios.includes(aspectRatio)) setAspectRatio(model.aspectRatios[0]);
+    setUnavailableDraftModelId(null);
+    if (modelResolutions.length && !modelResolutions.includes(resolution)) setResolution(modelResolutions[0]);
+    if (!modelResolutions.length) setResolution("");
+    if (modelAspectRatios.length && !modelAspectRatios.includes(aspectRatio)) setAspectRatio(modelAspectRatios[0]);
+    if (!modelAspectRatios.length) setAspectRatio("");
+    if (duration !== "Auto") {
+      const seconds = Number(duration);
+      const allowed = model.durationValues?.length
+        ? model.durationValues.includes(seconds)
+        : seconds >= model.minDuration && seconds <= model.maxDuration;
+      if (!allowed) setDuration("Auto");
+    }
   };
 
   const currentDraft = () => ({
-    sceneMotion, selectedModel, duration, resolution, aspectRatio, numVideos,
-    uploadedImages, productImages, appImages, productGroupName,
+    sceneMotion, selectedModel, unavailableModelId: unavailableDraftModelId,
+    duration, resolution, aspectRatio, numVideos,
+    uploadedImages, productImages, appImages, productGroupName, appPresetId,
     spokenScript, additionalInstructions, draftAvatar
   });
 
   const loadDraft = (draft) => {
     setSceneMotion(draft.sceneMotion);
     setSelectedModel(draft.selectedModel);
+    setUnavailableDraftModelId(draft.unavailableModelId || null);
     setDuration(draft.duration);
     setResolution(draft.resolution);
     setAspectRatio(draft.aspectRatio);
@@ -303,6 +414,7 @@ export default function CreationHub({
     setProductImages(draft.productImages);
     setAppImages(draft.appImages);
     setProductGroupName(draft.productGroupName);
+    setAppPresetId(getAppStudioPreset(draft.appPresetId).id);
     setSpokenScript(draft.spokenScript);
     setAdditionalInstructions(draft.additionalInstructions);
     setDraftAvatar(draft.draftAvatar);
@@ -320,12 +432,12 @@ export default function CreationHub({
         return;
       }
       const restoredDrafts = {
-        video_maker: restoreDraft(saved.drafts?.video_maker),
-        product: restoreDraft(saved.drafts?.product),
-        app: restoreDraft(saved.drafts?.app)
+        video_maker: restoreDraft(saved.drafts?.video_maker, "video_maker"),
+        product: restoreDraft(saved.drafts?.product, "product"),
+        app: restoreDraft(saved.drafts?.app, "app")
       };
       studioDrafts.current = restoredDrafts;
-      loadDraft(restoredDrafts.video_maker);
+      loadDraft(restoredDrafts[activeModeId] || blankDraft(activeModeId));
       setDraftSaveStatus("Draft restored");
     } catch {
       // Corrupt local data should never block the studio from loading.
@@ -361,9 +473,10 @@ export default function CreationHub({
     const timeout = window.setTimeout(save, 600);
     return () => window.clearTimeout(timeout);
   }, [
-    draftStorageReady, activeModeId, sceneMotion, selectedModel, duration,
+    draftStorageReady, activeModeId, sceneMotion, selectedModel, unavailableDraftModelId,
+    duration,
     resolution, aspectRatio, numVideos, uploadedImages, productImages,
-    appImages, productGroupName, spokenScript, additionalInstructions, draftAvatar
+    appImages, productGroupName, appPresetId, spokenScript, additionalInstructions, draftAvatar
   ]);
 
   useEffect(() => {
@@ -382,7 +495,7 @@ export default function CreationHub({
   const switchStudio = (nextModeId) => {
     if (!STUDIO_IDS[nextModeId] || nextModeId === activeModeId) return;
     studioDrafts.current[activeModeId] = currentDraft();
-    loadDraft(studioDrafts.current[nextModeId] || blankDraft());
+    loadDraft(studioDrafts.current[nextModeId] || blankDraft(nextModeId));
     setActiveModeId(nextModeId);
     setPreflight(null);
     setSubmitError(null);
@@ -400,14 +513,15 @@ export default function CreationHub({
 
   const fetchCreations = async () => {
     try {
-      const res = await fetch("/api/creations");
-      if (res.ok) {
-        const data = await res.json();
-        notifyGenerationStatusChange(data);
-        setCreations(data);
-      }
-    } catch (err) {
-      console.error("Failed to fetch creations:", err);
+      const res = await fetch("/api/creations", { headers: { Accept: "application/json" } });
+      const data = await readJsonResponse(res, "Creation history");
+      if (!Array.isArray(data)) throw new Error("Creation history returned an invalid response.");
+      notifyGenerationStatusChange(data);
+      setCreations(data);
+      setCreationLoadError(null);
+    } catch (error) {
+      console.error("Failed to fetch creations:", error);
+      setCreationLoadError(error.message || "Creation history could not be loaded.");
     } finally {
       setIsLoadingCreations(false);
     }
@@ -428,14 +542,31 @@ export default function CreationHub({
 
   const activePreset = activeModeId === "app"
     ? {
-        ...(PRESET_MODES.find((m) => m.id === "app") || PRESET_MODES[0]),
+        ...(PRESET_MODES.find((mode) => mode.id === "app") || PRESET_MODES[0]),
         name: getAppStudioPreset(appPresetId).name,
         subtitle: "App & SaaS Showcase",
       }
-    : PRESET_MODES.find((m) => m.id === activeModeId) || PRESET_MODES[0];
+    : PRESET_MODES.find((mode) => mode.id === activeModeId) || PRESET_MODES[0];
+  const activeModels = modelsByStudio?.[activeModeId] || [];
+  // Rebind restored/bundled draft selections to the authenticated server
+  // catalog. This is the same entitlement-filtered authority preflight uses.
+  useEffect(() => {
+    if (isLoadingModels || !modelsByStudio) return;
+    const matching = activeModels.find((model) => model.id === selectedModel?.id || model.id === unavailableDraftModelId);
+    if (matching) {
+      selectModel(matching);
+      return;
+    }
+    if (!unavailableDraftModelId && activeModels[0]) selectModel(activeModels[0]);
+  // Reconcile only when the authoritative catalog or active studio changes.
+  }, [modelsByStudio, activeModeId, isLoadingModels]);
+  // A retired draft must not make the picker visually select its first fallback.
+  // Replacement options are rendered explicitly beside the blocking reason.
+  const pickerModels = unavailableDraftModelId ? [] : activeModels;
 
   const providerImageCount = () =>
-    1 + uploadedImages.length + productImages.length + appImages.filter((asset) => !asset.mimeType?.startsWith("video/")).length;
+    1 + uploadedImages.length + productImages.length + appImages.filter((asset) => !String(asset.mimeType || asset.detectedMimeType || "").startsWith("video/")).length;
+  const providerImageLimit = Math.max(1, Number(selectedModel?.maxReferences?.images || selectedModel?.maxImages) || 9);
 
   const updateUploadedAsset = (assetId, changes) => {
     const update = (list) => list.map((asset) => (asset.assetId === assetId ? { ...asset, ...changes } : asset));
@@ -503,8 +634,8 @@ export default function CreationHub({
   const uploadFiles = async (files, roleFactory) => {
     setSubmitError(null);
     const imageFiles = files.filter((file) => !file.type.startsWith("video/"));
-    if (providerImageCount() + imageFiles.length > 9) {
-      throw new Error("Seedance supports one avatar plus at most eight image inputs. Remove an image before uploading another.");
+    if (providerImageCount() + imageFiles.length > providerImageLimit) {
+      throw new Error(`This model supports at most ${providerImageLimit} image references, including the avatar. Remove an image before uploading another.`);
     }
     const uploaded = [];
     for (const [index, file] of files.entries()) {
@@ -513,16 +644,17 @@ export default function CreationHub({
       const presignResponse = await fetch("/api/uploads/presign", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ filename: file.name, contentType: file.type, fileSizeBytes: file.size, checksumSha256 }) });
       const presign = await presignResponse.json();
       if (!presignResponse.ok) throw new Error(presign.error || `Could not prepare ${file.name}`);
-      let data;
-      if (presign.directUpload) {
-        if (!presign.alreadyUploaded) {
-          const putResponse = await fetch(presign.uploadUrl, { method: "PUT", headers: presign.requiredHeaders, body: file });
-          if (!putResponse.ok) throw new Error(`Direct storage upload failed for ${file.name}`);
-        }
-        const completeResponse = await fetch("/api/uploads/complete", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ assetId: presign.assetId }) });
-        data = await completeResponse.json();
-        if (!completeResponse.ok) throw new Error(data.error || `Could not verify ${file.name}`);
+      if (!presign.directUpload) throw new Error(`Direct upload is unavailable for ${file.name}. Please try again later.`);
+      if (!presign.assetId) throw new Error(`Upload preparation did not return an asset ID for ${file.name}.`);
+      if (!presign.alreadyUploaded) {
+        if (!presign.uploadUrl || !presign.requiredHeaders) throw new Error(`Upload preparation was incomplete for ${file.name}.`);
+        const putResponse = await fetch(presign.uploadUrl, { method: "PUT", headers: presign.requiredHeaders, body: file });
+        if (!putResponse.ok) throw new Error(`Direct storage upload failed for ${file.name}`);
       }
+      const completeResponse = await fetch("/api/uploads/complete", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ assetId: presign.assetId }) });
+      const data = await completeResponse.json();
+      if (!completeResponse.ok) throw new Error(data.error || `Could not verify ${file.name}`);
+      if (!data?.asset) throw new Error(`Upload verification did not return an asset for ${file.name}.`);
       const roleData = roleFactory(file, index, data.asset);
       uploaded.push({
         ...data.asset,
@@ -555,6 +687,14 @@ export default function CreationHub({
   const handleAppUpload = async (event) => {
     try {
       const files = Array.from(event.target.files || []);
+      if (files.some((file) => !isSupportedAppAsset(file))) {
+        throw new Error("App Studio accepts JPEG, PNG, WebP, MP4, or QuickTime app media.");
+      }
+      const existingRecordingCount = appImages.filter((asset) => String(asset.mimeType || asset.detectedMimeType || "").startsWith("video/")).length;
+      const newRecordingCount = files.filter((file) => file.type.startsWith("video/")).length;
+      if (existingRecordingCount + newRecordingCount > 1) {
+        throw new Error("App Studio accepts at most one screen recording per generation.");
+      }
       const assets = await uploadFiles(files, (file, index) => ({
         role: file.type.startsWith("video/") ? "APP_SCREEN_RECORDING" : "APP_PRIMARY_SCREEN",
         alias: `app_asset_${appImages.length + index + 1}`,
@@ -592,9 +732,18 @@ export default function CreationHub({
       setSubmitError("That saved asset is no longer available for generation.");
       return;
     }
+    if (target === "app" && !isSupportedAppAsset(storedAsset)) {
+      setSubmitError("App Studio accepts JPEG, PNG, WebP, MP4, or QuickTime app media.");
+      return;
+    }
+    const isAppVideo = target === "app" && String(storedAsset.detectedMimeType || storedAsset.mimeType || "").startsWith("video/");
+    if (isAppVideo && appImages.some((asset) => String(asset.detectedMimeType || asset.mimeType || "").startsWith("video/"))) {
+      setSubmitError("App Studio accepts at most one screen recording per generation.");
+      return;
+    }
     const imageAsset = !storedAsset.mimeType?.startsWith("video/");
-    if (imageAsset && providerImageCount() >= 9) {
-      setSubmitError("Seedance supports one avatar plus at most eight image inputs. Remove an image before adding another.");
+    if (imageAsset && providerImageCount() >= providerImageLimit) {
+      setSubmitError(`This model supports at most ${providerImageLimit} image references, including the avatar. Remove an image before adding another.`);
       return;
     }
     const existing = target === "product" ? productImages : target === "app" ? appImages : uploadedImages;
@@ -609,7 +758,7 @@ export default function CreationHub({
           groupId: groupId || storedAsset.analysis?.suggestedName || `unconfirmed_${storedAsset.assetId}`
         }
       : target === "app"
-        ? { role: storedAsset.mimeType?.startsWith("video/") ? "APP_SCREEN_RECORDING" : "APP_PRIMARY_SCREEN", alias: `app_asset_${index + 1}`, groupId: "app_flow_1" }
+        ? { role: isAppVideo ? "APP_SCREEN_RECORDING" : "APP_PRIMARY_SCREEN", alias: `app_asset_${index + 1}`, groupId: "app_flow_1" }
         : { role: "STYLE_REFERENCE", alias: `style_reference_${index + 1}`, groupId: null };
     
     // Ensure default fallback structure for unconfirmed library analysis
@@ -645,7 +794,7 @@ export default function CreationHub({
 
     // Auto-confirm or analyze if needed so preflight verification succeeds immediately
     if (asset.analysisStatus !== "CONFIRMED" && !asset.analysisConfirmed) {
-      if (asset.analysisStatus === "COMPLETED" || asset.analysis) {
+      if (asset.analysisStatus === "COMPLETED") {
         void confirmAssetAnalysis(asset);
       } else {
         void beginAssetAnalysis(asset);
@@ -665,15 +814,30 @@ export default function CreationHub({
   const [preparedQuoteRequest, setPreparedQuoteRequest] = useState(null);
   const [quoteUnavailableRequest, setQuoteUnavailableRequest] = useState(null);
 
+  const assetsNeedingReview = [
+    ...(activeModeId === "product" ? productImages : []),
+    ...(activeModeId === "app" ? appImages : []),
+    ...uploadedImages
+  ];
+  const selectedModelIsCompatible = Boolean(selectedModel?.id && activeModels.some((model) => model.id === selectedModel?.id));
+  const modelSelectionRequired = Boolean(isLoadingModels || modelLoadError || unavailableDraftModelId || !selectedModelIsCompatible);
+  const avatarUrl = draftAvatar?.imageUrl || draftAvatar?.image || draftAvatar?.avatar_url;
+  const hasRequiredMedia = activeModeId === "video_maker" || (activeModeId === "product" ? productImages.length > 0 : appImages.length > 0);
+  const appHasScreenshot = appImages.some((asset) => asset.role === "APP_PRIMARY_SCREEN");
+  const appRecordingNeedsScript = activeModeId === "app" && appImages.length > 0 && !appHasScreenshot && !spokenScript.trim();
+  const hasUnconfirmedAssets = assetsNeedingReview.some((asset) => !asset.analysisConfirmed);
+
   const buildCanonicalRequest = () => {
-    const avatarUrl = draftAvatar?.imageUrl || draftAvatar?.image || draftAvatar?.avatar_url;
+    if (!selectedModelIsCompatible) return null;
     const avatarAssetId = draftAvatar?.assetId || draftAvatar?.id;
     const primaryAssets = activeModeId === "product" ? productImages : activeModeId === "app" ? appImages : [];
+    const supportedResolutions = selectedModel?.resolutions || [];
+    const supportedAspectRatios = selectedModel?.aspectRatios || [];
     return {
       version: "1",
       studio: STUDIO_IDS[activeModeId],
       presetId: activeModeId === "app" ? appPresetId : activeModeId,
-      modelId: selectedModel.id,
+      modelId: selectedModel?.id,
       modelLocked: true,
       script: { text: spokenScript.trim(), language: "auto", maxCharacters: 300 },
       instructions: {
@@ -683,8 +847,8 @@ export default function CreationHub({
       settings: {
         durationMode: duration === "Auto" ? "AUTO" : "EXPLICIT",
         ...(duration === "Auto" ? {} : { durationSeconds: Number(duration) }),
-        resolution,
-        aspectRatio,
+        ...(resolution && supportedResolutions.includes(resolution) ? { resolution } : {}),
+        ...(aspectRatio && supportedAspectRatios.includes(aspectRatio) ? { aspectRatio } : {}),
         outputCount: Number(numVideos)
       },
       assets: [
@@ -707,11 +871,24 @@ export default function CreationHub({
   // The browser only knows whether its draft still matches a server quote. It
   // never calculates a price. Any material composer edit requires a new quote.
   const canonicalRequest = buildCanonicalRequest();
-  const canonicalRequestKey = JSON.stringify(canonicalRequest);
-  const quoteIsCurrent = Boolean(preparedQuote && preparedQuoteRequest === canonicalRequestKey);
-  const quoteUnavailable = quoteUnavailableRequest === canonicalRequestKey;
+  const canonicalRequestKey = canonicalRequest ? JSON.stringify(canonicalRequest) : "";
+  const quoteIsCurrent = Boolean(canonicalRequestKey && preparedQuote && preparedQuoteRequest === canonicalRequestKey);
+  const quoteUnavailable = Boolean(canonicalRequestKey && quoteUnavailableRequest === canonicalRequestKey);
   const quotedCredits = quoteIsCurrent ? Number(preparedQuote.quote?.costs?.totalCredits) : null;
   const hasInsufficientQuotedCredits = quotedCredits !== null && Number(displayedCredits ?? 0) < quotedCredits;
+  const requiredInputReasons = [
+    ...(isLoadingModels ? ["Loading the available AI models…"] : []),
+    ...(modelLoadError ? [modelLoadError] : []),
+    ...(!isLoadingModels && !modelLoadError && (unavailableDraftModelId || !selectedModelIsCompatible) ? [unavailableDraftModelId
+      ? `Your saved model “${unavailableDraftModelId}” is no longer available. Choose a replacement model.`
+      : `No compatible AI model is currently available for ${activePreset.name}.`] : []),
+    ...(!avatarUrl ? ["Choose an avatar."] : []),
+    ...(!spokenScript.trim() && activeModeId !== "app" ? ["Write the required script."] : []),
+    ...(appRecordingNeedsScript ? ["Write a script for a recording-only app demo, or add a confirmed screenshot for an automatic draft."] : []),
+    ...(!hasRequiredMedia ? [activeModeId === "product" ? "Upload at least one product image." : "Upload at least one app screenshot or screen recording."] : []),
+    ...(hasUnconfirmedAssets ? ["Confirm the analysis for every uploaded asset."] : [])
+  ];
+  const requiredInputsMissing = requiredInputReasons.length > 0;
 
   // CONCURRENT GENERATION SLOTS — advisory mirror of the server rule.
   //
@@ -737,25 +914,29 @@ export default function CreationHub({
   }, [creations, account?.planCode]);
 
   const requestedOutputCount = Number(numVideos) || 1;
-  const slotsUnavailable = videoSlots.inFlight + requestedOutputCount > videoSlots.limit;
+  const modelOutputLimit = Math.max(1, Number(selectedModel?.outputCount?.max) || 1);
+  const generationOutputLimit = Math.min(videoSlots.limit, modelOutputLimit);
+  const slotsUnavailable = requestedOutputCount > generationOutputLimit || videoSlots.inFlight + requestedOutputCount > videoSlots.limit;
   // Two genuinely different problems, and telling them apart matters: waiting is
   // temporary and resolves itself, whereas asking for more videos at once than
-  // the plan will ever allow needs the user to change the request or upgrade.
-  const exceedsSlotCeiling = requestedOutputCount > videoSlots.limit;
+  // either the model or plan allows needs the user to change the request.
+  const exceedsSlotCeiling = requestedOutputCount > generationOutputLimit;
   const slotLimitMessage = !slotsUnavailable
     ? null
     : exceedsSlotCeiling
-      ? `Your plan generates ${videoSlots.limit === 1 ? "one video" : `up to ${videoSlots.limit} videos`} at a time. Lower the number of videos${videoSlots.limit === 1 ? "" : " or upgrade"} to continue.`
+      ? generationOutputLimit < videoSlots.limit
+        ? `${selectedModel?.name || "This model"} generates up to ${generationOutputLimit} ${generationOutputLimit === 1 ? "video" : "videos"} per request. Lower the number of videos to continue.`
+        : `Your plan generates ${videoSlots.limit === 1 ? "one video" : `up to ${videoSlots.limit} videos`} at a time. Lower the number of videos${videoSlots.limit === 1 ? "" : " or upgrade"} to continue.`
       : videoSlots.limit === 1
         ? "One video is already generating. It will appear in your library when it is done, then you can start the next one."
         : `All ${videoSlots.limit} generation slots are in use. As soon as one finishes and appears in your library, a slot frees up.`;
 
-  // A restored draft (or a downgraded plan) can carry a count the current plan no
-  // longer permits. Clamp it rather than letting the user stare at an unexplained
-  // disabled Generate button.
+  // A restored draft, model change, or downgraded plan can carry a count the
+  // current model/plan combination no longer permits. Clamp to the strictest
+  // bound instead of sending a request that preflight must reject.
   useEffect(() => {
-    if (requestedOutputCount > videoSlots.limit) setNumVideos(videoSlots.limit);
-  }, [requestedOutputCount, videoSlots.limit]);
+    if (requestedOutputCount > generationOutputLimit) setNumVideos(generationOutputLimit);
+  }, [requestedOutputCount, generationOutputLimit]);
 
   const submitGeneration = async (quote, idempotencyKey) => {
     try {
@@ -776,6 +957,10 @@ export default function CreationHub({
   };
 
   const handlePreflight = async () => {
+    if (requiredInputsMissing || !canonicalRequestKey) {
+      setSubmitError(requiredInputReasons[0] || "Complete the required fields before generating.");
+      return;
+    }
     setIsSubmitting(true);
     setSubmitError(null);
     try {
@@ -803,14 +988,17 @@ export default function CreationHub({
   // short debounce prevents typing from issuing a request per keystroke while
   // still keeping the cost in the primary action current.
   useEffect(() => {
-    const hasRequiredMedia = activeModeId === "video_maker" || (activeModeId === "product" ? productImages.length > 0 : appImages.length > 0);
-    if (!spokenScript.trim() || !hasRequiredMedia || isSubmitting || quoteIsCurrent || quoteUnavailable) return undefined;
+    if (requiredInputsMissing || !canonicalRequestKey || isSubmitting || quoteIsCurrent || quoteUnavailable) return undefined;
     const timeout = window.setTimeout(() => { void handlePreflight(); }, 600);
     return () => window.clearTimeout(timeout);
   // canonicalRequestKey is deliberately the invalidation boundary.
-  }, [canonicalRequestKey, activeModeId, spokenScript, productImages.length, appImages.length]);
+  }, [canonicalRequestKey, requiredInputsMissing, isSubmitting, quoteIsCurrent, quoteUnavailable]);
 
   const confirmPreparedQuote = async () => {
+    if (requiredInputsMissing || !canonicalRequestKey) {
+      setSubmitError(requiredInputReasons[0] || "Complete the required fields before generating.");
+      return;
+    }
     if (!quoteIsCurrent || !preparedQuote?.quote) {
       setSubmitError("Your quote is no longer current. Get a new quote before generating.");
       return;
@@ -900,6 +1088,7 @@ export default function CreationHub({
 
     if (creation.generationType === "APP_STUDIO" || creation.presetId === "app") {
       switchStudio("app");
+      setAppPresetId(getAppStudioPreset(creation.presetId).id);
     } else if (creation.generationType === "PRODUCT_STUDIO" || creation.presetId === "product") {
       switchStudio("product");
     } else {
@@ -914,22 +1103,25 @@ export default function CreationHub({
 
   };
 
+  const creationCards = useMemo(() => creations.flatMap((creation) => {
+    const outputs = Array.isArray(creation.outputs) ? creation.outputs.filter((output) => output?.url) : [];
+    if (!outputs.length) return [creation];
+    return outputs.map((output, index) => ({
+      ...creation,
+      url: output.url,
+      mediaType: output.mediaType || creation.mediaType,
+      outputId: output.id || `${creation.id}-${index}`,
+      outputPosition: index + 1,
+      deliveredOutputCount: outputs.length,
+    }));
+  }), [creations]);
+
   const isDelivered = (status) => ["completed", "partial_completed"].includes(String(status || "").toLowerCase());
   const isPlayable = (creation) => isDelivered(creation?.status) && Boolean(creation?.url);
   const isCancelled = (status) => String(status || "").toLowerCase() === "cancelled";
   const isInProgress = (status) => !isDelivered(status) && !["failed", "quarantined", "timed_out", "cancelled"].includes(String(status || "").toLowerCase());
   const stageLabel = (stage) => String(stage || "queued").replace(/[_-]+/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
-  const elapsedLabel = (creation) => {
-    const started = creation.createdAt;
-    const elapsedSeconds = started ? Math.max(0, Math.floor((Date.now() - new Date(started).getTime()) / 1000)) : 0;
-    return elapsedSeconds < 60 ? "Just started" : `${Math.floor(elapsedSeconds / 60)}m elapsed`;
-  };
-
-  const assetsNeedingReview = [
-    ...(activeModeId === "product" ? productImages : []),
-    ...(activeModeId === "app" ? appImages : []),
-    ...uploadedImages
-  ];
+  const elapsedLabel = formatCreationElapsed;
 
   return (
     <div className="flex h-full w-full flex-col overflow-y-auto bg-[#FAF8ED] text-[#111111] md:flex-row md:overflow-hidden">
@@ -978,7 +1170,7 @@ export default function CreationHub({
               aspectRatio={aspectRatio}
               setAspectRatio={setAspectRatio}
               numVideos={numVideos}
-              maxVideos={videoSlots.limit}
+              maxVideos={generationOutputLimit}
               setNumVideos={setNumVideos}
               selectedActor={draftAvatar}
               onOpenActorModal={onOpenAvatarModal}
@@ -988,7 +1180,7 @@ export default function CreationHub({
               onRemoveImage={handleRemoveImage}
               audioSource={audioSource}
               setAudioSource={setAudioSource}
-              modelsList={MODELS}
+              modelsList={pickerModels}
             />
           )}
 
@@ -1016,11 +1208,11 @@ export default function CreationHub({
               aspectRatio={aspectRatio}
               setAspectRatio={setAspectRatio}
               numVideos={numVideos}
-              maxVideos={videoSlots.limit}
+              maxVideos={generationOutputLimit}
               setNumVideos={setNumVideos}
               selectedModel={selectedModel}
               setSelectedModel={selectModel}
-              modelsList={MODELS}
+              modelsList={pickerModels}
             />
           )}
 
@@ -1033,6 +1225,7 @@ export default function CreationHub({
               onOpenActorModal={onOpenAvatarModal}
               spokenScript={spokenScript}
               setSpokenScript={setSpokenScript}
+              scriptRequired={appImages.length > 0 && !appHasScreenshot}
               additionalInstructions={additionalInstructions}
               setAdditionalInstructions={setAdditionalInstructions}
               uploadedImages={uploadedImages}
@@ -1046,11 +1239,11 @@ export default function CreationHub({
               aspectRatio={aspectRatio}
               setAspectRatio={setAspectRatio}
               numVideos={numVideos}
-              maxVideos={videoSlots.limit}
+              maxVideos={generationOutputLimit}
               setNumVideos={setNumVideos}
               selectedModel={selectedModel}
               setSelectedModel={selectModel}
-              modelsList={appStudioModels}
+              modelsList={pickerModels}
             />
           )}
 
@@ -1076,7 +1269,7 @@ export default function CreationHub({
                         placeholder="Confirmed asset name"
                         className="w-full bg-white p-2 text-xs border border-[#111111]/15 rounded-lg"
                       />
-                      {(asset.role === "APP_PRIMARY_SCREEN" || asset.role === "APP_SCREEN_RECORDING") && (
+                      {asset.role === "APP_PRIMARY_SCREEN" && (
                         <select
                           value={asset.analysis?.deviceType || "unknown"}
                           onChange={(event) => updateUploadedAsset(asset.assetId, { analysis: { ...asset.analysis, deviceType: event.target.value } })}
@@ -1103,6 +1296,37 @@ export default function CreationHub({
 
         {/* STICKY BOTTOM GENERATE BUTTON */}
         <div className="studio-generate-bar p-4 border-t border-[#111111]/10 bg-white shrink-0 space-y-2">
+          {requiredInputsMissing && (
+            <div role="alert" className="p-2.5 bg-amber-50 border border-amber-300 rounded-xl text-xs text-amber-900">
+              <p className="font-semibold">Complete these required fields:</p>
+              <ul className="mt-1 list-disc space-y-0.5 pl-4">
+                {requiredInputReasons.map((reason) => <li key={reason}>{reason}</li>)}
+              </ul>
+              {modelLoadError && (
+                <button
+                  type="button"
+                  onClick={() => setModelReloadToken((value) => value + 1)}
+                  className="mt-2 rounded-full border border-amber-500 bg-white px-3 py-1 font-semibold text-amber-950 hover:bg-amber-100"
+                >
+                  Retry model loading
+                </button>
+              )}
+              {unavailableDraftModelId && activeModels.length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {activeModels.map((model) => (
+                    <button
+                      key={model.id}
+                      type="button"
+                      onClick={() => selectModel(model)}
+                      className="rounded-full border border-amber-500 bg-white px-2.5 py-1 font-semibold text-amber-950 hover:bg-amber-100"
+                    >
+                      Use {model.name}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
           {submitError && (
             <div className="p-2.5 bg-red-50 border border-red-200 rounded-xl text-xs text-red-600">
               {submitError}
@@ -1119,15 +1343,17 @@ export default function CreationHub({
           )}
           <button
             type="button"
-            disabled={isSubmitting || quoteUnavailable || slotsUnavailable}
+            disabled={requiredInputsMissing || isSubmitting || quoteUnavailable || slotsUnavailable || hasInsufficientQuotedCredits}
             onClick={quoteIsCurrent ? confirmPreparedQuote : handlePreflight}
             className="studio-generate-button w-full py-3.5 px-6 bg-[#E6D9FF] hover:bg-[#DBCBFF] hover:scale-[1.01] text-[#111111] rounded-full font-semibold text-sm border-[1.5px] border-[#111111] shadow-sm transition-all active:scale-[0.98] flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
           >
             <FiZap size={16} />
-            <span>{isSubmitting
+            <span>{requiredInputsMissing
+              ? modelSelectionRequired ? isLoadingModels ? "Loading models…" : "Choose a model" : "Complete required fields"
+              : isSubmitting
               ? "Calculating…"
               : slotsUnavailable
-                ? exceedsSlotCeiling ? `Maximum ${videoSlots.limit} at a time` : "Waiting for a free slot"
+                ? exceedsSlotCeiling ? `Maximum ${generationOutputLimit} at a time` : "Waiting for a free slot"
               : quoteIsCurrent
                 ? `Generate Video · ${quotedCredits} credits`
                 : quoteUnavailable
@@ -1160,6 +1386,13 @@ export default function CreationHub({
             <FiClock className="text-3xl text-[#111111] animate-spin" />
             <span className="text-xs text-[#55534E] animate-pulse">Loading creations...</span>
           </div>
+        ) : creationLoadError && creations.length === 0 ? (
+          <div role="alert" className="flex-1 flex flex-col items-center justify-center py-20 gap-3 text-center">
+            <FiAlertCircle className="text-3xl text-red-700" />
+            <h3 className="text-sm font-semibold text-[#111111]">Creation history could not be loaded</h3>
+            <p className="text-xs text-[#55534E] max-w-sm">{creationLoadError}</p>
+            <button type="button" onClick={() => void fetchCreations()} className="rounded-full border border-[#111111] bg-white px-4 py-2 text-xs font-bold">Try again</button>
+          </div>
         ) : creations.length === 0 ? (
           <div className="flex-1 flex flex-col items-center justify-center py-20 gap-3 text-center">
             <div className="w-16 h-16 rounded-2xl bg-white flex items-center justify-center text-[#55534E] border border-[#111111]/15 mb-2 shadow-sm">
@@ -1170,14 +1403,19 @@ export default function CreationHub({
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3.5">
-            {creations.map((item) => (
+            {creationCards.map((item) => (
               <div
-                key={item.id}
+                key={`${item.id}:${item.outputId || "summary"}`}
                 onClick={() => item.mediaType === "video" && isPlayable(item) && setSelectedVideo(item)}
                 className={`group relative ${item.mediaType === "image" ? "aspect-square" : "aspect-[9/16]"} rounded-2xl overflow-hidden bg-white border border-[#111111]/15 shadow-sm transition-all ${
                   item.mediaType === "video" && isPlayable(item) ? "cursor-pointer hover:border-[#111111]/30" : ""
                 }`}
               >
+                {item.deliveredOutputCount > 1 && (
+                  <span className="absolute left-2 top-2 z-20 rounded-full bg-black/75 px-2 py-1 text-[10px] font-bold text-white">
+                    Output {item.outputPosition} of {item.deliveredOutputCount}
+                  </span>
+                )}
                 {item.mediaType === "image" && item.url ? (
                   <><img src={item.url} alt={item.prompt || "Generated image"} loading="lazy" className="h-full w-full object-cover" /><div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/75 to-transparent p-3"><p className="line-clamp-2 text-xs font-semibold text-white">{item.prompt || "Generated image"}</p></div></>
                 ) : isPlayable(item) ? (
@@ -1190,7 +1428,7 @@ export default function CreationHub({
                     <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/20 p-3 flex flex-col justify-between opacity-0 group-hover:opacity-100 transition-opacity">
                       <div className="flex justify-between items-start">
                         <span className="text-[10px] bg-[#064E3B] text-white px-2 py-0.5 rounded-full uppercase font-bold">
-                          COMPLETED
+                          {String(item.status).toUpperCase() === "PARTIAL_COMPLETED" ? "PARTIAL" : "COMPLETED"}
                         </span>
                         <span className="p-1.5 rounded-full bg-white/90 text-[#111111] h-fit shadow">
                           <FiMaximize2 size={13} />
@@ -1271,7 +1509,7 @@ export default function CreationHub({
               <div className="flex items-center justify-between">
                 <div>
                   <h3 className="text-base font-serif font-bold text-[#111111]">{activeModeId === "app" ? "Choose App Studio preset" : "Choose Preset Studio"}</h3>
-                  <p className="text-xs text-[#55534E]">{activeModeId === "app" ? "This changes both the generation direction and the exact app composition strategy." : "Select a creative workflow preset for your video"}</p>
+                  <p className="text-xs text-[#55534E]">{activeModeId === "app" ? "Choose the generation direction and exact app composition strategy." : "Select a creative workflow preset for your video"}</p>
                 </div>
                 <button
                   onClick={() => setIsPresetModalOpen(false)}
@@ -1286,8 +1524,12 @@ export default function CreationHub({
                 {activeModeId === "app" ? APP_STUDIO_PRESETS.map((preset) => (
                   <button
                     key={preset.id}
-                    onClick={() => { setAppPresetId(preset.id); setIsPresetModalOpen(false); }}
-                    className={`p-4 rounded-2xl border text-left transition-all cursor-pointer min-h-32 ${appPresetId === preset.id ? "border-[#111111] ring-2 ring-[#111111]" : "border-[#111111]/15 hover:border-[#111111]/30"}`}
+                    type="button"
+                    onClick={() => {
+                      setAppPresetId(preset.id);
+                      setIsPresetModalOpen(false);
+                    }}
+                    className={`min-h-32 rounded-2xl border p-4 text-left transition-all cursor-pointer ${appPresetId === preset.id ? "border-[#111111] ring-2 ring-[#111111]" : "border-[#111111]/15 hover:border-[#111111]/30"}`}
                   >
                     <h4 className="text-sm font-bold">{preset.name}</h4>
                     <p className="mt-2 text-xs leading-relaxed text-[#55534E]">{preset.direction}</p>

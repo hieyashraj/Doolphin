@@ -1,132 +1,76 @@
-import { GENERATED_MODEL_DEFINITIONS, STUDIO_ASPECT_RATIOS } from "../models/videoModelFactory.js";
+import { GENERATED_MODEL_DEFINITIONS } from "../models/videoModelFactory.js";
 import { APP_STUDIO_MODELS } from "../app-studio/config.js";
 
 /**
- * THE MODEL BENCH THE STUDIO UI AND THE REQUEST CONTRACT SHARE.
- *
- * src/lib/generation/contract.js validates every submission against the entry it
- * finds here (resolution, aspect ratio, duration, image count), and CreationHub
- * renders its model picker from listGenerationModels(). Those two facts make this
- * the single place that decides which models a user can actually pick and submit.
- *
- * It used to contain exactly ONE hardcoded model, which is why the Video Studio
- * offered a single option while the app claimed a "world-class creative bench".
- * It is now derived from the provider's own catalog export (see
- * scripts/generate-model-catalog.mjs and ../models/videoModelFactory.js), so the
- * full video bench is selectable and every entry resolves to a real, priceable,
- * dispatchable model definition.
- *
- * CAPABILITY VALUES: the provider export publishes no per-model resolution,
- * duration or reference limits. Rather than invent per-model numbers, generated
- * entries carry conservative platform-wide defaults, and any model whose real
- * limits we have verified is overridden explicitly in HAND_VERIFIED below.
- * Conservative here means "the studio will not offer a setting we cannot stand
- * behind" — the provider still validates, and pricing always comes from the live
- * estimate, so an over-permissive default could waste a paid generation.
+ * Client/request-contract projection of the authoritative curated model root.
+ * Capability values are never independently defaulted here.
  */
-
-/** Platform defaults for a generated video entry. Deliberately conservative. */
-const DEFAULT_VIDEO_CAPABILITIES = Object.freeze({
-  resolutions: Object.freeze(["720p"]),
-  aspectRatios: Object.freeze([...STUDIO_ASPECT_RATIOS]),
-  minDuration: 4,
-  maxDuration: 10,
-  maxImages: 1,
-  maxAudioReferences: 0,
-  supportsNativeAudio: false,
-  supportsVideoReferences: false,
-});
-
-/**
- * Models whose real capabilities are verified, so they may exceed the defaults.
- * Keyed by provider model id. Seedance 2 Omni's values come from its hand-authored
- * definition (720p-only endpoint, 9 image references, native audio, 4-15s).
- */
-const HAND_VERIFIED = Object.freeze({
-  "seedance-2-omni-reference-no-video-fast": {
-    id: "muapi.seedance2.omni-reference-fast",
-    legacyIds: ["seedance-2", "seedance2-fast"],
-    resolutions: ["720p"],
-    aspectRatios: ["9:16", "16:9", "3:4", "4:3"],
-    minDuration: 4,
-    maxDuration: 15,
-    maxImages: 9,
-    maxAudioReferences: 3,
-    supportsNativeAudio: true,
-    supportsVideoReferences: false,
-  },
-  "seedance-2.5-spicy-video-extend-480p": {
-    id: "muapi.seedance-2.5-spicy-video-extend-480p",
-    legacyIds: ["seedance-extend", "seedance-2.5-spicy"],
-    resolutions: ["480p"],
-    minDuration: 4,
-    maxDuration: 30,
-    supportsVideoReferences: true,
-  },
-  "seedance-2.5-omni-reference": {
-    id: "muapi.seedance-2.5-omni-reference",
-    resolutions: ["720p"],
-    aspectRatios: ["16:9", "9:16", "1:1", "4:3", "3:4", "21:9", "9:21"],
-    minDuration: 4,
-    maxDuration: 15,
-    maxImages: 30,
-    maxVideoReferences: 10,
-    maxAudioReferences: 10,
-    supportsNativeAudio: true,
-    supportsVideoReferences: true,
-  },
-  "seedance-2-omni-reference": {
-    id: "muapi.seedance-2-omni-reference",
-    resolutions: ["720p"],
-    aspectRatios: ["16:9", "9:16", "1:1", "4:3", "3:4", "21:9"],
-    minDuration: 4,
-    maxDuration: 15,
-    maxImages: 9,
-    maxVideoReferences: 3,
-    maxAudioReferences: 3,
-    supportsNativeAudio: true,
-    supportsVideoReferences: true,
-  },
-});
-
-/** A model whose mode needs a source image can accept at least one reference. */
-function imageCapacityFor(definition) {
-  const mode = definition.productPolicy.generationMode;
-  if (mode === "image-to-video") return 2; // one avatar/subject plus one reference
-  return DEFAULT_VIDEO_CAPABILITIES.maxImages;
-}
-
 function buildEntry(definition) {
-  const providerModelId = definition.providerSpec.providerModelId;
-  const override = HAND_VERIFIED[providerModelId] || {};
+  const capability = definition.capabilityDescriptor;
+  const requiredSlots = Object.entries(capability.slots)
+    .filter(([, slot]) => slot.required)
+    .map(([name]) => name);
+  if (capability.frames.start.required) requiredSlots.push("startFrame");
+  const legacyIds = definition.productPolicy.legacyAliases || [];
+  const providerImageCapacity = Math.max(
+    capability.slots.sourceImage.max + capability.slots.referenceImages.max,
+    capability.frames.start.supported ? 2 : 0,
+  );
+
   return Object.freeze({
-    id: override.id || definition.productPolicy.id,
-    legacyIds: Object.freeze(override.legacyIds || []),
+    id: definition.productPolicy.id,
+    legacyIds: Object.freeze([...legacyIds]),
     displayName: definition.productPolicy.displayName,
     provider: "MUAPI",
+    providerModelId: definition.providerSpec.providerModelId,
     endpoint: definition.providerSpec.endpoint,
-    adapterVersion: "2.0.0",
-    capabilityRevision: "2026-08-catalog-v1",
+    adapterVersion: capability.adapterRevision,
+    capabilityRevision: capability.capabilityRevision,
     pricingRevision: "2026-08-credit-value-v3",
     generationMode: definition.productPolicy.generationMode,
-    mediaType: definition.productPolicy.mediaType,
-    family: definition.productPolicy.family,
+    studios: definition.productPolicy.studios,
+    mode: capability.mode,
+    mediaType: capability.mediaType,
+    family: capability.family,
+    variant: capability.variant,
     referenceCostUsd: definition.providerSpec.cost.amount,
-    resolutions: Object.freeze(override.resolutions || [...DEFAULT_VIDEO_CAPABILITIES.resolutions]),
-    aspectRatios: Object.freeze(override.aspectRatios || [...DEFAULT_VIDEO_CAPABILITIES.aspectRatios]),
-    minDuration: override.minDuration ?? DEFAULT_VIDEO_CAPABILITIES.minDuration,
-    maxDuration: override.maxDuration ?? DEFAULT_VIDEO_CAPABILITIES.maxDuration,
-    maxImages: override.maxImages ?? imageCapacityFor(definition),
-    maxAudioReferences: override.maxAudioReferences ?? DEFAULT_VIDEO_CAPABILITIES.maxAudioReferences,
-    supportsNativeAudio: override.supportsNativeAudio ?? DEFAULT_VIDEO_CAPABILITIES.supportsNativeAudio,
-    supportsVideoReferences: override.supportsVideoReferences ?? DEFAULT_VIDEO_CAPABILITIES.supportsVideoReferences,
-    requiresImage: definition.productPolicy.generationMode === "image-to-video",
-    requiresVideo: definition.productPolicy.generationMode === "video-extend",
+    controls: capability.controls,
+    slots: capability.slots,
+    requiredSlots: Object.freeze(requiredSlots),
+    durationValues: capability.duration.values,
+    resolutions: capability.resolutions.values,
+    aspectRatios: capability.aspectRatios.values,
+    qualityValues: capability.quality.values,
+    minDuration: capability.duration.min,
+    maxDuration: capability.duration.max,
+    // Current UGC workflows count every provider-bound image, including the
+    // mandatory actor. Definitions unable to consume that actor are excluded
+    // from Studio discovery below.
+    maxImages: Math.max(1, providerImageCapacity),
+    maxReferences: Object.freeze({
+      images: capability.slots.referenceImages.max,
+      videos: capability.slots.referenceVideos.max,
+      audios: capability.slots.referenceAudios.max,
+    }),
+    maxAudioReferences: capability.slots.referenceAudios.max,
+    supportsNativeAudio: capability.nativeAudio.supported,
+    nativeAudio: capability.nativeAudio,
+    supportsVideoReferences: capability.slots.referenceVideos.supported,
+    outputCount: capability.outputCount,
+    confidence: capability.confidence,
+    completionStrategy: capability.completionStrategy,
+    finalizerStrategy: capability.finalizerStrategy,
+    requiresImage: requiredSlots.some((name) => ["sourceImage", "referenceImages", "startFrame"].includes(name)),
+    requiresVideo: requiredSlots.includes("sourceVideo"),
   });
 }
 
 const VIDEO_DEFINITIONS = GENERATED_MODEL_DEFINITIONS.filter(
-  (definition) => definition.productPolicy.mediaType === "VIDEO"
+  (definition) => definition.productPolicy.mediaType === "VIDEO" &&
+    definition.productPolicy.curated &&
+    definition.productPolicy.studioReady &&
+    definition.productPolicy.studios.includes("video-studio") &&
+    definition.capabilityDescriptor?.dispatchable
 );
 
 export const GENERATION_MODELS = Object.freeze(
@@ -135,52 +79,75 @@ export const GENERATION_MODELS = Object.freeze(
 
 export function getGenerationModel(modelId) {
   if (GENERATION_MODELS[modelId]) return GENERATION_MODELS[modelId];
-  return Object.values(GENERATION_MODELS).find((model) => model.legacyIds.includes(modelId)) || null;
+  return Object.values(GENERATION_MODELS).find(
+    (model) => model.providerModelId === modelId || model.legacyIds.includes(modelId)
+  ) || null;
+}
+
+export function listAppStudioGenerationModels() {
+  return APP_STUDIO_MODELS.map((configured) => {
+    const model = getGenerationModel(configured.id);
+    if (!model || !model.studios.includes("app-studio")) return null;
+    return {
+      id: model.id,
+      name: configured.name,
+      description: configured.description,
+      provider: model.provider,
+      providerModelId: model.providerModelId,
+      generationMode: model.generationMode,
+      studios: model.studios,
+      mode: model.mode,
+      family: model.family,
+      variant: model.variant,
+      referenceCostUsd: model.referenceCostUsd,
+      controls: model.controls,
+      slots: model.slots,
+      requiredSlots: model.requiredSlots,
+      durationValues: model.durationValues,
+      resolutions: model.resolutions,
+      aspectRatios: model.aspectRatios,
+      qualityValues: model.qualityValues,
+      minDuration: model.minDuration,
+      maxDuration: model.maxDuration,
+      maxImages: model.maxImages,
+      maxReferences: model.maxReferences,
+      nativeAudio: model.nativeAudio,
+      outputCount: model.outputCount,
+      confidence: model.confidence,
+      requiresImage: model.requiresImage,
+      requiresVideo: model.requiresVideo,
+    };
+  }).filter(Boolean);
 }
 
 export function listGenerationModels() {
   return Object.values(GENERATION_MODELS).map((model) => ({
     id: model.id,
     name: model.displayName,
-    description: model.family ? `${model.family} · ${model.generationMode.replace(/-/g, " ")}` : model.generationMode.replace(/-/g, " "),
+    description: `${model.family} · ${model.variant}`,
     provider: model.provider,
+    providerModelId: model.providerModelId,
     generationMode: model.generationMode,
+    studios: model.studios,
+    mode: model.mode,
     family: model.family,
+    variant: model.variant,
     referenceCostUsd: model.referenceCostUsd,
+    controls: model.controls,
+    slots: model.slots,
+    requiredSlots: model.requiredSlots,
+    durationValues: model.durationValues,
     resolutions: model.resolutions,
     aspectRatios: model.aspectRatios,
+    qualityValues: model.qualityValues,
     minDuration: model.minDuration,
     maxDuration: model.maxDuration,
     maxImages: model.maxImages,
+    maxReferences: model.maxReferences,
+    nativeAudio: model.nativeAudio,
+    outputCount: model.outputCount,
+    confidence: model.confidence,
     requiresImage: model.requiresImage,
     requiresVideo: model.requiresVideo,
   }));
-}
-
-/**
- * Models App Studio can genuinely execute with the app media currently
- * attached to the draft. Text-only models are deliberately excluded: they
- * cannot receive the user's app UI and would create a paid, unrelated video.
- */
-export function listAppStudioGenerationModels({ hasScreenshot = false, hasRecording = false } = {}) {
-  // `hasScreenshot` and `hasRecording` are intentionally accepted so callers
-  // can remain capability-aware. Both curated Omni models accept the normal
-  // actor + app image path and an optional screen recording, so neither media
-  // type changes the available product choices.
-  void hasScreenshot; void hasRecording;
-  return APP_STUDIO_MODELS.map((appModel) => {
-    const model = getGenerationModel(appModel.id);
-    return {
-      ...model,
-      name: appModel.name,
-      description: appModel.description,
-      resolutions: appModel.resolutions,
-      aspectRatios: appModel.aspectRatios,
-      minDuration: appModel.minDuration,
-      maxDuration: appModel.maxDuration,
-      maxImages: appModel.maxImages,
-      requiresImage: true,
-      requiresVideo: false,
-    };
-  }).filter(Boolean);
 }

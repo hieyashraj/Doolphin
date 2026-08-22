@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { resolveProviderAssetUrl, mapValidatedStudioWorkflowToNormalizedInvocation } from "../../src/lib/models/bridges/studioWorkflowBridge.js";
+import { resolveProviderAssetUrl, mapStudioWorkflowToNormalizedInvocation, mapValidatedStudioWorkflowToNormalizedInvocation } from "../../src/lib/models/bridges/studioWorkflowBridge.js";
+import { getGenerationModel } from "../../src/lib/generation/modelRegistry.js";
 
 test("Asset Origin Resolution: absolute signed R2 URL unchanged", () => {
   const absoluteUrl = "https://r2.doolphin.com/assets/video_12345.mp4?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Signature=abcdef";
@@ -50,4 +51,61 @@ test("Asset Origin Resolution: staging origin never becomes doolphin.ai", () => 
 
   assert.equal(resolved.startsWith("https://doolphin-staging.vercel.app"), true);
   assert.equal(resolved.includes("doolphin.ai"), false);
+});
+
+
+test("Studio Workflow Bridge: omitted or Auto duration resolves from a fixed-duration model", () => {
+  const model = getGenerationModel("veo3.1-reference-to-video");
+  assert.ok(model, "Veo 3.1 Reference to Video must remain in the generation registry");
+  assert.deepEqual(model.durationValues, [8]);
+
+  for (const settings of [{}, { duration: "Auto" }]) {
+    const normalized = mapValidatedStudioWorkflowToNormalizedInvocation({
+      request: { settings },
+      model,
+      compiledPrompt: "Keep this character visually consistent.",
+      providerImageUrls: ["https://assets.example.test/reference.png"],
+    });
+    assert.equal(normalized.duration, 8);
+  }
+});
+
+
+test("Studio Workflow Bridge: app recordings map to reference videos without becoming source videos", () => {
+  const model = {
+    minDuration: 8,
+    durationValues: [8],
+    controls: { prompt: { supported: true } },
+    slots: {
+      sourceImage: { supported: false },
+      referenceImages: { supported: false },
+      sourceVideo: { supported: true },
+      referenceVideos: { supported: true },
+      referenceAudios: { supported: false },
+    },
+  };
+  const sourceUrl = "https://assets.example.test/source.mp4";
+  const referenceUrl = "https://assets.example.test/reference.mp4";
+  const recordingUrl = "https://assets.example.test/app-recording.mp4";
+  const assets = [
+    { role: "SOURCE_VIDEO", url: sourceUrl, mimeType: "video/mp4" },
+    { role: "REFERENCE_VIDEO", url: referenceUrl, mimeType: "video/mp4" },
+    { role: "APP_SCREEN_RECORDING", url: recordingUrl, mimeType: "video/mp4" },
+  ];
+
+  const normalized = mapValidatedStudioWorkflowToNormalizedInvocation({
+    request: { settings: { durationSeconds: 8 }, assets },
+    model,
+    compiledPrompt: "Show the app workflow.",
+  });
+  assert.equal(normalized.sourceVideo, sourceUrl);
+  assert.deepEqual(normalized.referenceVideos, [referenceUrl, recordingUrl]);
+  assert.equal(normalized.referenceVideos.includes(recordingUrl), true);
+
+  const appOnly = mapStudioWorkflowToNormalizedInvocation(
+    { settings: { durationSeconds: 8 }, assets: [assets[2]] },
+    { model },
+  );
+  assert.equal("sourceVideo" in appOnly, false);
+  assert.deepEqual(appOnly.referenceVideos, [recordingUrl]);
 });

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { requireActivatedAccount } from "@/lib/access/authorization";
 import { prisma } from "@/lib/prisma";
 import { CreditEscrowService } from "@/lib/billing/CreditEscrowService";
-import { fingerprintGenerationRequest, normalizeAndValidateGenerationRequest } from "@/lib/generation/contract";
+import { expectedMediaPrefixForRole, fingerprintGenerationRequest, normalizeAndValidateGenerationRequest } from "@/lib/generation/contract";
 import { compileCanonicalPrompt } from "@/lib/generation/promptCompiler";
 import { buildMuapiWebhookUrl } from "@/lib/generation/webhookSecurity";
 import { resolvePlatformAvatar } from "@/lib/generation/avatarRegistry";
@@ -29,7 +29,16 @@ function safeModelSnapshot(model) {
     minDuration: model.minDuration,
     maxDuration: model.maxDuration,
     maxImages: model.maxImages,
+    mediaType: model.mediaType,
+    nativeAudio: model.nativeAudio,
+    supportsNativeAudio: Boolean(model.nativeAudio?.supported),
+    completionStrategy: model.completionStrategy,
+    finalizerStrategy: model.finalizerStrategy,
   };
+}
+
+function durableStorageRequired(env = process.env) {
+  return env.NODE_ENV === "production" || env.VERCEL_ENV === "production" || env.VERCEL_ENV === "preview" || env.DOOLPHIN_ENV === "production" || env.DOOLPHIN_ENV === "staging";
 }
 
 async function handlePreflight(req) {
@@ -40,6 +49,13 @@ async function handlePreflight(req) {
     body = await req.json();
   } catch {
     return NextResponse.json({ success: false, code: "INVALID_JSON", error: "A valid JSON request is required" }, { status: 400 });
+  }
+  if (durableStorageRequired() && !R2StorageService.isConfigured()) {
+    return NextResponse.json({
+      success: false,
+      code: "DELIVERY_STORAGE_UNAVAILABLE",
+      error: "Video generation is temporarily unavailable because durable output storage is not configured. No credits were used.",
+    }, { status: 503 });
   }
 
   let earliestSignedAssetExpiryMs = null;
@@ -64,6 +80,15 @@ async function handlePreflight(req) {
         }
         if (!storedAsset.analysisConfirmedAt || storedAsset.analysisStatus !== "CONFIRMED") {
           return NextResponse.json({ success: false, code: "ASSET_ANALYSIS_UNCONFIRMED", error: `Review and confirm the analysis for '${asset.alias || storedAsset.originalFileName}' before generation`, assetId: storedAsset.id }, { status: 422 });
+        }
+        const expectedMediaPrefix = expectedMediaPrefixForRole(asset.role);
+        const authoritativeMimeType = String(storedAsset.detectedMimeType || storedAsset.mimeType || "").toLowerCase();
+        if (expectedMediaPrefix && !authoritativeMimeType.startsWith(expectedMediaPrefix)) {
+          return NextResponse.json({
+            success: false,
+            code: "ASSET_ROLE_MEDIA_MISMATCH",
+            error: `'${asset.alias || storedAsset.originalFileName}' cannot be used as ${asset.role}; that role requires ${expectedMediaPrefix.slice(0, -1)} media.`,
+          }, { status: 422 });
         }
         const stored = await R2StorageService.checkObjectExists(storedAsset.storageKey);
         if (!stored.exists || Number(stored.size) !== Number(storedAsset.fileSizeBytes)) {
@@ -96,17 +121,19 @@ async function handlePreflight(req) {
     }
   }
 
-  // An empty App Studio script is an explicit product choice. Derive a short,
-  // reviewable script from the persisted app analysis before validation and
-  // retain it in the quoted request snapshot for every downstream stage.
+  // App Studio may synthesize a short script, but only from authoritative,
+  // ownership-checked analysis loaded above. Persist it in the quote snapshot
+  // so every downstream stage sees the same exact dialogue.
   if (body?.studio === "APP_STUDIO" && !String(body?.script?.text || "").trim()) {
     const appAsset = body.assets?.find((asset) => asset.role === "APP_PRIMARY_SCREEN");
-    body.script = {
-      ...(body.script || {}),
-      text: buildAppStudioAutoScript({ appAnalysis: appAsset?.analysis, presetId: body.presetId }),
-      language: body.script?.language || "auto",
-      maxCharacters: 300,
-    };
+    if (appAsset) {
+      body.script = {
+        ...(body.script || {}),
+        text: buildAppStudioAutoScript({ appAnalysis: appAsset.analysis, presetId: body.presetId }),
+        language: body.script?.language || "auto",
+        maxCharacters: 300,
+      };
+    }
   }
 
   const validation = normalizeAndValidateGenerationRequest(body);
@@ -121,7 +148,7 @@ async function handlePreflight(req) {
   }
 
   const { request, model, estimatedSpeechSeconds } = validation;
-  const compiled = compileCanonicalPrompt(request);
+  const compiled = compileCanonicalPrompt(request, model);
   const webhookBase = process.env.WEBHOOK_URL || process.env.NEXTAUTH_URL;
   if (!webhookBase?.startsWith("https://") && process.env.NODE_ENV === "production") {
     return NextResponse.json({ success: false, code: "WEBHOOK_NOT_CONFIGURED", error: "A public HTTPS WEBHOOK_URL is required" }, { status: 503 });
@@ -140,7 +167,7 @@ async function handlePreflight(req) {
 
   const requestFingerprint = fingerprintGenerationRequest(request);
   const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
-  const roleMap = compiled.roleMap.map(({ url, ...entry }) => entry);
+  const roleMap = compiled.assetRoleMap.map(({ url, ...entry }) => entry);
 
   // Model Platform V1 is the sole authoritative pricing/dispatch path. The
   // legacy Seedance adapter/pricing branch and its feature-flagged cutover
@@ -166,8 +193,12 @@ async function handlePreflight(req) {
 
       const normalizedInput = mapValidatedStudioWorkflowToNormalizedInvocation({
         request,
+        model,
         compiledPrompt: compiled.compiledPrompt,
         providerImageUrls: compiled.imageUrls,
+        providerVideoUrls: request.assets
+          .filter((asset) => asset.role === "SOURCE_VIDEO" || asset.role === "REFERENCE_VIDEO" || asset.role === "APP_SCREEN_RECORDING")
+          .map((asset) => asset.url),
         earliestSignedAssetExpiryMs,
         applicationOrigin,
       });
@@ -180,16 +211,16 @@ async function handlePreflight(req) {
       // the user's avatar and uploaded assets. Verify real reachability here
       // and fail closed, so an unreachable asset costs an error message
       // instead of a wasted paid generation plus a refund plus a lost user.
-      // Video-extend is a valid App Studio route when the user attached a
-      // screen recording. Check it with the same paid-call safety gate as
-      // image references; otherwise MuAPI can silently ignore an unreachable
-      // recording and still bill the generation.
-      const providerAssets = [
-        ...(normalizedInput.extraInputs?.images || []),
-        ...(normalizedInput.extraInputs?.videos || []),
-        ...(normalizedInput.sourceVideo ? [normalizedInput.sourceVideo] : []),
-      ];
-      const reachability = await assertProviderAssetsAreFetchable(providerAssets);
+      const providerAssetUrls = [
+        normalizedInput.sourceImage,
+        normalizedInput.sourceVideo,
+        normalizedInput.startFrame,
+        normalizedInput.endFrame,
+        ...(normalizedInput.referenceImages || []),
+        ...(normalizedInput.referenceVideos || []),
+        ...(normalizedInput.referenceAudios || []),
+      ].filter(Boolean);
+      const reachability = await assertProviderAssetsAreFetchable(providerAssetUrls);
       if (!reachability.ok) {
         return NextResponse.json({
           success: false,
@@ -223,6 +254,8 @@ async function handlePreflight(req) {
         providerModelId: plan.providerModelId,
         providerEndpoint: plan.providerEndpoint,
         providerSpecHash: plan.providerSpecHash,
+        adapterRevision: plan.adapterRevision,
+        capabilityRevision: plan.capabilityRevision,
         providerSpecSource: plan.provenance?.source || "BOOTSTRAP",
         providerFetchedAt: plan.provenance?.providerFetchedAt || null,
         providerStale: Boolean(plan.provenance?.stale),
@@ -299,7 +332,10 @@ async function handlePreflight(req) {
           costs: quoteCostSnapshot,
           providerPreview: {
             endpoint: plan.providerEndpoint,
-            payload: { prompt: compiled.compiledPrompt, images_list: compiled.imageUrls.map((_, idx) => `[signed-asset-${idx + 1}]`) },
+            canonicalInput: {
+              prompt: compiled.compiledPrompt,
+              references: compiled.imageUrls.map((_, idx) => `[signed-asset-${idx + 1}]`),
+            },
           },
         },
       });

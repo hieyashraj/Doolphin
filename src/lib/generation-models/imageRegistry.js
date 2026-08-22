@@ -39,4 +39,4 @@ export const IMAGE_MODELS = Object.freeze(RAW_IMAGE_MODELS.map((model) => Object
   }),
 })));
 export function getImageModel(id) { return IMAGE_MODELS.find((model) => model.id === id) || null; }
-export function listImageModels(env = process.env) { return IMAGE_MODELS.map((model) => ({ id:model.id, displayName:model.displayName, mediaType:model.mediaType, provider:model.provider, status:deploymentState(model, env), available:canGenerate(model, env), productCapabilities:model.productCapabilities, settlementMode:model.settlementMode })); }
+export function listImageModels(env = process.env) { return IMAGE_MODELS.map((model) => ({ id:model.id, displayName:model.displayName, mediaType:model.mediaType, provider:model.provider, family:model.family || null, variant:model.variant || null, providerModelId:model.providerModelId || model.estimateCostModelId || null, capabilityMetadataRevision:model.capabilityMetadataRevision || null, status:deploymentState(model, env), available:canGenerate(model, env), productCapabilities:model.productCapabilities, settlementMode:model.settlementMode })); }

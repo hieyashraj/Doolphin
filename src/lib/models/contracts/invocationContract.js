@@ -1,46 +1,55 @@
 import { z } from "zod";
 
 /**
- * Doolphin Provider-Neutral Model Invocation Contract
- *
- * Canonical input fields use Doolphin provider-neutral names:
- * - prompt
- * - sourceVideo (not "video")
- * - targetLastFrame (not "last_image")
- * - sourceRequestId (not "request_id")
- * - maskIndexes (not "mask_indexs")
- * - aspectRatio (not "aspect_ratio")
- * - generateAudio (not "generate_audio")
- * - duration
- * - seed
- *
- * Provider-specific parameter names exist EXCLUSIVELY inside model-specific toProviderPayload translators.
- * Webhook URL is a transport-level concern, NOT part of the model payload body.
+ * Provider-neutral invocation contract. Provider spellings are confined to
+ * model adapter/mapping code. Strict objects prevent silent field stripping.
  */
+const assetReferenceSchema = z.string().min(1);
+const sceneSchema = z.object({
+  description: z.string().trim().min(1).optional(),
+  // `scene` is retained as a canonical compatibility alias for saved drafts.
+  scene: z.string().trim().min(1).optional(),
+  duration: z.number().positive(),
+}).strict().refine((value) => Boolean(value.description || value.scene), {
+  message: "A scene requires description",
+});
+
+const legacyExtraInputsSchema = z.object({
+  images: z.array(assetReferenceSchema).optional(),
+  videoReferences: z.array(assetReferenceSchema).optional(),
+  audioReferences: z.array(assetReferenceSchema).optional(),
+}).strict();
 
 export const DoolphinNormalizedInvocationInputSchema = z.object({
-  prompt: z.string().min(1).trim(),
-  sourceVideo: z.string().url().or(z.string().min(1)).optional(),
-  targetLastFrame: z.string().url().or(z.string().min(1)).optional(),
-  sourceRequestId: z.string().min(1).optional(),
+  prompt: z.string().trim().optional(),
+  script: z.string().trim().min(1).optional(),
+  additionalInstructions: z.string().trim().min(1).optional(),
+  sourceImage: assetReferenceSchema.optional(),
+  sourceVideo: assetReferenceSchema.optional(),
+  referenceImages: z.array(assetReferenceSchema).optional(),
+  referenceVideos: z.array(assetReferenceSchema).optional(),
+  referenceAudios: z.array(assetReferenceSchema).optional(),
+  startFrame: assetReferenceSchema.optional(),
+  endFrame: assetReferenceSchema.optional(),
+  // Legacy normalized aliases retained for prepared-draft compatibility.
+  targetLastFrame: assetReferenceSchema.optional(),
+  sourceRequestId: z.string().trim().min(1).optional(),
   maskIndexes: z.array(z.number().int()).optional(),
-  aspectRatio: z.string().optional(),
+  aspectRatio: z.string().trim().min(1).optional(),
+  quality: z.string().trim().min(1).optional(),
+  nativeAudio: z.boolean().optional(),
   generateAudio: z.boolean().optional(),
   duration: z.number().int().positive().optional(),
-  // The user-selected output resolution ("480p" | "720p" | "1080p" | "4k").
-  //
-  // Most MuAPI model families encode resolution in the ENDPOINT rather than in
-  // the request body (e.g. `seedance-2.5-spicy-omni-reference-1080p` vs
-  // `...-480p` are distinct endpoints). Carrying it here is therefore NOT about
-  // forwarding it as a provider parameter — it is so each model definition can
-  // ASSERT that the resolution the user was quoted and charged for is the
-  // resolution its endpoint actually produces. Previously this field did not
-  // exist in the contract at all, so a user could be charged for a resolution
-  // the payload never expressed, and silently receive the provider default.
-  resolution: z.string().optional(),
+  resolution: z.string().trim().min(1).optional(),
   seed: z.number().int().optional(),
-  extraInputs: z.record(z.string(), z.unknown()).optional(),
-});
+  camera: z.record(z.string(), z.unknown()).optional(),
+  motion: z.record(z.string(), z.unknown()).optional(),
+  storyboard: z.array(sceneSchema).optional(),
+  scenes: z.array(sceneSchema).optional(),
+  modelParameters: z.record(z.string(), z.unknown()).optional(),
+  earliestSignedAssetExpiryMs: z.number().finite().positive().nullable().optional(),
+  extraInputs: legacyExtraInputsSchema.optional(),
+}).strict();
 
 export function validateAndTransformInvocationInput(modelDefinition, rawInput) {
   if (!modelDefinition || typeof modelDefinition.toProviderPayload !== "function") {
@@ -52,14 +61,18 @@ export function validateAndTransformInvocationInput(modelDefinition, rawInput) {
     return {
       valid: false,
       errors: parsed.error.issues.map((issue) => ({
-        code: "INVALID_NORMALIZED_INPUT",
-        message: issue.message,
+        code: issue.code === "unrecognized_keys" ? "UNKNOWN_NORMALIZED_INPUT" : "INVALID_NORMALIZED_INPUT",
+        message: issue.code === "unrecognized_keys"
+          ? `Unknown normalized input field(s): ${issue.keys.join(", ")}`
+          : issue.message,
         path: issue.path.join("."),
       })),
     };
   }
 
   try {
+    // Exactly one adapter invocation. The resulting object is the object whose
+    // canonical bytes are priced, hashed, persisted, and later dispatched.
     const providerPayload = modelDefinition.toProviderPayload(parsed.data);
     return {
       valid: true,
@@ -69,12 +82,10 @@ export function validateAndTransformInvocationInput(modelDefinition, rawInput) {
   } catch (error) {
     return {
       valid: false,
-      errors: [
-        {
-          code: "PROVIDER_PAYLOAD_TRANSLATION_FAILED",
-          message: error.message,
-        },
-      ],
+      errors: [{
+        code: "PROVIDER_PAYLOAD_TRANSLATION_FAILED",
+        message: error.message,
+      }],
     };
   }
 }
