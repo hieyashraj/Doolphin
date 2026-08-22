@@ -246,7 +246,6 @@ export function normalizeAndValidateGenerationRequest(input) {
   const explicitSourceImages = countRole("SOURCE_IMAGE");
   const explicitSourceVideos = countRole("SOURCE_VIDEO");
   const appScreenRecordings = countRole("APP_SCREEN_RECORDING");
-  const sourceVideoCandidates = explicitSourceVideos + appScreenRecordings;
   const explicitReferenceImages = countRole("REFERENCE_IMAGE");
   const explicitReferenceVideos = countRole("REFERENCE_VIDEO");
   const explicitReferenceAudios = countRole("REFERENCE_AUDIO");
@@ -258,13 +257,12 @@ export function normalizeAndValidateGenerationRequest(input) {
   if (explicitReferenceImages > model.slots.referenceImages.max) errors.push(validationError("REFERENCE_IMAGE_LIMIT_EXCEEDED", `This model accepts at most ${model.slots.referenceImages.max} reference images.`));
   if (explicitReferenceVideos > model.slots.referenceVideos.max) errors.push(validationError("REFERENCE_VIDEO_LIMIT_EXCEEDED", `This model accepts at most ${model.slots.referenceVideos.max} reference videos.`));
   if (explicitReferenceAudios > model.slots.referenceAudios.max) errors.push(validationError("REFERENCE_AUDIO_LIMIT_EXCEEDED", `This model accepts at most ${model.slots.referenceAudios.max} reference audio files.`));
-  const videoInputCapacity = model.slots.sourceVideo.max + model.slots.referenceVideos.max;
-  if (appScreenRecordings > videoInputCapacity) {
-    errors.push(validationError("APP_RECORDING_UNSUPPORTED", `${model.displayName} cannot consume the selected app screen recording.`));
+  if (appScreenRecordings > 1) {
+    errors.push(validationError("APP_RECORDING_LIMIT_EXCEEDED", "App Studio accepts at most one screen recording."));
   }
   if (explicitStartFrames > 1 || explicitEndFrames > 1) errors.push(validationError("FRAME_LIMIT_EXCEEDED", "Only one start frame and one end frame may be selected."));
 
-  if (model.slots.sourceVideo.required && sourceVideoCandidates < model.slots.sourceVideo.min) errors.push(validationError("SOURCE_VIDEO_REQUIRED", "This model requires a source video."));
+  if (model.slots.sourceVideo.required && explicitSourceVideos < model.slots.sourceVideo.min) errors.push(validationError("SOURCE_VIDEO_REQUIRED", "This model requires a source video."));
   if (model.slots.referenceImages.required && providerImageAssets.length < model.slots.referenceImages.min) errors.push(validationError("REFERENCE_IMAGES_REQUIRED", `This model requires at least ${model.slots.referenceImages.min} reference image(s).`));
   if (model.requiredSlots.includes("startFrame") && explicitStartFrames !== 1) errors.push(validationError("START_FRAME_REQUIRED", "This model requires a start frame."));
   if (model.controls.sourceRequestId.required && !request.settings.sourceRequestId) errors.push(validationError("SOURCE_REQUEST_ID_REQUIRED", "This model requires the previous provider request ID."));

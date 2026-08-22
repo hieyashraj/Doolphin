@@ -170,7 +170,7 @@ async function handlePreflight(req) {
         compiledPrompt: compiled.compiledPrompt,
         providerImageUrls: compiled.imageUrls,
         providerVideoUrls: request.assets
-          .filter((asset) => asset.role === "APP_SCREEN_RECORDING" || String(asset.mimeType || "").startsWith("video/"))
+          .filter((asset) => asset.role === "SOURCE_VIDEO" || asset.role === "REFERENCE_VIDEO")
           .map((asset) => asset.url),
         earliestSignedAssetExpiryMs,
         applicationOrigin,

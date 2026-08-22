@@ -43,7 +43,9 @@ test("server-owned MIME evidence must match every rich semantic role", () => {
   assert.match(contract, /const ROLE_MEDIA_PREFIX = Object\.freeze/);
   assert.match(contract, /asset\.detectedMimeType \|\| asset\.mimeType/);
   assert.match(contract, /ASSET_ROLE_MEDIA_MISMATCH/);
-  assert.match(contract, /APP_RECORDING_UNSUPPORTED/);
+  assert.match(contract, /APP_RECORDING_LIMIT_EXCEEDED/);
+  assert.doesNotMatch(contract, /APP_RECORDING_UNSUPPORTED/);
   assert.match(preflight, /expectedMediaPrefixForRole\(asset\.role\)/);
   assert.match(preflight, /storedAsset\.detectedMimeType \|\| storedAsset\.mimeType/);
+  assert.match(preflight, /asset\.role === "SOURCE_VIDEO" \|\| asset\.role === "REFERENCE_VIDEO"/);
 });

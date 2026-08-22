@@ -178,7 +178,15 @@ export async function startQualityVerification({ seedanceJob, videoUrl, buffer, 
       const screenPath = path.join(tempDirectory, "screen.mp4");
       await fs.promises.writeFile(screenPath, screenBuffer);
       const brollPath = path.join(tempDirectory, "composed.mp4");
-      await composeExactBroll({ mainVideoPath: currentVideoPath, brollVideoPath: screenPath, outputPath: brollPath, insertTimeSeconds: 1.5, durationSeconds: 2.0 });
+      const durationSeconds = Number(probe.format?.duration || 0);
+      await composeExactBroll({
+        baseVideoPath: currentVideoPath,
+        brollInputs: [{ path: screenPath, isVideo: true }],
+        outputPath: brollPath,
+        durationSeconds,
+        width: Number(videoStream.width),
+        height: Number(videoStream.height),
+      });
       const brollBuffer = await fs.promises.readFile(brollPath);
       const composedKey = buildStorageKey("verification", [creation.workspaceId, creation.id, `variant_${variant.variantIndex}.composed.mp4`]);
       const composedStored = await R2StorageService.uploadFile({ storageKey: composedKey, buffer: brollBuffer, contentType: "video/mp4" });

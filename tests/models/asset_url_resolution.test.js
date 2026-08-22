@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { resolveProviderAssetUrl, mapValidatedStudioWorkflowToNormalizedInvocation } from "../../src/lib/models/bridges/studioWorkflowBridge.js";
+import { resolveProviderAssetUrl, mapStudioWorkflowToNormalizedInvocation, mapValidatedStudioWorkflowToNormalizedInvocation } from "../../src/lib/models/bridges/studioWorkflowBridge.js";
 import { getGenerationModel } from "../../src/lib/generation/modelRegistry.js";
 
 test("Asset Origin Resolution: absolute signed R2 URL unchanged", () => {
@@ -68,4 +68,44 @@ test("Studio Workflow Bridge: omitted or Auto duration resolves from a fixed-dur
     });
     assert.equal(normalized.duration, 8);
   }
+});
+
+
+test("Studio Workflow Bridge: app recordings remain local composition assets", () => {
+  const model = {
+    minDuration: 8,
+    durationValues: [8],
+    controls: { prompt: { supported: true } },
+    slots: {
+      sourceImage: { supported: false },
+      referenceImages: { supported: false },
+      sourceVideo: { supported: true },
+      referenceVideos: { supported: true },
+      referenceAudios: { supported: false },
+    },
+  };
+  const sourceUrl = "https://assets.example.test/source.mp4";
+  const referenceUrl = "https://assets.example.test/reference.mp4";
+  const recordingUrl = "https://assets.example.test/app-recording.mp4";
+  const assets = [
+    { role: "SOURCE_VIDEO", url: sourceUrl, mimeType: "video/mp4" },
+    { role: "REFERENCE_VIDEO", url: referenceUrl, mimeType: "video/mp4" },
+    { role: "APP_SCREEN_RECORDING", url: recordingUrl, mimeType: "video/mp4" },
+  ];
+
+  const normalized = mapValidatedStudioWorkflowToNormalizedInvocation({
+    request: { settings: { durationSeconds: 8 }, assets },
+    model,
+    compiledPrompt: "Show the app workflow.",
+  });
+  assert.equal(normalized.sourceVideo, sourceUrl);
+  assert.deepEqual(normalized.referenceVideos, [referenceUrl]);
+  assert.equal(JSON.stringify(normalized).includes(recordingUrl), false);
+
+  const appOnly = mapStudioWorkflowToNormalizedInvocation(
+    { settings: { durationSeconds: 8 }, assets: [assets[2]] },
+    { model },
+  );
+  assert.equal("sourceVideo" in appOnly, false);
+  assert.equal("referenceVideos" in appOnly, false);
 });

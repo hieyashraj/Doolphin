@@ -169,6 +169,10 @@ test("source guards keep image routing before video work, signed composition, al
   assert.match(quality, /const visionJob = jobs\.find/);
   assert.match(quality, /generateSignedUrl\(\{ storageKey: screenAsset\.storageKey/);
   assert.match(quality, /downloadSignedBuffer\(\{ storageKey: screenAsset\.storageKey, signedUrl: screenSignedUrl \}\)/);
+  assert.match(quality, /baseVideoPath: currentVideoPath/);
+  assert.match(quality, /brollInputs: \[\{ path: screenPath, isVideo: true \}\]/);
+  assert.match(quality, /durationSeconds,\n\s+width: Number\(videoStream\.width\),\n\s+height: Number\(videoStream\.height\)/);
+  assert.doesNotMatch(quality, /mainVideoPath|brollVideoPath|insertTimeSeconds/);
   assert.doesNotMatch(quality, /downloadMediaBufferSsrfSafe\(screenSignedUrl\)/);
   assert.doesNotMatch(quality, /`\/storage\/\$\{screenAsset\.storageKey\}`/);
 

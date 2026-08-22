@@ -79,7 +79,7 @@ export function mapValidatedStudioWorkflowToNormalizedInvocation({
   );
   const actorImages = urlsForRoles(["ACTOR_REFERENCE"]);
   const sourceImages = urlsForRoles(["SOURCE_IMAGE"]);
-  const sourceVideos = urlsForRoles(["SOURCE_VIDEO", "APP_SCREEN_RECORDING"]);
+  const sourceVideos = urlsForRoles(["SOURCE_VIDEO"]);
   const explicitReferenceImages = urlsForRoles(["REFERENCE_IMAGE", "STYLE_REFERENCE", "PRIMARY_PRODUCT", "PRODUCT_PACKAGING", "PRODUCT_USAGE_REFERENCE", "APP_PRIMARY_SCREEN"]);
   const explicitReferenceVideos = urlsForRoles(["REFERENCE_VIDEO"]);
   const explicitReferenceAudios = urlsForRoles(["REFERENCE_AUDIO"]);
@@ -177,8 +177,8 @@ export function mapStudioWorkflowToNormalizedInvocation(legacyRequest = {}, opti
   const videoUrls = [];
   for (const asset of legacyRequest.assets || []) {
     const url = typeof asset === "string" ? asset : asset?.url;
-    if (!url) continue;
-    if (asset?.role === "APP_SCREEN_RECORDING" || String(asset?.mimeType || "").startsWith("video/")) videoUrls.push(url);
+    if (!url || asset?.role === "APP_SCREEN_RECORDING") continue;
+    if (String(asset?.mimeType || "").startsWith("video/")) videoUrls.push(url);
     else imageUrls.push(url);
   }
   return mapValidatedStudioWorkflowToNormalizedInvocation({

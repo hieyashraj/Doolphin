@@ -104,6 +104,11 @@ test("three target dry runs preserve deterministic role maps and plans", () => {
   assert.equal(appCompiled.imageUrls.length, 3);
   assert.equal(appCompiled.compositionAssets.some((asset) => asset.role === "APP_SCREEN_RECORDING"), true);
   assert.match(appCompiled.compiledPrompt, /phone/);
+
+  app.assets.push({ assetId: "second-recording", role: "APP_SCREEN_RECORDING", alias: "Onboarding flow", groupId: "app_flow", url: "https://cdn.muapi.ai/tests/onboarding.mp4", mimeType: "video/mp4", analysis: { confirmed: true, deviceType: "mobile" } });
+  const duplicateRecording = normalizeAndValidateGenerationRequest(app);
+  assert.equal(duplicateRecording.valid, false);
+  assert.equal(duplicateRecording.errors.some((error) => error.code === "APP_RECORDING_LIMIT_EXCEEDED"), true);
 });
 
 test("auto duration grows with scene complexity across studios", () => {
