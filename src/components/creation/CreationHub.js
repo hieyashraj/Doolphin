@@ -192,10 +192,12 @@ export default function CreationHub({
 }) {
   const { account, refreshAccount } = useAppAccount();
   const [modelsByStudio, setModelsByStudio] = useState(null);
-  const [isLoadingModels, setIsLoadingModels] = useState(true);
-  const [modelLoadError, setModelLoadError] = useState(null);
+  const [loadingModelsByStudio, setLoadingModelsByStudio] = useState(() => Object.fromEntries(Object.keys(MODEL_STUDIOS).map((modeId) => [modeId, true])));
+  const [modelLoadErrors, setModelLoadErrors] = useState({});
   const [modelReloadToken, setModelReloadToken] = useState(0);
   const [activeModeId, setActiveModeId] = useState(() => STUDIO_IDS[studioMode] ? studioMode : "video_maker");
+  const isLoadingModels = Boolean(loadingModelsByStudio[activeModeId]);
+  const modelLoadError = modelLoadErrors[activeModeId] || null;
   const [isPresetModalOpen, setIsPresetModalOpen] = useState(false);
   const [presetSearch, setPresetSearch] = useState("");
 
@@ -214,30 +216,46 @@ export default function CreationHub({
 
   useEffect(() => {
     const controller = new AbortController();
-    const loadModels = async () => {
-      setIsLoadingModels(true);
-      setModelLoadError(null);
+    const studioEntries = Object.entries(MODEL_STUDIOS);
+    setModelsByStudio((current) => current || {});
+    setLoadingModelsByStudio(Object.fromEntries(studioEntries.map(([modeId]) => [modeId, true])));
+    setModelLoadErrors({});
+
+    const loadStudioModels = async ([modeId, studio]) => {
+      const studioName = PRESET_MODES.find((mode) => mode.id === modeId)?.name || "Studio";
       try {
-        const entries = await Promise.all(Object.entries(MODEL_STUDIOS).map(async ([modeId, studio]) => {
-          const response = await fetch(`/api/models?studio=${encodeURIComponent(studio)}`, { signal: controller.signal });
-          const data = await readJsonResponse(response, `${PRESET_MODES.find((mode) => mode.id === modeId)?.name || "Studio"} model catalog`);
-          if (!Array.isArray(data.models) || data.models.some((model) => !model?.id || !Array.isArray(model.aspectRatios) || !Array.isArray(model.resolutions))) {
-            throw new Error(`The ${studio} model catalog is incomplete.`);
-          }
-          if (!data.models.length) throw new Error(`No enabled AI models are available for ${studio}.`);
-          return [modeId, data.models];
-        }));
-        if (!controller.signal.aborted) setModelsByStudio(Object.fromEntries(entries));
+        const signal = typeof AbortSignal.any === "function"
+          ? AbortSignal.any([controller.signal, AbortSignal.timeout(15_000)])
+          : controller.signal;
+        const response = await fetch(`/api/models?studio=${encodeURIComponent(studio)}`, { signal });
+        const data = await readJsonResponse(response, `${studioName} model catalog`);
+        if (!Array.isArray(data.models) || data.models.some((model) => !model?.id || !Array.isArray(model.aspectRatios) || !Array.isArray(model.resolutions))) {
+          throw new Error(`The ${studio} model catalog is incomplete.`);
+        }
+        if (!data.models.length) throw new Error(`No enabled AI models are available for ${studio}.`);
+        if (!controller.signal.aborted) {
+          setModelsByStudio((current) => ({ ...(current || {}), [modeId]: data.models }));
+          setModelLoadErrors((current) => {
+            const next = { ...current };
+            delete next[modeId];
+            return next;
+          });
+        }
       } catch (error) {
         if (error.name !== "AbortError" && !controller.signal.aborted) {
-          setModelsByStudio({});
-          setModelLoadError(error.message || "AI models could not be loaded.");
+          const message = error.name === "TimeoutError"
+            ? `${studioName} model catalog timed out. Retry this studio.`
+            : error.message || `AI models could not be loaded for ${studioName}.`;
+          setModelLoadErrors((current) => ({ ...current, [modeId]: message }));
         }
       } finally {
-        if (!controller.signal.aborted) setIsLoadingModels(false);
+        if (!controller.signal.aborted) {
+          setLoadingModelsByStudio((current) => ({ ...current, [modeId]: false }));
+        }
       }
     };
-    void loadModels();
+
+    studioEntries.forEach((entry) => void loadStudioModels(entry));
     return () => controller.abort();
   }, [modelReloadToken]);
 
@@ -1074,8 +1092,13 @@ export default function CreationHub({
   const isInProgress = (status) => !isDelivered(status) && !["failed", "quarantined", "timed_out", "cancelled"].includes(String(status || "").toLowerCase());
   const stageLabel = (stage) => String(stage || "queued").replace(/[_-]+/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
   const elapsedLabel = (creation) => {
+    const now = Date.now();
+    const deadline = creation.timeoutAt ? new Date(creation.timeoutAt).getTime() : null;
+    if ((Number.isFinite(deadline) && now > deadline) || (!deadline && creation.createdAt && now - new Date(creation.createdAt).getTime() > 60 * 60_000)) {
+      return "Recovery delayed";
+    }
     const started = creation.createdAt;
-    const elapsedSeconds = started ? Math.max(0, Math.floor((Date.now() - new Date(started).getTime()) / 1000)) : 0;
+    const elapsedSeconds = started ? Math.max(0, Math.floor((now - new Date(started).getTime()) / 1000)) : 0;
     return elapsedSeconds < 60 ? "Just started" : `${Math.floor(elapsedSeconds / 60)}m elapsed`;
   };
 

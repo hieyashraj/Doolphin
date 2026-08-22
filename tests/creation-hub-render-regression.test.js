@@ -148,13 +148,15 @@ test("Generate exposes every required-field disabled reason", () => {
 });
 
 
-test("all three video Studios load their authenticated server model catalogs", () => {
+test("all three video Studios load their authenticated server model catalogs independently", () => {
   assert.match(source, /Object\.entries\(MODEL_STUDIOS\)/);
   assert.match(source, /fetch\(`\/api\/models\?studio=\$\{encodeURIComponent\(studio\)\}`/);
+  assert.match(source, /AbortSignal\.timeout\(15_000\)/);
+  assert.match(source, /setModelsByStudio\(\(current\) => \(\{ \.\.\.\(current \|\| \{\}\), \[modeId\]: data\.models \}\)\)/);
+  assert.match(source, /setLoadingModelsByStudio\(\(current\) => \(\{ \.\.\.current, \[modeId\]: false \}\)\)/);
   assert.match(source, /if \(!Array\.isArray\(data\.models\)/);
   assert.match(source, /No enabled AI models are available/);
   assert.match(source, /Retry model loading/);
-  assert.match(source, /setModelsByStudio\(Object\.fromEntries\(entries\)\)/);
 });
 
 test("creation history failures are visible instead of masquerading as an empty shell", () => {

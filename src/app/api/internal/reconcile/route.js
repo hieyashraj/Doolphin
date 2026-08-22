@@ -244,7 +244,7 @@ async function runReconciliation(req) {
   const timedOut = await prisma.creationVariant.findMany({ where: { ...reconciliationEligibleVariantWhere(), status: { in: ["QUEUED", "PROCESSING"] }, timeoutAt: { lt: now } } });
   for (const variant of timedOut) {
     await CreditEscrowService.releaseVariantReservations(variant.id, "WORKFLOW_TIMEOUT");
-    await prisma.providerJob.updateMany({ where: { creationVariantId: variant.id, status: { in: ["PREPARED", "QUEUED", "PROCESSING"] } }, data: { status: "TIMED_OUT", errorCode: "WORKFLOW_TIMEOUT", safeError: "Workflow timed out before completion." } });
+    await prisma.providerJob.updateMany({ where: { creationVariantId: variant.id, status: { in: ["PREPARED", "SUBMITTING", "SUBMISSION_UNKNOWN", "QUEUED", "PROCESSING"] } }, data: { status: "TIMED_OUT", errorCode: "WORKFLOW_TIMEOUT", safeError: "Workflow timed out before completion.", ...clearSubmissionLease() } });
     await prisma.creationVariant.update({ where: { id: variant.id }, data: { status: "TIMED_OUT", errorCode: "WORKFLOW_TIMEOUT", safeError: userFacingGenerationMessage("TIMED_OUT", "WORKFLOW_TIMEOUT") } });
     await updateTimedOutCreation(variant.creationId);
     actions.push({ variantId: variant.id, result: "TIMED_OUT" });

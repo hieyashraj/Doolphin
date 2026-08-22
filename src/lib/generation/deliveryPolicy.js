@@ -63,11 +63,19 @@ export function buildWebhookDispatchUrl(endpoint, callbackUrl) {
 
 
 export function shouldReplayDeliveryCallback(job) {
-  const verifierRetry = ["muapi.openai-whisper", "muapi.gemini-2.5-flash-verifier"].includes(job?.internalModelId) &&
+  const isVerifier = ["muapi.openai-whisper", "muapi.gemini-2.5-flash-verifier"].includes(job?.internalModelId);
+  const verifierRetry = isVerifier &&
     job?.status === "SUCCEEDED" &&
     ["delivery_retry", "delivery_finalizing"].includes(job?.variant?.currentStage);
-  const imageRetry = isAuthenticatedImageDeliveryJob(job) &&
+  const imageJob = isAuthenticatedImageDeliveryJob(job);
+  const imageRetry = imageJob &&
     ["result_processing_retry", "delivery_finalizing"].includes(job?.variant?.currentStage) &&
     !["FAILED", "CANCELLED"].includes(job?.status);
-  return verifierRetry || imageRetry;
+  // Download/probe/verifier-dispatch failures occur after MuAPI has completed
+  // the paid main-video job. An exact duplicate callback must replay that
+  // idempotent delivery work instead of being acknowledged and discarded.
+  const mainVideoRetry = !isVerifier && !imageJob &&
+    job?.variant?.currentStage === "result_processing_retry" &&
+    !["FAILED", "CANCELLED"].includes(job?.status);
+  return verifierRetry || imageRetry || mainVideoRetry;
 }

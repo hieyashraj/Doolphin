@@ -7,10 +7,12 @@ const generationSource = fs.readFileSync(new URL("../src/app/api/images/generati
 const resultSource = fs.readFileSync(new URL("../src/app/api/images/generations/[id]/result/route.js", import.meta.url), "utf8");
 const envExample = fs.readFileSync(new URL("../.env.example", import.meta.url), "utf8");
 
-test("Image Studio validates discovery responses and model capability shapes", () => {
+test("Image Studio validates discovery responses and model capability shapes without coupling model and asset loading", () => {
   assert.match(studioSource, /response\.ok/);
   assert.match(studioSource, /headers\.get\("content-type"\)/);
   assert.match(studioSource, /function hasValidCapabilities/);
+  assert.match(studioSource, /refreshAssets\(controller\.signal\)/);
+  assert.doesNotMatch(studioSource, /Promise\.all\(\[\s*fetch\("\/api\/image-models"\)/);
   assert.match(studioSource, /No image models are currently enabled/);
   assert.match(studioSource, /invalid capabilities/);
 });
@@ -31,6 +33,9 @@ test("Image Studio waits for deliverable URLs and renders every returned output"
   assert.match(studioSource, /if \(delivered\.length\)/);
   assert.match(studioSource, /next\.urls = delivered\.map/);
   assert.match(studioSource, /generation\.urls\.map/);
+  assert.match(studioSource, /const createAnother = \(\) =>/);
+  assert.match(studioSource, /idempotencyKey\.current = null/);
+  assert.match(studioSource, /Create another/);
 });
 
 test("image submission signs a trusted webhook and redacts it from durable payloads", () => {

@@ -27,6 +27,10 @@ function hasOnlySignedHttpsUrls(urls) {
   });
 }
 
+function durableStorageRequired(env = process.env) {
+  return env.NODE_ENV === "production" || env.VERCEL_ENV === "production" || env.VERCEL_ENV === "preview" || env.DOOLPHIN_ENV === "production" || env.DOOLPHIN_ENV === "staging";
+}
+
 export async function POST(req) {
   try {
     const { appUser } = await requireActivatedAccount();
@@ -37,6 +41,12 @@ export async function POST(req) {
     if (!validation.valid) return NextResponse.json({ code: "IMAGE_PREFLIGHT_INVALID", errors: validation.errors }, { status: 422 });
     const workspace = await prisma.workspace.findUnique({ where: { id: appUser.defaultWorkspaceId } });
     if (!workspace || workspace.status !== "ACTIVE") return NextResponse.json({ code: "WORKSPACE_UNAVAILABLE" }, { status: 403 });
+    if (durableStorageRequired() && !R2StorageService.isConfigured()) {
+      return NextResponse.json({
+        code: "DELIVERY_STORAGE_UNAVAILABLE",
+        error: "Image generation is temporarily unavailable because durable output storage is not configured. No credits were used.",
+      }, { status: 503 });
+    }
     
     // Validate user uploaded reference assets
     const refIds = validation.request.referenceAssetIds || [];

@@ -36,6 +36,10 @@ function safeModelSnapshot(model) {
   };
 }
 
+function durableStorageRequired(env = process.env) {
+  return env.NODE_ENV === "production" || env.VERCEL_ENV === "production" || env.VERCEL_ENV === "preview" || env.DOOLPHIN_ENV === "production" || env.DOOLPHIN_ENV === "staging";
+}
+
 async function handlePreflight(req) {
   let session; let planCode; try { const { appUser, entitlement } = await requireActivatedAccount(); session = { user: { id: appUser.id } }; planCode = entitlement.planCode; } catch (error) { return NextResponse.json({ success: false, code: error.code || "UNAUTHORIZED", error: "Activation required" }, { status: error.status || 401 }); }
 
@@ -44,6 +48,13 @@ async function handlePreflight(req) {
     body = await req.json();
   } catch {
     return NextResponse.json({ success: false, code: "INVALID_JSON", error: "A valid JSON request is required" }, { status: 400 });
+  }
+  if (durableStorageRequired() && !R2StorageService.isConfigured()) {
+    return NextResponse.json({
+      success: false,
+      code: "DELIVERY_STORAGE_UNAVAILABLE",
+      error: "Video generation is temporarily unavailable because durable output storage is not configured. No credits were used.",
+    }, { status: 503 });
   }
 
   let earliestSignedAssetExpiryMs = null;

@@ -129,7 +129,9 @@ export default function ImageStudio() {
   const [quoteState, setQuoteState] = useState("idle");
   const [quoteAttempt, setQuoteAttempt] = useState(0);
   const [error, setError] = useState("");
+  const [assetLoadError, setAssetLoadError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [modelReloadToken, setModelReloadToken] = useState(0);
   const [generation, setGeneration] = useState(null);
   const [modelOpen, setModelOpen] = useState(false);
   const [assetOpen, setAssetOpen] = useState(false);
@@ -142,30 +144,53 @@ export default function ImageStudio() {
   const popover = useRef(null);
   const idempotencyKey = useRef(null);
 
-  const refreshAssets = async () => {
-    const response = await fetch("/api/assets");
-    const data = await readApiJson(response, "Your image assets could not be loaded.");
-    if (!Array.isArray(data.assets)) throw new Error("Your image assets could not be loaded because the API response was invalid.");
-    setAssets(data.assets.filter((asset) => asset?.mimeType?.startsWith("image/")));
+  const refreshAssets = async (signal) => {
+    try {
+      const response = await fetch("/api/assets", { signal });
+      const data = await readApiJson(response, "Your image assets could not be loaded.");
+      if (!Array.isArray(data.assets)) throw new Error("Your image assets could not be loaded because the API response was invalid.");
+      if (signal?.aborted) return;
+      setAssets(data.assets.filter((asset) => asset?.mimeType?.startsWith("image/")));
+      setAssetLoadError("");
+    } catch (assetError) {
+      if (assetError.name === "AbortError" || signal?.aborted) throw assetError;
+      setAssetLoadError(assetError.message || "My Assets could not be loaded. Explore references and text-to-image remain available.");
+      throw assetError;
+    }
   };
 
   useEffect(() => {
-    Promise.all([
-      fetch("/api/image-models").then((response) => readApiJson(response, "Image models could not be loaded.")),
-      refreshAssets()
-    ])
-      .then(([modelData]) => {
+    const controller = new AbortController();
+    const loadStudio = async () => {
+      setLoading(true);
+      setError("");
+      // Asset discovery is non-blocking: a temporary library failure must not
+      // prevent text-to-image or curated Explore reference generation.
+      void refreshAssets(controller.signal).catch(() => {});
+      try {
+        const response = await fetch("/api/image-models", { signal: controller.signal });
+        const modelData = await readApiJson(response, "Image models could not be loaded.");
         if (!Array.isArray(modelData.models)) throw new Error("Image models could not be loaded because the API response was invalid.");
         const invalid = modelData.models.find((item) => item?.available && !hasValidCapabilities(item));
         if (invalid) throw new Error(`Image model ${invalid.displayName || invalid.id || "configuration"} has invalid capabilities. Please retry or contact support.`);
         const enabled = modelData.models.filter((item) => item.available);
         if (!enabled.length) throw new Error("No image models are currently enabled. Please retry later or contact support.");
-        setModels(enabled);
-        setDraft((current) => normalize(enabled[0], current));
-      })
-      .catch((discoveryError) => setError(discoveryError.message || "Image Studio is temporarily unavailable. Please retry."))
-      .finally(() => setLoading(false));
-  }, []);
+        if (!controller.signal.aborted) {
+          setModels(enabled);
+          setDraft((current) => normalize(enabled[0], current));
+        }
+      } catch (discoveryError) {
+        if (discoveryError.name !== "AbortError" && !controller.signal.aborted) {
+          setModels([]);
+          setError(discoveryError.message || "Image Studio is temporarily unavailable. Please retry.");
+        }
+      } finally {
+        if (!controller.signal.aborted) setLoading(false);
+      }
+    };
+    void loadStudio();
+    return () => controller.abort();
+  }, [modelReloadToken]);
 
   const model = models.find((item) => item.id === draft.modelId);
   const caps = model?.productCapabilities;
@@ -386,6 +411,16 @@ export default function ImageStudio() {
     setQuoteAttempt((attempt) => attempt + 1);
   };
 
+  const createAnother = () => {
+    idempotencyKey.current = null;
+    setGeneration(null);
+    setError("");
+    setWorkspaceView("explore");
+    setMobileTab("composer");
+    invalidateQuote();
+    setQuoteAttempt((attempt) => attempt + 1);
+  };
+
   useEffect(() => {
     if (
       !generation?.id ||
@@ -546,6 +581,14 @@ export default function ImageStudio() {
                     </span>
                   </p>
                 </div>
+                {assetLoadError && (
+                  <div role="status" className="mb-2 flex items-center justify-between gap-3 rounded-xl bg-[#FFF6D9] px-3 py-2 text-xs text-[#6F5310]">
+                    <span>{assetLoadError} Explore references are still available.</span>
+                    <button type="button" className="shrink-0 font-bold underline" onClick={() => void refreshAssets().catch(() => {})}>
+                      Retry
+                    </button>
+                  </div>
+                )}
 
                 <div
                   onDragOver={(event) => event.preventDefault()}
@@ -746,6 +789,11 @@ export default function ImageStudio() {
               {buttonText}
             </button>
             {error && <p role="alert" className="mt-3 text-xs text-[#9A2C2C]">{error}</p>}
+            {!models.length && (
+              <Control onClick={() => setModelReloadToken((token) => token + 1)} className="mt-3">
+                Retry loading image models
+              </Control>
+            )}
           </>
         )}
       </aside>
@@ -786,7 +834,10 @@ export default function ImageStudio() {
                     />
                   ))}
                 </div>
-                <div className="mt-5 flex items-center justify-center gap-3">
+                <div className="mt-5 flex flex-wrap items-center justify-center gap-3">
+                  <Control onClick={createAnother}>
+                    <FiPlus size={14} /> Create another
+                  </Control>
                   <Link href="/app?tab=library" className="inline-flex items-center gap-2 rounded-xl border border-[#111111]/15 bg-white px-4 py-2 text-xs font-bold shadow-sm hover:bg-[#EFECE1]">
                     Open My Library
                   </Link>

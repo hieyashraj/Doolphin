@@ -25,7 +25,7 @@ export async function GET() {
         prompt: true, spokenScript: true, additionalInstructions: true, status: true,
         currentStage: true, progressValue: true, completedAt: true, modelId: true,
         provider: true, aspectRatio: true, resolution: true, duration: true,
-        numberOfVideos: true, errorCode: true, quoteId: true, createdAt: true,
+        numberOfVideos: true, errorCode: true, quoteId: true, createdAt: true, timeoutAt: true,
         variants: {
           orderBy: { variantIndex: "asc" },
           select: {
@@ -122,6 +122,7 @@ export async function GET() {
         errorCode: creation.errorCode,
         retryRequest: retryRequest ? JSON.parse(retryRequest) : null,
         createdAt: creation.createdAt,
+        timeoutAt: creation.timeoutAt,
         variants: creation.variants.map((variant) => ({
           id: variant.id,
           index: variant.variantIndex,
