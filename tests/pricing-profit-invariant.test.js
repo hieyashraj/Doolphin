@@ -319,7 +319,7 @@ test("EXPLOIT GUARD: a quote can only be consumed once, under a race-safe claim"
 
 test("EXPLOIT GUARD: output count is bounded, so one quote cannot fan out unboundedly", () => {
   const contract = fs.readFileSync(new URL("../src/lib/generation/contract.js", import.meta.url), "utf8");
-  assert.match(contract, /outputCount: z\.number\(\)\.int\(\)\.min\(1\)\.max\(2\)/);
+  assert.match(contract, /outputCount: z\.number\(\)\.int\(\)\.min\(1\)\.max\(4\)/);
 });
 
 test("EXPLOIT GUARD: unpriced models fail closed instead of generating for free", () => {

@@ -2,7 +2,6 @@
 
 import { FiUser, FiPlus, FiHelpCircle } from "react-icons/fi";
 import AssetLibraryPicker from "./AssetLibraryPicker";
-import LazyVideo from "@/components/LazyVideo";
 import StudioModelPicker from "@/components/studio/StudioModelPicker";
 import StudioSelect from "@/components/studio/StudioSelect";
 
@@ -33,6 +32,13 @@ export default function AppStudioForm({
   setSelectedModel,
   modelsList = []
 }) {
+  const explicitDurationValues = selectedModel?.durationValues?.length
+    ? selectedModel?.durationValues || []
+    : [5, 8, 10, 12, 15].filter((value) => value >= (selectedModel?.minDuration ?? 1) && value <= (selectedModel?.maxDuration ?? 60));
+  const durationValues = ["Auto", ...new Set(explicitDurationValues.map(String))];
+  const aspectRatioValues = selectedModel?.aspectRatios || [];
+  const resolutionValues = selectedModel?.resolutions || [];
+
   return (
     <div className="studio-form space-y-3 font-sans text-[#111111]">
       {/* Upload your app * (i) */}
@@ -42,16 +48,12 @@ export default function AppStudioForm({
             Upload your app <span className="text-red-500">*</span>
           </label>
           <FiHelpCircle size={14} className="text-[#77746D]" title="Upload a screenshot of your app interface" />
-          {onChooseLibraryApp && <AssetLibraryPicker label="My Assets" accept={["image/", "video/"]} onSelect={onChooseLibraryApp} selectedAssetIds={appImages.map((asset) => asset.assetId || asset.id)} />}
+          {onChooseLibraryApp && <AssetLibraryPicker label="My Assets" accept={["image/"]} onSelect={onChooseLibraryApp} selectedAssetIds={appImages.map((asset) => asset.assetId || asset.id)} />}
         </div>
         <div className="flex flex-wrap items-center gap-3">
           {appImages.map((appImage) => (
             <div key={appImage.id || appImage.assetId} className="relative w-20 h-20 rounded-xl border border-[#111111]/15 overflow-hidden group">
-              {appImage.mimeType?.startsWith("video/") ? (
-                <LazyVideo src={appImage.preview || appImage.url} className="w-full h-full object-cover" />
-              ) : (
-                <img src={appImage.preview || appImage.url} alt={appImage.alias || "App UI"} className="w-full h-full object-cover" />
-              )}
+              <img src={appImage.preview || appImage.url} alt={appImage.alias || "App UI"} className="w-full h-full object-cover" />
               <button
                 type="button"
                 onClick={() => onRemoveImage(appImage.id)}
@@ -63,14 +65,14 @@ export default function AppStudioForm({
           ))}
           <label className="w-20 h-20 rounded-xl bg-[#F2EFE5] hover:bg-[#EAE6D8] border border-dashed border-[#111111]/25 hover:border-[#111111]/50 flex flex-col items-center justify-center cursor-pointer transition-colors">
             <FiPlus size={22} className="text-[#77746D]" />
-            <input type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime" multiple onChange={onAppUpload} className="hidden" />
+            <input type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={onAppUpload} className="hidden" />
           </label>
         </div>
       </div>
 
       {/* Choose an avatar */}
       <div className="space-y-1.5">
-        <label className="block text-base font-semibold text-[#111111]">Choose an avatar</label>
+        <label className="block text-base font-semibold text-[#111111]">Choose an avatar <span className="text-red-500">*</span></label>
         <button
           type="button"
           onClick={onOpenActorModal}
@@ -161,30 +163,34 @@ export default function AppStudioForm({
       </div>
 
       <div className="space-y-1.5">
-        <label className="block text-base font-semibold text-[#111111]">AI Model</label>
+        <label className="block text-base font-semibold text-[#111111]">AI Model <span className="text-red-500">*</span></label>
         <StudioModelPicker models={modelsList} value={selectedModel?.id} onChange={setSelectedModel} />
       </div>
 
       {/* Duration */}
       <div className="space-y-1.5">
         <label className="block text-base font-semibold text-[#111111]">Duration</label>
-        <StudioSelect label="Duration" value={duration} values={["Auto", "5", "8", "12", "15"]} onChange={setDuration} formatLabel={(value) => value === "Auto" ? value : `${value}s`} className="w-full max-w-none justify-between bg-[#F2EFE5]" />
+        <StudioSelect label="Duration" value={duration} values={durationValues} onChange={setDuration} formatLabel={(value) => value === "Auto" ? value : `${value}s`} className="w-full max-w-none justify-between bg-[#F2EFE5]" />
         <p className="text-xs text-[#77746D] leading-relaxed">
           Auto lets the app flow, screen count, and script timing decide the final length.
         </p>
       </div>
 
-      {/* Resolution */}
-      <div className="space-y-1.5">
-        <label className="block text-base font-semibold text-[#111111]">Resolution</label>
-        <StudioSelect label="Resolution" value={resolution} values={selectedModel?.resolutions || ["720p"]} onChange={setResolution} className="w-full max-w-none justify-between bg-[#F2EFE5]" />
-      </div>
+      {/* Resolution — rendered only when the selected model exposes it. */}
+      {resolutionValues.length > 0 && (
+        <div className="space-y-1.5">
+          <label className="block text-base font-semibold text-[#111111]">Resolution</label>
+          <StudioSelect label="Resolution" value={resolution} values={resolutionValues} onChange={setResolution} className="w-full max-w-none justify-between bg-[#F2EFE5]" />
+        </div>
+      )}
 
-      {/* Aspect Ratio */}
-      <div className="space-y-1.5">
-        <label className="block text-base font-semibold text-[#111111]">Aspect Ratio</label>
-        <StudioSelect label="Aspect ratio" value={aspectRatio} values={selectedModel?.aspectRatios || ["9:16"]} onChange={setAspectRatio} className="w-full max-w-none justify-between bg-[#F2EFE5]" />
-      </div>
+      {/* Aspect ratio — unsupported controls are omitted rather than left empty. */}
+      {aspectRatioValues.length > 0 && (
+        <div className="space-y-1.5">
+          <label className="block text-base font-semibold text-[#111111]">Aspect Ratio</label>
+          <StudioSelect label="Aspect ratio" value={aspectRatio} values={aspectRatioValues} onChange={setAspectRatio} className="w-full max-w-none justify-between bg-[#F2EFE5]" />
+        </div>
+      )}
 
       {/* Number of videos stepper */}
       <div className="space-y-1.5">

@@ -4,6 +4,7 @@ import fs from "node:fs";
 
 const studioSource = fs.readFileSync(new URL("../src/components/image-studio/ImageStudio.js", import.meta.url), "utf8");
 const generationSource = fs.readFileSync(new URL("../src/app/api/images/generations/route.js", import.meta.url), "utf8");
+const resultSource = fs.readFileSync(new URL("../src/app/api/images/generations/[id]/result/route.js", import.meta.url), "utf8");
 const envExample = fs.readFileSync(new URL("../.env.example", import.meta.url), "utf8");
 
 test("Image Studio validates discovery responses and model capability shapes", () => {
@@ -52,4 +53,14 @@ test("image submission persists requested output count and curated audit IDs", (
 
 test("sandbox MuAPI credential is documented", () => {
   assert.match(envExample, /^MUAPI_API_KEY_SANDBOX=/m);
+});
+
+
+test("callback-first image completion is returned as terminal with every artifact", () => {
+  assert.match(resultSource, /\["COMPLETED", "FAILED", "TIMED_OUT", "CANCELLED", "QUARANTINED"\]\.includes\(job\.variant\.status\)/);
+  assert.match(resultSource, /prisma\.generatedArtifact\.count/);
+  assert.match(resultSource, /type: "FINAL_IMAGE", validationStatus: "VALID"/);
+  assert.match(resultSource, /status: job\.variant\.status/);
+  assert.match(resultSource, /completed: job\.variant\.status === "COMPLETED"/);
+  assert.match(studioSource, /loadDeliveredImages\(generation\.id, Number\(data\.artifactCount\) \|\| 0\)/);
 });

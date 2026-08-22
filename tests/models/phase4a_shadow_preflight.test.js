@@ -78,7 +78,7 @@ test("Phase 4A.2 Audio References: Unresolved explicit audio references fail clo
 
   await assert.rejects(
     async () => prepareExecutionPlan({
-      modelId: "muapi.seedance2.omni-reference-fast",
+      modelId: "muapi.veo-4-text-to-video",
       normalizedInput: normalizedInputWithAudio,
       env: TEST_ENV,
     }),

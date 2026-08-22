@@ -1,6 +1,5 @@
 import { grokImagineImage2EditDefinition } from "./definitions/grok-imagine-image-2-edit.js";
 import { seedanceSpicyVideoExtendDefinition } from "./definitions/seedance-2.5-spicy-video-extend-480p.js";
-import { seedance2OmniReferenceFastDefinition } from "./definitions/seedance-2-omni-reference-fast.js";
 import { resolveAuthoritativeProviderSpec } from "./providerCatalog.js";
 import { GENERATED_MODELS_BY_ID } from "./videoModelFactory.js";
 import { ModelPlatformError, ERROR_CODES } from "./errors.js";
@@ -15,20 +14,13 @@ import { ModelPlatformError, ERROR_CODES } from "./errors.js";
  */
 
 /**
- * Three hand-authored definitions carry model-specific rules a generated
- * definition cannot infer — Seedance 2 Omni's 720p-only guard and 9-image
- * reference cap, for example. They therefore take PRECEDENCE over the generated
- * definition for the same provider model, and are spread last below.
- *
- * Everything else comes from the provider's own catalog export via
- * videoModelFactory, which is what makes the full bench (323 video + 136 image
- * models) actually selectable instead of the Video Studio falling back to a
- * hardcoded list of placeholder names.
+ * Legacy hand-authored definitions remain directly resolvable for compatibility,
+ * but curated definitions own any overlapping portfolio ID. Studio listings are
+ * constrained below to the DOCX-backed curated descriptors.
  */
 const HAND_AUTHORED_DEFINITIONS = {
   [grokImagineImage2EditDefinition.productPolicy.id]: grokImagineImage2EditDefinition,
   [seedanceSpicyVideoExtendDefinition.productPolicy.id]: seedanceSpicyVideoExtendDefinition,
-  [seedance2OmniReferenceFastDefinition.productPolicy.id]: seedance2OmniReferenceFastDefinition,
 };
 
 const LOCAL_MODEL_DEFINITIONS = Object.freeze({
@@ -121,7 +113,14 @@ export async function getModel(modelId, { fetchImpl, env = process.env, forceRef
         studios: ["explore"],
         enabled: true,
         legacyAliases: [],
+        curated: false,
       },
+      capabilityDescriptor: Object.freeze({
+        providerId: spec.providerModelId || spec.id,
+        confidence: "LOW",
+        dispatchable: false,
+        adapterRevision: "generic-prompt-only-v1",
+      }),
       businessPolicy: {
         targetContributionMarginBps: 3000,
         variableInfraCostMicroUsd: 10000n,
@@ -138,8 +137,13 @@ export async function getModel(modelId, { fetchImpl, env = process.env, forceRef
 
 export async function listModelsByStudio(studio) {
   const matches = [];
+  const curatedOnly = ["video-studio", "product-studio", "app-studio"].includes(studio);
   for (const def of Object.values(LOCAL_MODEL_DEFINITIONS)) {
-    if (def.productPolicy.enabled && def.productPolicy.studios.includes(studio)) {
+    if (
+      def.productPolicy.enabled &&
+      def.productPolicy.studios.includes(studio) &&
+      (!curatedOnly || (def.productPolicy.curated && def.productPolicy.studioReady && def.capabilityDescriptor?.dispatchable))
+    ) {
       matches.push(def);
     }
   }

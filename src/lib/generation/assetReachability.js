@@ -136,7 +136,7 @@ async function probeProviderAssetUrl(url, { fetchImpl = fetch } = {}) {
       reason: "Asset URL returned an HTML page instead of media (asset is likely behind authentication or missing).",
     };
   }
-  if (contentType && !contentType.startsWith("image/") && !contentType.startsWith("video/") && !contentType.startsWith("application/octet-stream")) {
+  if (contentType && !contentType.startsWith("image/") && !contentType.startsWith("video/") && !contentType.startsWith("audio/") && !contentType.startsWith("application/octet-stream")) {
     return {
       ok: false,
       code: "ASSET_NOT_MEDIA",

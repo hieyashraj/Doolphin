@@ -13,10 +13,10 @@ export function reconciliationSchedulePlan(env = process.env) {
   if (!env.CRON_SECRET) return { enabled: false, reason: "CRON_SECRET_REQUIRED" };
   if (!env.WEBHOOK_URL?.startsWith("https://")) return { enabled: false, reason: "WEBHOOK_URL_HTTPS_REQUIRED" };
   // Vercel Cron's minimum supported granularity is once per minute on paid
-  // plans; Hobby is limited to once per day. "*/1 * * * *" documents the
-  // ideal cadence for a paid plan — if still on Hobby, invoke this route
-  // from an external scheduler (e.g. cron-job.org, GitHub Actions schedule)
-  // hitting it every 1-2 minutes with the same Bearer CRON_SECRET header
-  // until upgrading past Hobby.
+  // plans; Hobby is limited to once per day. The repository does not declare
+  // which deployment plan it uses, so vercel.json intentionally has no cron:
+  // adding this minute schedule there could make deployment invalid. Configure
+  // it only after the paid-plan constraint is recorded, or invoke this route
+  // from an external scheduler every 1-2 minutes with the same Bearer secret.
   return { enabled: true, method: "GET", path: "/api/internal/reconcile", authorization: "Bearer <CRON_SECRET>", cadence: "*/1 * * * *", dryRunSupported: true };
 }

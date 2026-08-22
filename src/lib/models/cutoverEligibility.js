@@ -1,3 +1,5 @@
+import { GENERATED_MODEL_DEFINITIONS } from "./videoModelFactory.js";
+
 /**
  * Server-controlled Model Identity Binding Alias Map.
  *
@@ -10,10 +12,20 @@
  * below remains load-bearing production security logic (Phase 4B.3
  * dispatch-time identity verification) and is unrelated to that retired flag.
  */
+const reviewedIdentityEntries = GENERATED_MODEL_DEFINITIONS
+  .filter((definition) => definition.capabilityDescriptor?.dispatchable)
+  .flatMap((definition) => {
+    const canonicalId = definition.productPolicy.id;
+    const providerId = definition.providerSpec.providerModelId;
+    return [
+      [canonicalId, providerId],
+      [providerId, providerId],
+      ...definition.productPolicy.legacyAliases.map((alias) => [alias, providerId]),
+    ];
+  });
+
 const SERVER_CONTROLLED_MODEL_ALIAS_MAP = new Map([
-  ["muapi.seedance2.omni-reference-fast", "seedance-2-omni-reference-no-video-fast"],
-  ["seedance-2", "seedance-2-omni-reference-no-video-fast"],
-  ["seedance-2-omni-reference-no-video-fast", "seedance-2-omni-reference-no-video-fast"],
+  ...reviewedIdentityEntries,
   ["muapi.grok-imagine-image-2-edit", "grok-imagine-image-2-edit"],
   ["grok-imagine-image-2-edit", "grok-imagine-image-2-edit"],
 ]);

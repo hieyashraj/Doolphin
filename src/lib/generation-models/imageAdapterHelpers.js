@@ -30,8 +30,16 @@ export function validateImageRequest(definition, input) {
   if (caps.outputResolution.visible && (!request.outputResolution || !caps.outputResolution.values.includes(request.outputResolution))) errors.push({ code: "OUTPUT_RESOLUTION_UNSUPPORTED", message: "Selected output resolution is unsupported." });
   if (!caps.requestedOutputCount.visible && request.requestedOutputCount !== undefined) errors.push({ code: "OUTPUT_COUNT_UNSUPPORTED", message: "Output count is fixed for this model." });
   if (caps.requestedOutputCount.visible && (!request.requestedOutputCount || !caps.requestedOutputCount.values.includes(request.requestedOutputCount))) errors.push({ code: "OUTPUT_COUNT_UNSUPPORTED", message: "Selected output count is unsupported." });
-  if (request.aspectRatio === "auto" && request.outputResolution && request.outputResolution !== "1K") errors.push({ code: "AUTO_RATIO_1K_ONLY", message: "Auto aspect ratio only supports 1K." });
-  if (request.aspectRatio === "1:1" && request.outputResolution === "4K" && definition.id.startsWith("muapi.gpt-image-2")) errors.push({ code: "SQUARE_4K_UNSUPPORTED", message: "GPT Image 2 does not support 4K at 1:1." });
+  const constrainedResolutions = definition.resolutionConstraints?.byAspectRatio?.[request.aspectRatio];
+  if (request.outputResolution && constrainedResolutions && !constrainedResolutions.includes(request.outputResolution)) {
+    const autoConstraint = request.aspectRatio === "auto";
+    errors.push({
+      code: autoConstraint ? "AUTO_RATIO_1K_ONLY" : "SQUARE_4K_UNSUPPORTED",
+      message: autoConstraint ? "Auto aspect ratio only supports 1K." : "GPT Image 2 does not support 4K at 1:1.",
+    });
+  } else if (!constrainedResolutions && request.aspectRatio === "auto" && request.outputResolution && request.outputResolution !== "1K") {
+    errors.push({ code: "AUTO_RATIO_1K_ONLY", message: "Auto aspect ratio only supports 1K." });
+  }
   if (["16:9", "9:16"].includes(request.aspectRatio) && request.outputResolution === "2K" && definition.id === "muapi.seedream-5-pro-t2i") errors.push({ code: "SEEDREAM_PRO_2K_RATIO_UNSUPPORTED", message: "Seedream 5 Pro supports 2K only for non-cinematic aspect ratios." });
   return errors.length ? { valid: false, errors } : { valid: true, request };
 }

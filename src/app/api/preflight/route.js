@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { requireActivatedAccount } from "@/lib/access/authorization";
 import { prisma } from "@/lib/prisma";
 import { CreditEscrowService } from "@/lib/billing/CreditEscrowService";
-import { fingerprintGenerationRequest, normalizeAndValidateGenerationRequest } from "@/lib/generation/contract";
+import { expectedMediaPrefixForRole, fingerprintGenerationRequest, normalizeAndValidateGenerationRequest } from "@/lib/generation/contract";
 import { compileCanonicalPrompt } from "@/lib/generation/promptCompiler";
 import { buildMuapiWebhookUrl } from "@/lib/generation/webhookSecurity";
 import { resolvePlatformAvatar } from "@/lib/generation/avatarRegistry";
@@ -28,6 +28,11 @@ function safeModelSnapshot(model) {
     minDuration: model.minDuration,
     maxDuration: model.maxDuration,
     maxImages: model.maxImages,
+    mediaType: model.mediaType,
+    nativeAudio: model.nativeAudio,
+    supportsNativeAudio: Boolean(model.nativeAudio?.supported),
+    completionStrategy: model.completionStrategy,
+    finalizerStrategy: model.finalizerStrategy,
   };
 }
 
@@ -63,6 +68,15 @@ async function handlePreflight(req) {
         }
         if (!storedAsset.analysisConfirmedAt || storedAsset.analysisStatus !== "CONFIRMED") {
           return NextResponse.json({ success: false, code: "ASSET_ANALYSIS_UNCONFIRMED", error: `Review and confirm the analysis for '${asset.alias || storedAsset.originalFileName}' before generation`, assetId: storedAsset.id }, { status: 422 });
+        }
+        const expectedMediaPrefix = expectedMediaPrefixForRole(asset.role);
+        const authoritativeMimeType = String(storedAsset.detectedMimeType || storedAsset.mimeType || "").toLowerCase();
+        if (expectedMediaPrefix && !authoritativeMimeType.startsWith(expectedMediaPrefix)) {
+          return NextResponse.json({
+            success: false,
+            code: "ASSET_ROLE_MEDIA_MISMATCH",
+            error: `'${asset.alias || storedAsset.originalFileName}' cannot be used as ${asset.role}; that role requires ${expectedMediaPrefix.slice(0, -1)} media.`,
+          }, { status: 422 });
         }
         const stored = await R2StorageService.checkObjectExists(storedAsset.storageKey);
         if (!stored.exists || Number(stored.size) !== Number(storedAsset.fileSizeBytes)) {
@@ -107,7 +121,7 @@ async function handlePreflight(req) {
   }
 
   const { request, model, estimatedSpeechSeconds } = validation;
-  const compiled = compileCanonicalPrompt(request);
+  const compiled = compileCanonicalPrompt(request, model);
   const webhookBase = process.env.WEBHOOK_URL || process.env.NEXTAUTH_URL;
   if (!webhookBase?.startsWith("https://") && process.env.NODE_ENV === "production") {
     return NextResponse.json({ success: false, code: "WEBHOOK_NOT_CONFIGURED", error: "A public HTTPS WEBHOOK_URL is required" }, { status: 503 });
@@ -152,8 +166,12 @@ async function handlePreflight(req) {
 
       const normalizedInput = mapValidatedStudioWorkflowToNormalizedInvocation({
         request,
+        model,
         compiledPrompt: compiled.compiledPrompt,
         providerImageUrls: compiled.imageUrls,
+        providerVideoUrls: request.assets
+          .filter((asset) => asset.role === "APP_SCREEN_RECORDING" || String(asset.mimeType || "").startsWith("video/"))
+          .map((asset) => asset.url),
         earliestSignedAssetExpiryMs,
         applicationOrigin,
       });
@@ -166,7 +184,16 @@ async function handlePreflight(req) {
       // the user's avatar and uploaded assets. Verify real reachability here
       // and fail closed, so an unreachable asset costs an error message
       // instead of a wasted paid generation plus a refund plus a lost user.
-      const reachability = await assertProviderAssetsAreFetchable(normalizedInput.extraInputs?.images || []);
+      const providerAssetUrls = [
+        normalizedInput.sourceImage,
+        normalizedInput.sourceVideo,
+        normalizedInput.startFrame,
+        normalizedInput.endFrame,
+        ...(normalizedInput.referenceImages || []),
+        ...(normalizedInput.referenceVideos || []),
+        ...(normalizedInput.referenceAudios || []),
+      ].filter(Boolean);
+      const reachability = await assertProviderAssetsAreFetchable(providerAssetUrls);
       if (!reachability.ok) {
         return NextResponse.json({
           success: false,
@@ -200,6 +227,8 @@ async function handlePreflight(req) {
         providerModelId: plan.providerModelId,
         providerEndpoint: plan.providerEndpoint,
         providerSpecHash: plan.providerSpecHash,
+        adapterRevision: plan.adapterRevision,
+        capabilityRevision: plan.capabilityRevision,
         providerSpecSource: plan.provenance?.source || "BOOTSTRAP",
         providerFetchedAt: plan.provenance?.providerFetchedAt || null,
         providerStale: Boolean(plan.provenance?.stale),
@@ -276,7 +305,10 @@ async function handlePreflight(req) {
           costs: quoteCostSnapshot,
           providerPreview: {
             endpoint: plan.providerEndpoint,
-            payload: { prompt: compiled.compiledPrompt, images_list: compiled.imageUrls.map((_, idx) => `[signed-asset-${idx + 1}]`) },
+            canonicalInput: {
+              prompt: compiled.compiledPrompt,
+              references: compiled.imageUrls.map((_, idx) => `[signed-asset-${idx + 1}]`),
+            },
           },
         },
       });

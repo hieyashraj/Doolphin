@@ -18,6 +18,24 @@ const bucketName = process.env.R2_BUCKET_NAME;
 
 let s3ClientInstance = null;
 
+export function validateR2SignedDownloadUrl({ signedUrl, storageKey, expectedAccountId = accountId, expectedBucketName = bucketName }) {
+  if (!expectedAccountId || !expectedBucketName) throw new Error("R2 signed-download validation requires configured account and bucket identifiers");
+  let parsed;
+  try { parsed = new URL(signedUrl); }
+  catch { throw new Error("R2 signed-download URL must be absolute"); }
+  const expectedHost = `${expectedAccountId}.r2.cloudflarestorage.com`.toLowerCase();
+  if (parsed.protocol !== "https:" || parsed.hostname.toLowerCase() !== expectedHost) {
+    throw new Error("R2 signed-download URL does not match the configured storage account");
+  }
+  let decodedPath;
+  try { decodedPath = decodeURIComponent(parsed.pathname); }
+  catch { throw new Error("R2 signed-download URL has an invalid object path"); }
+  const expectedPath = `/${expectedBucketName}/${storageKey}`;
+  if (decodedPath !== expectedPath) throw new Error("R2 signed-download URL does not match the requested storage object");
+  if (!parsed.searchParams.has("X-Amz-Signature")) throw new Error("R2 signed-download URL is missing its signature");
+  return parsed.toString();
+}
+
 function getS3Client() {
   if (!accessKeyId || !secretAccessKey || !accountId) return null;
   if (s3ClientInstance) return s3ClientInstance;
@@ -125,6 +143,16 @@ export class R2StorageService {
       return { exists: true, size: stats.size, contentType: "video/mp4" };
     }
     return { exists: false };
+  }
+
+  static async downloadSignedBuffer({ storageKey, signedUrl }) {
+    if (String(signedUrl || "").startsWith("/")) return this.downloadBuffer(storageKey);
+    const trustedUrl = validateR2SignedDownloadUrl({ signedUrl, storageKey });
+    const response = await fetch(trustedUrl, { method: "GET", redirect: "error" });
+    if (!response.ok) throw new Error(`R2 signed download failed with HTTP ${response.status}`);
+    const buffer = Buffer.from(await response.arrayBuffer());
+    if (buffer.length < 100) throw new Error("R2 signed download returned an invalid media payload");
+    return buffer;
   }
 
   static async downloadBuffer(storageKey) {

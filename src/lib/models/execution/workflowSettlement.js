@@ -50,7 +50,7 @@ export function calculateWorkflowSettlement({
   const unearnedCreditsToRelease = Math.max(0, totalQuoted - earnedCreditsToCharge);
 
   return {
-    settledStatus: "COMPLETED",
+    settledStatus: "PARTIAL_COMPLETED",
     earnedCreditsToCharge,
     unearnedCreditsToRelease,
     isPartial: true,
@@ -200,7 +200,7 @@ export async function settleModelPlatformWorkflow({
       where: { id: creation.id },
       data: {
         status: settlement.settledStatus,
-        currentStage: settlement.settledStatus === "COMPLETED" ? "delivery" : "failed",
+        currentStage: settlement.settledStatus.includes("COMPLETED") ? "delivery" : "failed",
         completedAt: new Date(),
         settlementSummaryJson: JSON.stringify({
           settledStatus: settlement.settledStatus,

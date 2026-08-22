@@ -11,8 +11,11 @@ import { downloadMediaBufferSsrfSafe } from "@/lib/downloader";
 import { handleVerificationResult, startQualityVerification } from "@/lib/generation/qualityPipeline";
 import { fetchAuthenticatedMuapiResult } from "@/lib/generation/muapiResult";
 import { isReconciliationEligibleVariant } from "@/lib/generation/reconciliationEligibility";
-import { verifyMuapiCallbackToken } from "@/lib/generation/webhookSecurity";
+import { buildMuapiWebhookUrl, verifyMuapiCallbackToken } from "@/lib/generation/webhookSecurity";
 import { classifyMuapiProviderStatus } from "@/lib/generation/muapiStatusClassifier";
+import { processAuthenticatedImageResult } from "@/lib/generation/imagePipeline";
+import { isAuthenticatedImageDeliveryJob, shouldReplayDeliveryCallback } from "@/lib/generation/deliveryPolicy";
+import { validateVideoMedia } from "@/lib/generation/videoMediaValidation";
 import { parseUsdToMicroUsdConservatively } from "@/lib/models/execution/muapiExecutor.js";
 import { isModelPlatformV1Creation, settleModelPlatformWorkflow } from "@/lib/models/execution/workflowSettlement.js";
 
@@ -63,7 +66,7 @@ async function updateCreationAggregate(creationId) {
   } else if (isFailed) {
     await prisma.creation.update({ where: { id: creationId }, data: { status: "FAILED", currentStage: "failed" } });
   } else if (isPartial) {
-    await prisma.creation.update({ where: { id: creationId }, data: { status: "COMPLETED", currentStage: "delivery", completedAt: new Date() } });
+    await prisma.creation.update({ where: { id: creationId }, data: { status: "PARTIAL_COMPLETED", currentStage: "delivery", completedAt: new Date() } });
   }
 }
 
@@ -94,6 +97,7 @@ export async function POST(req) {
 
   // WebhookEvent Prisma write schema fix
   let event;
+  let duplicateEvent = false;
   try {
     event = await prisma.webhookEvent.create({
       data: {
@@ -109,9 +113,12 @@ export async function POST(req) {
     });
   } catch (error) {
     if (error.code === "P2002") {
-      return NextResponse.json({ success: true, duplicate: true });
+      duplicateEvent = true;
+      event = await prisma.webhookEvent.findFirst({ where: { provider: "MUAPI", providerRequestId, payloadHash } });
+      if (!event) throw error;
+    } else {
+      throw error;
     }
-    throw error;
   }
 
   const job = await prisma.providerJob.findFirst({
@@ -124,11 +131,16 @@ export async function POST(req) {
     return NextResponse.json({ success: true, ignored: true });
   }
 
+  if (duplicateEvent && !shouldReplayDeliveryCallback(job)) {
+    await prisma.webhookEvent.update({ where: { id: event.id }, data: { processingStatus: "DUPLICATE", processedAt: new Date() } });
+    return NextResponse.json({ success: true, duplicate: true });
+  }
+
   if (!isReconciliationEligibleVariant(job.variant)) {
     await prisma.webhookEvent.update({ where: { id: event.id }, data: { processingStatus: "IGNORED", processedAt: new Date(), errorCode: "RECONCILIATION_INELIGIBLE" } });
     return NextResponse.json({ success: true, ignored: true });
   }
-  if (["SUCCEEDED", "FAILED", "CANCELLED"].includes(job.status)) {
+  if (["SUCCEEDED", "FAILED", "CANCELLED"].includes(job.status) && !shouldReplayDeliveryCallback(job)) {
     await prisma.webhookEvent.update({ where: { id: event.id }, data: { processingStatus: "DUPLICATE", processedAt: new Date() } });
     return NextResponse.json({ success: true, terminal: true });
   }
@@ -148,6 +160,21 @@ export async function POST(req) {
     await prisma.webhookEvent.update({ where: { id: event.id }, data: { processingStatus: "PROCESSED", processedAt: new Date() } });
     if (verification.terminal) await updateCreationAggregate(job.variant.creationId);
     return NextResponse.json({ success: true, ...verification });
+  }
+
+  // Image Studio callbacks share this authenticated endpoint, but their
+  // terminal payloads must be finalized by Sharp/R2 rather than classified as
+  // video or sent through ffprobe. Snapshot strategies are authoritative for
+  // new jobs; generationType keeps callbacks for older IMAGE_STUDIO jobs safe.
+  if (isAuthenticatedImageDeliveryJob(job)) {
+    try {
+      const result = await processAuthenticatedImageResult(job, providerPayload);
+      await prisma.webhookEvent.update({ where: { id: event.id }, data: { processingStatus: "PROCESSED", processedAt: new Date() } });
+      return NextResponse.json({ success: true, ...result });
+    } catch (error) {
+      await prisma.webhookEvent.update({ where: { id: event.id }, data: { processingStatus: "FAILED", processedAt: new Date(), errorCode: error.code || "IMAGE_RESULT_PROCESSING_RETRYABLE" } });
+      return NextResponse.json({ error: "Image result processing failed temporarily" }, { status: 503 });
+    }
   }
 
   // Defect 4: Provider status classification before financial reconciliation
@@ -232,20 +259,14 @@ export async function POST(req) {
     tempPath = path.join(os.tmpdir(), `${job.id}.mp4`);
     await fs.promises.writeFile(tempPath, downloaded.buffer);
     const probe = await runFfprobe(tempPath);
-    const videoStream = probe.streams?.find((stream) => stream.codec_type === "video");
-    const audioStream = probe.streams?.find((stream) => stream.codec_type === "audio");
-    const actualDuration = Number(probe.format?.duration || 0);
-    const expectedDuration = job.variant.creation.duration || 0;
-    const requestedRatio = job.variant.creation.aspectRatio || "9:16";
-    const [ratioWidth, ratioHeight] = requestedRatio.split(":").map(Number);
-    const expectedRatio = ratioWidth / ratioHeight;
-    const actualRatio = videoStream?.width && videoStream?.height ? videoStream.width / videoStream.height : 0;
-    const expectedDimensions = { "9:16": [720, 1280], "16:9": [1280, 720], "3:4": [720, 960], "4:3": [960, 720] }[requestedRatio];
-    const dimensionsPassed = Boolean(expectedDimensions && Math.abs((videoStream?.width || 0) - expectedDimensions[0]) <= 8 && Math.abs((videoStream?.height || 0) - expectedDimensions[1]) <= 8);
-    const codecPassed = ["h264", "hevc", "av1"].includes(videoStream?.codec_name) && ["aac", "mp3", "opus"].includes(audioStream?.codec_name);
-    const mediaPassed = Boolean(videoStream && audioStream && codecPassed && dimensionsPassed && actualDuration > 0 && Math.abs(actualDuration - expectedDuration) <= 3 && Math.abs(actualRatio - expectedRatio) <= 0.04 && downloaded.buffer.length > 1000);
+    const mediaValidation = validateVideoMedia({
+      probe,
+      byteLength: downloaded.buffer.length,
+      creation: job.variant.creation,
+      capabilitySnapshot: job.capabilitySnapshot,
+    });
 
-    if (!mediaPassed) {
+    if (!mediaValidation.passed) {
       if (!isModelPlatform) {
         await CreditEscrowService.settleVerifiedVariant(job.creationVariantId, false);
       }
@@ -260,7 +281,7 @@ export async function POST(req) {
             reconciledAt: new Date(),
           },
         }),
-        prisma.creationVariant.update({ where: { id: job.creationVariantId }, data: { status: "QUARANTINED", currentStage: "quality_verification", errorCode: "QUALITY_GATE_FAILED", safeError: "Output failed media, audio, or duration checks" } }),
+        prisma.creationVariant.update({ where: { id: job.creationVariantId }, data: { status: "QUARANTINED", currentStage: "quality_verification", errorCode: "QUALITY_GATE_FAILED", safeError: "Output failed capability-aware media integrity checks" } }),
         prisma.webhookEvent.update({ where: { id: event.id }, data: { processingStatus: "PROCESSED", processedAt: new Date() } }),
       ]);
       await updateCreationAggregate(job.variant.creationId);
@@ -291,7 +312,8 @@ export async function POST(req) {
       prisma.webhookEvent.update({ where: { id: event.id }, data: { processingStatus: "PROCESSED", processedAt: new Date() } }),
     ]);
 
-    await startQualityVerification({ seedanceJob: job, videoUrl, buffer: downloaded.buffer, probe, webhookUrl: process.env.WEBHOOK_URL || process.env.NEXTAUTH_URL || "https://api.doolphin.com" });
+    const verifierWebhookUrl = buildMuapiWebhookUrl(process.env.WEBHOOK_URL || process.env.NEXTAUTH_URL || "https://api.doolphin.com");
+    await startQualityVerification({ seedanceJob: job, videoUrl, buffer: downloaded.buffer, probe, webhookUrl: verifierWebhookUrl });
     return NextResponse.json({ success: true, verified: true });
   } catch (error) {
     await prisma.$transaction([

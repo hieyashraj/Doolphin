@@ -1,10 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { normalizeAndValidateGenerationRequest } from "@/lib/generation/contract";
-import { compileCanonicalPrompt } from "@/lib/generation/promptCompiler";
-import { getProviderAdapter } from "@/lib/adapters";
 import { buildMuapiWebhookUrl } from "@/lib/generation/webhookSecurity";
-import { R2StorageService } from "@/lib/storage/r2StorageService";
 import { CreditEscrowService } from "@/lib/billing/CreditEscrowService";
 import { userFacingGenerationMessage } from "@/lib/generation/statusMessages";
 import { claimProviderSubmission, clearSubmissionLease, newSubmissionOwner, submissionOwnerWhere } from "@/lib/generation/providerSubmissionLease";
@@ -13,7 +9,9 @@ import { isReconciliationEligibleVariant, reconciliationEligibleVariantWhere } f
 import { getImageModel } from "@/lib/generation-models/imageRegistry";
 import { fetchAuthenticatedMuapiResult } from "@/lib/generation/muapiResult";
 import { processAuthenticatedImageResult } from "@/lib/generation/imagePipeline";
+import { isAuthenticatedImageDeliveryJob } from "@/lib/generation/deliveryPolicy";
 import { getMuapiApiKey } from "@/lib/generation/muapiCredentials";
+import { resolveImmutableRecoveryDispatch } from "@/lib/models/execution/recoveryDispatch.js";
 
 export const maxDuration = 300;
 
@@ -33,11 +31,6 @@ function authorized(req) {
   // env var of that exact name. Manual/staging callers may also POST with an
   // explicit Authorization header. Both are accepted identically.
   return req.headers.get("authorization") === `Bearer ${expected}`;
-}
-
-function providerUrl(asset, baseUrl) {
-  if (asset.role === "ACTOR_REFERENCE") return new URL(asset.url, `${baseUrl.replace(/\/$/, "")}/`).toString();
-  return R2StorageService.generateSignedUrl({ storageKey: asset.storageKey, expiresInSeconds: 3600 });
 }
 
 async function updateTimedOutCreation(creationId) {
@@ -100,7 +93,7 @@ async function recordSubmissionFailure(outbox, error) {
   return "FAILED_REFUNDED";
 }
 
-async function submitPrepared(outbox, baseUrl) {
+async function submitPrepared(outbox) {
   const body = JSON.parse(outbox.payload);
   const job = await prisma.providerJob.findUnique({ where: { id: body.providerJobId }, include: { variant: { include: { creation: true } } } });
   if (!job) return "SKIPPED";
@@ -109,6 +102,13 @@ async function submitPrepared(outbox, baseUrl) {
     await prisma.queueOutbox.update({ where: { id: outbox.id }, data: { status: "DISPATCHED" } });
     return "ALREADY_SUBMITTED";
   }
+  // Validate every immutable binding before taking a submission lease. A
+  // malformed or drifted snapshot can never reach the paid-call boundary.
+  const quoteId = body.quoteId || job.variant.creation.quoteId;
+  const quote = quoteId ? await prisma.preflightQuote.findUnique({ where: { id: quoteId } }) : null;
+  if (!quote) throw new Error("Preflight snapshot missing");
+  const immutableDispatch = resolveImmutableRecoveryDispatch({ outboxPayload: body, job, quote });
+
   const submissionOwner = newSubmissionOwner("reconcile");
   const claim = await claimProviderSubmission({ prisma, providerJobId: job.id, ownerId: submissionOwner });
   if (!claim.claimed) {
@@ -127,18 +127,17 @@ async function submitPrepared(outbox, baseUrl) {
     ]);
     return "AMBIGUOUS_STOPPED";
   }
-  const quote = await prisma.preflightQuote.findUnique({ where: { id: body.quoteId } });
-  if (!quote) throw new Error("Preflight snapshot missing");
-  const validation = normalizeAndValidateGenerationRequest(JSON.parse(quote.requestSnapshot));
-  if (!validation.valid) throw new Error("Immutable request failed revalidation");
-  const request = validation.request;
-  for (const asset of request.assets) asset.url = await providerUrl(asset, baseUrl);
-  const compiled = compileCanonicalPrompt(request);
-  const webhookUrl = buildMuapiWebhookUrl(baseUrl);
-  const payload = getProviderAdapter("seedance-2").formatPayload({ prompt: compiled.compiledPrompt, settings: { duration: request.settings.durationSeconds, resolution: request.settings.resolution, aspect_ratio: request.settings.aspectRatio }, images: compiled.imageUrls, webhookUrl });
   let response;
   try {
-    response = await fetch(job.endpoint, { method: "POST", headers: { "Content-Type": "application/json", "x-api-key": getMuapiApiKey() }, body: JSON.stringify(payload), signal: AbortSignal.timeout(30000) });
+    response = await fetch(immutableDispatch.dispatchUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-api-key": getMuapiApiKey() },
+      // Do not parse/stringify here: these are the exact canonical bytes that
+      // were priced, fingerprinted, persisted, and used by immediate dispatch.
+      body: immutableDispatch.providerPayloadJson,
+      redirect: "error",
+      signal: AbortSignal.timeout(30000),
+    });
   } catch (cause) {
     const error = new Error("Provider submission could not be confirmed");
     error.submissionOutcomeUnknown = true;
@@ -184,6 +183,10 @@ async function pollImageJob(job) {
   return processAuthenticatedImageResult(job, payload);
 }
 
+function isImageDeliveryJob(job) {
+  return isAuthenticatedImageDeliveryJob(job) || Boolean(getImageModel(job.internalModelId));
+}
+
 // Reconciliation may reserve/release/settle durable state. It is
 // server-to-server only, gated exclusively by a secret bearer token
 // (never by environment name or any caller-controlled input), and it is
@@ -207,18 +210,18 @@ async function runReconciliation(req) {
   const eligibleVariantIds = eligibleVariants.map((variant) => variant.id);
   const pending = eligibleVariantIds.length ? await prisma.queueOutbox.findMany({ where: { aggregateId: { in: eligibleVariantIds }, eventType: "SUBMIT_MUAPI_SEEDANCE", OR: [{ status: "PENDING" }, { status: "FAILED", nextAttemptAt: { lte: now } }] }, orderBy: { createdAt: "asc" }, take: 10 }) : [];
   for (const outbox of pending) {
-    try { actions.push({ outboxId: outbox.id, result: await submitPrepared(outbox, baseUrl) }); }
+    try { actions.push({ outboxId: outbox.id, result: await submitPrepared(outbox) }); }
     catch (error) {
       actions.push({ outboxId: outbox.id, result: await recordSubmissionFailure(outbox, error) });
     }
   }
 
-  const activeJobs = await prisma.providerJob.findMany({ where: { variant: { is: { ...reconciliationEligibleVariantWhere(), status: { in: ["QUEUED", "PROCESSING"] } } }, status: { in: ["QUEUED", "PROCESSING"] }, providerRequestId: { not: null }, OR: [{ lastCheckedAt: null }, { lastCheckedAt: { lt: new Date(Date.now() - 30_000) } }] }, take: 20 });
+  const activeJobs = await prisma.providerJob.findMany({ where: { variant: { is: { ...reconciliationEligibleVariantWhere(), status: { in: ["QUEUED", "PROCESSING"] } } }, status: { in: ["QUEUED", "PROCESSING"] }, providerRequestId: { not: null }, OR: [{ lastCheckedAt: null }, { lastCheckedAt: { lt: new Date(Date.now() - 30_000) } }] }, include: { variant: { include: { creation: true } } }, take: 20 });
   // A no-op reconciliation must not require callback credentials. Construct
   // the callback filter only when an eligible provider result can need it.
-  const webhookUrl = activeJobs.some((job) => !getImageModel(job.internalModelId)) ? buildMuapiWebhookUrl(baseUrl) : null;
+  const webhookUrl = activeJobs.some((job) => !isImageDeliveryJob(job)) ? buildMuapiWebhookUrl(baseUrl) : null;
   for (const job of activeJobs) {
-    try { actions.push({ providerJobId: job.id, result: getImageModel(job.internalModelId) ? await pollImageJob(await prisma.providerJob.findUnique({ where: { id: job.id }, include: { variant: { include: { creation: true } } } })) : await pollJob(job, webhookUrl) }); }
+    try { actions.push({ providerJobId: job.id, result: isImageDeliveryJob(job) ? await pollImageJob(job) : await pollJob(job, webhookUrl) }); }
     catch (error) { actions.push({ providerJobId: job.id, result: "POLL_FAILED", error: error.message }); }
   }
 
