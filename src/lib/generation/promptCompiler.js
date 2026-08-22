@@ -32,7 +32,7 @@ function defaultShotPlan(request, supportsNativeAudio = true) {
   const delivery = request.instructions.confirmedDelivery;
   if (!supportsNativeAudio) {
     if (request.studio === "PRODUCT_STUDIO") return "Create a visual product-ad sequence using the selected identity and exact uploaded product references. Do not synthesize dialogue or lip movement; treat the script as scene and performance direction.";
-    if (request.studio === "APP_STUDIO") return "Create a visual app demonstration using the selected identity and exact uploaded interface references. Do not synthesize dialogue or lip movement; treat the script as scene direction.";
+    if (request.studio === "APP_STUDIO") return "Create a visual app demonstration using the selected identity and exact uploaded interface references. Do not synthesize dialogue or lip movement; treat the script as scene direction; the final compositor preserves app pixels whenever readable UI is shown.";
     return "Create the requested visual sequence with the selected identity and references. Do not synthesize dialogue or lip movement; treat the script as visual and performance direction.";
   }
   if (request.studio === "PRODUCT_STUDIO") {

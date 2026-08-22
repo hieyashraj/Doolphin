@@ -191,7 +191,11 @@ export function normalizeAndValidateGenerationRequest(input) {
   const model = getGenerationModel(request.modelId);
   const errors = [];
   if (!model) {
-    errors.push(validationError("UNSUPPORTED_MODEL", `Model '${request.modelId}' is not registered.`));
+    const code = request.studio === "APP_STUDIO" ? "APP_STUDIO_MODEL_REQUIRED" : "UNSUPPORTED_MODEL";
+    const message = request.studio === "APP_STUDIO"
+      ? "Choose Seedance 2.5 or Seedance 2.0 for App Studio."
+      : `Model '${request.modelId}' is not registered.`;
+    errors.push(validationError(code, message));
     return { valid: false, errors };
   }
   request.modelId = model.id;
