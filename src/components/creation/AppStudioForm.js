@@ -13,6 +13,7 @@ export default function AppStudioForm({
   onOpenActorModal,
   spokenScript,
   setSpokenScript,
+  scriptRequired = false,
   additionalInstructions,
   setAdditionalInstructions,
   uploadedImages,
@@ -47,16 +48,20 @@ export default function AppStudioForm({
           <label className="block text-base font-semibold text-[#111111]">
             Upload your app <span className="text-red-500">*</span>
           </label>
-          <FiHelpCircle size={14} className="text-[#77746D]" title="Upload a screenshot of your app interface" />
-          {onChooseLibraryApp && <AssetLibraryPicker label="My Assets" accept={["image/"]} onSelect={onChooseLibraryApp} selectedAssetIds={appImages.map((asset) => asset.assetId || asset.id)} />}
+          <FiHelpCircle size={14} className="text-[#77746D]" title="Upload app screenshots and optionally one MP4 or QuickTime screen recording" />
+          {onChooseLibraryApp && <AssetLibraryPicker label="My Assets" accept={["image/", "video/"]} onSelect={onChooseLibraryApp} selectedAssetIds={appImages.map((asset) => asset.assetId || asset.id)} />}
         </div>
         <div className="flex flex-wrap items-center gap-3">
           {appImages.map((appImage) => (
             <div key={appImage.id || appImage.assetId} className="relative w-20 h-20 rounded-xl border border-[#111111]/15 overflow-hidden group">
-              <img src={appImage.preview || appImage.url} alt={appImage.alias || "App UI"} className="w-full h-full object-cover" />
+              {String(appImage.detectedMimeType || appImage.mimeType || "").startsWith("video/") ? (
+                <video src={appImage.preview || appImage.url} aria-label={appImage.alias || "App screen recording"} muted playsInline className="w-full h-full object-cover" />
+              ) : (
+                <img src={appImage.preview || appImage.url} alt={appImage.alias || "App UI"} className="w-full h-full object-cover" />
+              )}
               <button
                 type="button"
-                onClick={() => onRemoveImage(appImage.id)}
+                onClick={() => onRemoveImage(appImage.id || appImage.assetId)}
                 className="absolute top-1 right-1 bg-black/70 text-white rounded-full w-4 h-4 flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-opacity"
               >
                 ✕
@@ -65,7 +70,7 @@ export default function AppStudioForm({
           ))}
           <label className="w-20 h-20 rounded-xl bg-[#F2EFE5] hover:bg-[#EAE6D8] border border-dashed border-[#111111]/25 hover:border-[#111111]/50 flex flex-col items-center justify-center cursor-pointer transition-colors">
             <FiPlus size={22} className="text-[#77746D]" />
-            <input type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={onAppUpload} className="hidden" />
+            <input type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime" multiple onChange={onAppUpload} className="hidden" />
           </label>
         </div>
       </div>
@@ -94,10 +99,12 @@ export default function AppStudioForm({
         </button>
       </div>
 
-      {/* Write your script * */}
+      {/* Write your script */}
       <div className="space-y-1.5">
         <label className="block text-base font-semibold text-[#111111]">
-          Write your script <span className="text-red-500">*</span>
+          Write your script {scriptRequired
+            ? <span className="text-red-500">*</span>
+            : <span className="text-[#77746D] text-sm font-normal">(optional with a confirmed screenshot)</span>}
         </label>
         <div className="relative">
           <textarea
@@ -105,8 +112,10 @@ export default function AppStudioForm({
             onChange={(e) => setSpokenScript(e.target.value)}
             maxLength={300}
             rows={3}
-            required
-            placeholder="Write the exact script for your app demo (max 300 chars). Spoken verbatim."
+            required={scriptRequired}
+            placeholder={scriptRequired
+              ? "Write the exact script for this recording-only app demo (max 300 chars)."
+              : "Write the exact script for your app demo (max 300 chars). Leave blank for an app-informed draft."}
             className="w-full bg-[#F2EFE5] focus:bg-white p-3.5 text-sm font-medium text-[#111111] placeholder-[#8C887B] border border-[#111111]/15 focus:border-[#111111] focus:outline-none focus:ring-2 focus:ring-[#111111] caret-[#111111] transition-all resize-none rounded-xl"
           />
           <div className="absolute bottom-2.5 right-3 text-xs text-[#77746D] font-mono">
@@ -126,7 +135,7 @@ export default function AppStudioForm({
             onChange={(e) => setAdditionalInstructions(e.target.value)}
             maxLength={1600}
             rows={4}
-            placeholder="Add any extra direction beyond what the preset enforces.."
+            placeholder="Add any extra direction beyond what the preset enforces."
             className="w-full bg-[#F2EFE5] focus:bg-white p-3.5 text-sm font-medium text-[#111111] placeholder-[#8C887B] border border-[#111111]/15 focus:border-[#111111] focus:outline-none focus:ring-2 focus:ring-[#111111] caret-[#111111] transition-all resize-none rounded-xl"
           />
           <div className="absolute bottom-2.5 right-3 text-xs text-[#77746D] font-mono">

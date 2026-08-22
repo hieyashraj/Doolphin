@@ -77,11 +77,11 @@ test("Studio production listing contains only reviewed adapters supported by the
     .flatMap(([, variants]) => variants.map((item) => item.providerModelId)));
   const rootListing = listGeneratedModelsByStudio("video-studio");
   const generationListing = listGenerationModels();
-  assert.equal(rootListing.length, 5);
-  assert.equal(generationListing.length, 5);
+  assert.equal(rootListing.length, 6);
+  assert.equal(generationListing.length, 6);
   assert.equal(listGeneratedModelsByStudio("image-studio").length, 1);
-  assert.equal(listGeneratedModelsByStudio("product-studio").length, 4);
-  assert.equal(listGeneratedModelsByStudio("app-studio").length, 4);
+  assert.equal(listGeneratedModelsByStudio("product-studio").length, 5);
+  assert.equal(listGeneratedModelsByStudio("app-studio").length, 2);
   for (const item of generationListing) {
     assert.ok(allowedVideoIds.has(item.providerModelId), item.providerModelId);
     for (const key of ["family", "variant", "controls", "slots", "requiredSlots", "durationValues", "aspectRatios", "resolutions", "nativeAudio", "maxReferences", "confidence"]) {
@@ -92,6 +92,9 @@ test("Studio production listing contains only reviewed adapters supported by the
 });
 
 const matrix = [
+  ["seedance-2.5-omni-reference", {
+    prompt: "app demo", referenceImages: [URLS.image, URLS.image2], referenceVideos: [URLS.video2], referenceAudios: [URLS.audio], duration: 8, aspectRatio: "9:21", resolution: "720p",
+  }, { prompt: "app demo", images_list: [URLS.image, URLS.image2], videos_list: [URLS.video2], audios_list: [URLS.audio], duration: 8, aspect_ratio: "9:21", generate_audio: true, seed: -1 }],
   ["seedance-2-omni-reference-no-video-fast", {
     prompt: "fast", referenceImages: [URLS.image], referenceAudios: [URLS.audio], duration: 5, aspectRatio: "16:9", resolution: "720p",
   }, { prompt: "fast", images_list: [URLS.image], audio_files: [URLS.audio], duration: 5, aspect_ratio: "16:9", generate_audio: true }],

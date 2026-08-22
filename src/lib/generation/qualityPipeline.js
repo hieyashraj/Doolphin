@@ -14,6 +14,7 @@ import { buildWebhookDispatchUrl, nativeAudioIsExpected, verificationModelIdsFor
 import { CreditEscrowService } from "@/lib/billing/CreditEscrowService";
 import { isReconciliationEligibleVariant } from "@/lib/generation/reconciliationEligibility";
 import { isModelPlatformV1Creation, settleModelPlatformWorkflow } from "@/lib/models/execution/workflowSettlement.js";
+import { getAppStudioPreset } from "@/lib/app-studio/config.js";
 
 const WHISPER_ENDPOINT = "https://api.muapi.ai/api/v1/openai-whisper";
 const VISION_ENDPOINT = "https://api.muapi.ai/api/v1/gemini-2-5-flash";
@@ -164,35 +165,62 @@ export async function startQualityVerification({ seedanceJob, videoUrl, buffer, 
 
     let currentVideoPath = path.join(tempDirectory, "input.mp4");
     await fs.promises.writeFile(currentVideoPath, buffer);
-    const assets = await prisma.creationAsset.findMany({ where: { creationId: creation.id } });
-    const screenAsset = assets.find((asset) => asset.role === "APP_SCREEN_RECORDING");
-    let composedArtifact = null;
-    if (screenAsset) {
-      let screenBuffer;
-      if (String(screenAsset.storageKey || "").startsWith("https://")) {
-        screenBuffer = (await downloadMediaBufferSsrfSafe(screenAsset.storageKey)).buffer;
-      } else {
-        const screenSignedUrl = await R2StorageService.generateSignedUrl({ storageKey: screenAsset.storageKey, expiresInSeconds: 900 });
-        screenBuffer = await R2StorageService.downloadSignedBuffer({ storageKey: screenAsset.storageKey, signedUrl: screenSignedUrl });
+    const assets = await prisma.creationAsset.findMany({
+      where: { creationId: creation.id },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    });
+    const selectionIndex = (asset) => {
+      try {
+        const parsed = JSON.parse(asset.validationMetadata || "{}");
+        return Number.isInteger(parsed.selectionIndex) ? parsed.selectionIndex : Number.MAX_SAFE_INTEGER;
+      } catch {
+        return Number.MAX_SAFE_INTEGER;
       }
-      const screenPath = path.join(tempDirectory, "screen.mp4");
-      await fs.promises.writeFile(screenPath, screenBuffer);
+    };
+    // The model receives app assets for semantic composition, but readable UI
+    // must come from the user's exact persisted bytes rather than AI-redrawn
+    // text. Compose every App Studio screenshot/recording deterministically.
+    const appAssets = assets
+      .filter((asset) => asset.role === "APP_SCREEN_RECORDING" || asset.role === "APP_PRIMARY_SCREEN")
+      .sort((left, right) => selectionIndex(left) - selectionIndex(right));
+    let composedArtifact = null;
+    if (creation.generationType === "APP_STUDIO" && appAssets.length) {
+      const brollInputs = [];
+      for (const [index, appAsset] of appAssets.entries()) {
+        let appBuffer;
+        if (String(appAsset.storageKey || "").startsWith("https://")) {
+          appBuffer = (await downloadMediaBufferSsrfSafe(appAsset.storageKey)).buffer;
+        } else {
+          const signedUrl = await R2StorageService.generateSignedUrl({ storageKey: appAsset.storageKey, expiresInSeconds: 900 });
+          appBuffer = await R2StorageService.downloadSignedBuffer({ storageKey: appAsset.storageKey, signedUrl });
+        }
+        const isVideo = appAsset.role === "APP_SCREEN_RECORDING" || String(appAsset.mimeType || "").startsWith("video/");
+        const appPath = path.join(tempDirectory, `app-reference-${index + 1}.${isVideo ? "mp4" : "png"}`);
+        await fs.promises.writeFile(appPath, appBuffer);
+        brollInputs.push({ path: appPath, isVideo });
+      }
+
       const brollPath = path.join(tempDirectory, "composed.mp4");
-      const durationSeconds = Number(probe.format?.duration || 0);
+      const durationSeconds = Math.max(1, Number(probe.format?.duration || 0));
+      const vertical = ["9:16", "9:21", "3:4", "2:3"].includes(creation.aspectRatio);
+      const outputWidth = Number(videoStream?.width || (vertical ? 1080 : 1920));
+      const outputHeight = Number(videoStream?.height || (vertical ? 1920 : 1080));
+      const preset = getAppStudioPreset(creation.presetId);
       await composeExactBroll({
         baseVideoPath: currentVideoPath,
-        brollInputs: [{ path: screenPath, isVideo: true }],
+        brollInputs,
         outputPath: brollPath,
         durationSeconds,
-        width: Number(videoStream.width),
-        height: Number(videoStream.height),
+        width: outputWidth,
+        height: outputHeight,
+        composition: preset.composition,
       });
       const brollBuffer = await fs.promises.readFile(brollPath);
       const composedKey = buildStorageKey("verification", [creation.workspaceId, creation.id, `variant_${variant.variantIndex}.composed.mp4`]);
       const composedStored = await R2StorageService.uploadFile({ storageKey: composedKey, buffer: brollBuffer, contentType: "video/mp4" });
       composedArtifact = await prisma.generatedArtifact.upsert({
         where: { creationVariantId_type_storageKey: { creationVariantId: variant.id, type: "COMPOSED_VIDEO", storageKey: composedKey } },
-        create: { workspaceId: creation.workspaceId, creationVariantId: variant.id, type: "COMPOSED_VIDEO", storageKey: composedKey, checksumSha256: composedStored.checksumSha256, mimeType: "video/mp4", fileSizeBytes: composedStored.fileSizeBytes, width: videoStream?.width || null, height: videoStream?.height || null, durationMs: Math.round(Number(probe.format?.duration || 0) * 1000), frameRate: videoStream?.r_frame_rate || null, videoCodec: "h264", audioCodec: "aac", validationStatus: "PENDING", validationMetadata: JSON.stringify({ brollAssetId: screenAsset.id }), sourceProviderUrlHost: "local_ffmpeg", },
+        create: { workspaceId: creation.workspaceId, creationVariantId: variant.id, type: "COMPOSED_VIDEO", storageKey: composedKey, checksumSha256: composedStored.checksumSha256, mimeType: "video/mp4", fileSizeBytes: composedStored.fileSizeBytes, width: outputWidth, height: outputHeight, durationMs: Math.round(durationSeconds * 1000), frameRate: videoStream?.r_frame_rate || null, videoCodec: "h264", audioCodec: "aac", validationStatus: "PENDING", validationMetadata: JSON.stringify({ appAssetIds: appAssets.map((asset) => asset.id), presetId: creation.presetId, composition: preset.composition }), sourceProviderUrlHost: "local_ffmpeg", },
         update: {},
       });
       currentVideoPath = brollPath;

@@ -1,4 +1,5 @@
 import { GENERATED_MODEL_DEFINITIONS } from "../models/videoModelFactory.js";
+import { APP_STUDIO_MODELS } from "../app-studio/config.js";
 
 /**
  * Client/request-contract projection of the authoritative curated model root.
@@ -81,6 +82,42 @@ export function getGenerationModel(modelId) {
   return Object.values(GENERATION_MODELS).find(
     (model) => model.providerModelId === modelId || model.legacyIds.includes(modelId)
   ) || null;
+}
+
+export function listAppStudioGenerationModels() {
+  return APP_STUDIO_MODELS.map((configured) => {
+    const model = getGenerationModel(configured.id);
+    if (!model || !model.studios.includes("app-studio")) return null;
+    return {
+      id: model.id,
+      name: configured.name,
+      description: configured.description,
+      provider: model.provider,
+      providerModelId: model.providerModelId,
+      generationMode: model.generationMode,
+      studios: model.studios,
+      mode: model.mode,
+      family: model.family,
+      variant: model.variant,
+      referenceCostUsd: model.referenceCostUsd,
+      controls: model.controls,
+      slots: model.slots,
+      requiredSlots: model.requiredSlots,
+      durationValues: model.durationValues,
+      resolutions: model.resolutions,
+      aspectRatios: model.aspectRatios,
+      qualityValues: model.qualityValues,
+      minDuration: model.minDuration,
+      maxDuration: model.maxDuration,
+      maxImages: model.maxImages,
+      maxReferences: model.maxReferences,
+      nativeAudio: model.nativeAudio,
+      outputCount: model.outputCount,
+      confidence: model.confidence,
+      requiresImage: model.requiresImage,
+      requiresVideo: model.requiresVideo,
+    };
+  }).filter(Boolean);
 }
 
 export function listGenerationModels() {

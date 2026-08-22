@@ -12,6 +12,7 @@ import { claimProviderSubmission, clearSubmissionLease, newSubmissionOwner, subm
 import { HARDENED_RECONCILIATION_ENGINE_REVISION } from "@/lib/generation/reconciliationEligibility";
 import { assertVideoSlotAvailable } from "@/lib/generation/concurrencyLimit";
 import { assertModelAllowedForPlan } from "@/lib/entitlements/modelAccess";
+import { getAppStudioPreset } from "@/lib/app-studio/config";
 
 import { validateModelPlatformPreparedQuoteForDispatch } from "@/lib/models/execution/validateDispatch.js";
 import { isModelPlatformV1Creation, settleModelPlatformWorkflow } from "@/lib/models/execution/workflowSettlement.js";
@@ -185,7 +186,7 @@ async function handleGenerationSubmission(req) {
         userId: session.user.id,
         generationType: request.studio,
         workflowVersion: "2.0.0",
-        presetId: request.studio.toLowerCase(),
+        presetId: request.presetId || request.studio.toLowerCase(),
         title: `${request.studio.replace("_STUDIO", "").replace("_", " ")} video`,
         spokenScript: request.script.text,
         prompt: request.instructions.raw || request.script.text,
@@ -208,7 +209,7 @@ async function handleGenerationSubmission(req) {
       },
     });
 
-    for (const asset of request.assets) {
+    for (const [selectionIndex, asset] of request.assets.entries()) {
       const mediaType = mediaTypeFor(asset);
       const defaultExtension = mediaType === "VIDEO" ? "mp4" : mediaType === "AUDIO" ? "mp3" : "png";
       const defaultMimeType = mediaType === "VIDEO" ? "video/mp4" : mediaType === "AUDIO" ? "audio/mpeg" : "image/png";
@@ -230,7 +231,7 @@ async function handleGenerationSubmission(req) {
           codec: asset.codec || null,
           checksumSha256: asset.checksumSha256 || crypto.createHash("sha256").update(asset.assetId).digest("hex"),
           validationStatus: "VALID",
-          validationMetadata: JSON.stringify({ alias: asset.alias, groupId: asset.groupId || null, analysis: asset.analysis || null }),
+          validationMetadata: JSON.stringify({ assetId: asset.assetId, selectionIndex, alias: asset.alias, groupId: asset.groupId || null, analysis: asset.analysis || null }),
           validatedAt: new Date(),
         },
       });
@@ -255,7 +256,7 @@ async function handleGenerationSubmission(req) {
           creationVariantId: variant.id,
           workflowType: request.studio,
           workflowVersion: "2.0.0",
-          presetId: request.studio.toLowerCase(),
+          presetId: request.presetId || request.studio.toLowerCase(),
           stageGraph: JSON.stringify(["provider_submission", "provider_generation", "quality_verification", "delivery"]),
           capabilityRequirements: JSON.stringify({
             modelId: model.id,
@@ -264,13 +265,18 @@ async function handleGenerationSubmission(req) {
             capabilityRevision: capabilityRevisionId,
             requiredSlots: model.requiredSlots,
           }),
-          assetRoleMapping: JSON.stringify(compiled.roleMap.map(({ url, ...item }) => item)),
+          assetRoleMapping: JSON.stringify(compiled.assetRoleMap.map(({ url, ...item }) => item)),
           speechPlan: JSON.stringify({
             script: request.script,
             delivery: request.instructions.confirmedDelivery,
             nativeAudio: nativeAudioRequested,
           }),
-          compositionPlan: JSON.stringify({ studio: request.studio, assets: compiled.compositionAssets.map((asset) => asset.assetId) }),
+          compositionPlan: JSON.stringify({
+            studio: request.studio,
+            presetId: request.presetId || request.studio.toLowerCase(),
+            composition: request.studio === "APP_STUDIO" ? getAppStudioPreset(request.presetId).composition : null,
+            assets: compiled.compositionAssets.map((asset) => asset.assetId),
+          }),
           routingInput: JSON.stringify({ endpoint: executionEndpoint, payloadFingerprint, variantIndex: index, variationPolicy: "provider_stochastic_no_seed_field" }),
         },
       });

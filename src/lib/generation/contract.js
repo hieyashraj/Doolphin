@@ -2,6 +2,7 @@ import crypto from "crypto";
 import { z } from "zod";
 import { getGenerationModel } from "./modelRegistry.js";
 import { calculateAuthoritativeGenerationQuote } from "./modelCostRegistry.js";
+import { APP_STUDIO_MAX_DURATION, getAppStudioModel, getAppStudioPreset } from "../app-studio/config.js";
 
 export const STUDIO_TYPES = ["VIDEO_STUDIO", "PRODUCT_STUDIO", "APP_STUDIO"];
 export const DELIVERY_TYPES = ["AVATAR_DIALOGUE", "VOICEOVER", "MIXED"];
@@ -71,6 +72,7 @@ export const generationRequestV1Schema = z.object({
   version: z.literal("1").default("1"),
   studio: z.enum(STUDIO_TYPES),
   modelId: z.string().min(1),
+  presetId: z.string().max(80).optional(),
   modelLocked: z.literal(true).default(true),
   script: z.object({
     text: z.string().trim().max(300).default(""),
@@ -194,6 +196,20 @@ export function normalizeAndValidateGenerationRequest(input) {
   }
   request.modelId = model.id;
 
+  if (request.studio !== "APP_STUDIO" && !request.script.text) {
+    errors.push(validationError("SCRIPT_REQUIRED", "Write a script before generating this video."));
+  }
+  if (request.studio === "APP_STUDIO") {
+    const appModel = getAppStudioModel(request.modelId);
+    if (!appModel) {
+      errors.push(validationError("APP_STUDIO_MODEL_REQUIRED", "Choose Seedance 2.5 or Seedance 2.0 for App Studio."));
+    }
+    request.presetId = getAppStudioPreset(request.presetId).id;
+    if (request.settings.durationMode === "EXPLICIT" && Number(request.settings.durationSeconds) > APP_STUDIO_MAX_DURATION) {
+      errors.push(validationError("APP_STUDIO_DURATION_EXCEEDED", `App Studio supports a maximum ${APP_STUDIO_MAX_DURATION}-second video.`));
+    }
+  }
+
   request.assets.sort((left, right) => Number(right.role === "ACTOR_REFERENCE") - Number(left.role === "ACTOR_REFERENCE"));
   const actors = request.assets.filter((asset) => asset.role === "ACTOR_REFERENCE");
   if (actors.length !== 1) errors.push(validationError("ACTOR_REQUIRED", "Exactly one selected avatar is required."));
@@ -281,8 +297,12 @@ export function normalizeAndValidateGenerationRequest(input) {
   }
 
   if (request.studio === "APP_STUDIO") {
+    const appScreens = request.assets.filter((asset) => asset.role === "APP_PRIMARY_SCREEN");
     const appAssets = request.assets.filter((asset) => asset.role === "APP_PRIMARY_SCREEN" || asset.role === "APP_SCREEN_RECORDING");
     if (!appAssets.length) errors.push(validationError("APP_ASSET_REQUIRED", "App Studio requires an app screenshot or screen recording."));
+    if (!appScreens.length && !request.script.text) {
+      errors.push(validationError("APP_SCRIPT_REQUIRED_FOR_RECORDING", "Write a script when using only a screen recording; automatic scripts require a confirmed screenshot analysis."));
+    }
   }
 
   if (/\b(different|another|second|extra)\s+(person|actor|avatar|creator)\b|\bmultiple people\b/i.test(request.instructions.raw)) {
@@ -332,6 +352,16 @@ export function normalizeAndValidateGenerationRequest(input) {
       errors.push(validationError("UNSUPPORTED_DURATION", `${model.displayName} supports durations: ${model.durationValues.join(", ")} seconds.`));
     } else if (selectedDuration < model.minDuration || selectedDuration > model.maxDuration) {
       errors.push(validationError("UNSUPPORTED_DURATION", `${model.displayName} supports ${model.minDuration}-${model.maxDuration} seconds.`));
+    }
+    if (request.studio === "APP_STUDIO") {
+      const appAssetCount = request.assets.filter((asset) => asset.role === "APP_PRIMARY_SCREEN" || asset.role === "APP_SCREEN_RECORDING").length;
+      const maxComposedAssets = Math.max(1, Math.floor((selectedDuration * 0.75 - 0.5) / 0.6));
+      if (appAssetCount > maxComposedAssets) {
+        errors.push(validationError(
+          "APP_ASSET_TIMING_EXCEEDED",
+          `${selectedDuration}s can show at most ${maxComposedAssets} app assets clearly. Remove app media or choose a longer duration.`,
+        ));
+      }
     }
   }
 

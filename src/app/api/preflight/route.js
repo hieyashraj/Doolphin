@@ -13,6 +13,7 @@ import { resolveTrustedApplicationOrigin } from "@/lib/models/bridges/applicatio
 import { prepareExecutionPlan } from "@/lib/models/execution/prepareExecutionPlan.js";
 import { assertModelAllowedForPlan } from "@/lib/entitlements/modelAccess";
 import { assertProviderAssetsAreFetchable } from "@/lib/generation/assetReachability.js";
+import { buildAppStudioAutoScript } from "@/lib/app-studio/config.js";
 
 function safeModelSnapshot(model) {
   return {
@@ -120,6 +121,21 @@ async function handlePreflight(req) {
     }
   }
 
+  // App Studio may synthesize a short script, but only from authoritative,
+  // ownership-checked analysis loaded above. Persist it in the quote snapshot
+  // so every downstream stage sees the same exact dialogue.
+  if (body?.studio === "APP_STUDIO" && !String(body?.script?.text || "").trim()) {
+    const appAsset = body.assets?.find((asset) => asset.role === "APP_PRIMARY_SCREEN");
+    if (appAsset) {
+      body.script = {
+        ...(body.script || {}),
+        text: buildAppStudioAutoScript({ appAnalysis: appAsset.analysis, presetId: body.presetId }),
+        language: body.script?.language || "auto",
+        maxCharacters: 300,
+      };
+    }
+  }
+
   const validation = normalizeAndValidateGenerationRequest(body);
   if (!validation.valid) {
     return NextResponse.json({
@@ -151,7 +167,7 @@ async function handlePreflight(req) {
 
   const requestFingerprint = fingerprintGenerationRequest(request);
   const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
-  const roleMap = compiled.roleMap.map(({ url, ...entry }) => entry);
+  const roleMap = compiled.assetRoleMap.map(({ url, ...entry }) => entry);
 
   // Model Platform V1 is the sole authoritative pricing/dispatch path. The
   // legacy Seedance adapter/pricing branch and its feature-flagged cutover
@@ -181,7 +197,7 @@ async function handlePreflight(req) {
         compiledPrompt: compiled.compiledPrompt,
         providerImageUrls: compiled.imageUrls,
         providerVideoUrls: request.assets
-          .filter((asset) => asset.role === "SOURCE_VIDEO" || asset.role === "REFERENCE_VIDEO")
+          .filter((asset) => asset.role === "SOURCE_VIDEO" || asset.role === "REFERENCE_VIDEO" || asset.role === "APP_SCREEN_RECORDING")
           .map((asset) => asset.url),
         earliestSignedAssetExpiryMs,
         applicationOrigin,

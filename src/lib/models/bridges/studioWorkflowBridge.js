@@ -81,7 +81,7 @@ export function mapValidatedStudioWorkflowToNormalizedInvocation({
   const sourceImages = urlsForRoles(["SOURCE_IMAGE"]);
   const sourceVideos = urlsForRoles(["SOURCE_VIDEO"]);
   const explicitReferenceImages = urlsForRoles(["REFERENCE_IMAGE", "STYLE_REFERENCE", "PRIMARY_PRODUCT", "PRODUCT_PACKAGING", "PRODUCT_USAGE_REFERENCE", "APP_PRIMARY_SCREEN"]);
-  const explicitReferenceVideos = urlsForRoles(["REFERENCE_VIDEO"]);
+  const explicitReferenceVideos = urlsForRoles(["REFERENCE_VIDEO", "APP_SCREEN_RECORDING"]);
   const explicitReferenceAudios = urlsForRoles(["REFERENCE_AUDIO"]);
   const startFrames = urlsForRoles(["START_FRAME"]);
   const endFrames = urlsForRoles(["END_FRAME"]);

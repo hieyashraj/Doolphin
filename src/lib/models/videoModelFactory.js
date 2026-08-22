@@ -4,6 +4,7 @@ import {
   CURATED_CAPABILITY_DESCRIPTORS,
 } from "./capabilityDescriptors.js";
 import { createCuratedMuapiPayloadAdapter } from "./curatedMuapiAdapters.js";
+import { APP_STUDIO_MODELS } from "../app-studio/config.js";
 
 /**
  * Curated generation definitions.
@@ -12,7 +13,7 @@ import { createCuratedMuapiPayloadAdapter } from "./curatedMuapiAdapters.js";
  * export remains pricing/endpoint reconciliation evidence only. Provider field
  * spellings are delegated to curatedMuapiAdapters.js and never inferred here.
  */
-export const STUDIO_ASPECT_RATIOS = Object.freeze(["9:16", "16:9", "1:1", "4:3", "3:4", "21:9", "adaptive", "2:3", "3:2"]);
+export const STUDIO_ASPECT_RATIOS = Object.freeze(["9:16", "16:9", "1:1", "4:3", "3:4", "21:9", "9:21", "adaptive", "2:3", "3:2"]);
 
 function infraReserveMicroUsd(entry) {
   return entry.mediaType === "VIDEO" ? 20_000n : 5_000n;
@@ -24,18 +25,24 @@ function legacyAliases(descriptor) {
   return [];
 }
 
+const APP_STUDIO_MODEL_IDS = new Set(APP_STUDIO_MODELS.map((model) => model.id));
+
 function workflowCompatibleStudios(descriptor, entry) {
   if (entry.mediaType !== "VIDEO") return ["image-studio"];
   const imageCapacity = descriptor.slots.sourceImage.max + descriptor.slots.referenceImages.max;
   const studios = [];
-  // The current UGC forms always require one actor image. Product and App
-  // additionally require at least one provider-consumable workflow image.
+  // The current UGC forms always require one actor image. Product additionally
+  // requires a provider-consumable workflow image. App Studio is intentionally
+  // narrower: only its reviewed multi-reference product models are exposed.
   if (imageCapacity >= 1) studios.push("video-studio");
-  if (imageCapacity >= 2) studios.push("product-studio", "app-studio");
+  if (imageCapacity >= 2) studios.push("product-studio");
+  if (APP_STUDIO_MODEL_IDS.has(descriptor.id)) studios.push("app-studio");
   return studios;
 }
 
 function curatedDisplayName(descriptor, entry) {
+  const appModel = APP_STUDIO_MODELS.find((model) => model.id === descriptor.id);
+  if (appModel) return appModel.name;
   if (descriptor.providerId === "seedance-2-omni-reference-no-video-fast") return "Seedance 2 Omni Reference Fast";
   return entry.displayName;
 }

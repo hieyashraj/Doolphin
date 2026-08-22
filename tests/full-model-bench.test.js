@@ -16,9 +16,9 @@ const VIDEO_MODES = ["text-to-video", "image-to-video", "video-extend"];
 
 test("bench: the checked-in curated portfolio is the complete production boundary", () => {
   assert.equal(GENERATED_MODEL_DEFINITIONS.length, 71);
-  assert.equal(listGeneratedModelsByStudio("video-studio").length, 5);
+  assert.equal(listGeneratedModelsByStudio("video-studio").length, 6);
   assert.equal(listGeneratedModelsByStudio("image-studio").length, 1);
-  assert.equal(listGenerationModels().length, 5);
+  assert.equal(listGenerationModels().length, 6);
   assert.equal(Object.values(portfolio.families).flat().length, 71);
 });
 
@@ -27,8 +27,8 @@ test("bench: media models are split into the right studios", () => {
   const image = listGeneratedModelsByStudio("image-studio");
   for (const definition of video) assert.ok(VIDEO_MODES.includes(definition.productPolicy.generationMode));
   for (const definition of image) assert.equal(definition.productPolicy.generationMode, "text-to-image");
-  assert.equal(listGeneratedModelsByStudio("product-studio").length, 4);
-  assert.equal(listGeneratedModelsByStudio("app-studio").length, 4);
+  assert.equal(listGeneratedModelsByStudio("product-studio").length, 5);
+  assert.equal(listGeneratedModelsByStudio("app-studio").length, 2);
 });
 
 test("bench: every curated model has an adapter and priceable endpoint, but only reviewed mappings dispatch", () => {
@@ -41,7 +41,7 @@ test("bench: every curated model has an adapter and priceable endpoint, but only
     assert.ok(cost.amount > 0, providerModelId);
     if (dynamicPricing) assert.match(estimateEndpoint, /\/estimate-cost$/, providerModelId);
   }
-  assert.equal(dispatchable, 14, "13 reviewed video mappings plus GPT Image 2 may dispatch");
+  assert.equal(dispatchable, 15, "14 reviewed video mappings plus GPT Image 2 may dispatch");
 });
 
 test("bench: every model yields a positive credit charge covering published basis plus infra", () => {

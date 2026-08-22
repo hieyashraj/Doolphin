@@ -82,7 +82,8 @@ test("each Studio picker and blank draft use only workflow-compatible models", (
   assert.match(source, /const activeModels = modelsByStudio\?\.\[activeModeId\] \|\| \[\]/);
   assert.match(source, /modelsList=\{pickerModels\}/);
   assert.match(source, /restoreDraft\(saved\.drafts\?\.product, "product"\)/);
-  assert.doesNotMatch(appFormSource, /accept="image\/jpeg,image\/png,image\/webp,video\//);
+  assert.match(source, /if \(studioMode === "app"\) return listAppStudioGenerationModels\(\)/);
+  assert.match(appFormSource, /accept="image\/jpeg,image\/png,image\/webp,video\/mp4,video\/quicktime"/);
 });
 
 test("draft hydration restores the actual initially selected Studio", () => {
@@ -125,24 +126,26 @@ test("upload handshake failures are explicit before asset access", () => {
   assert.match(source, /Upload verification did not return an asset/);
 });
 
-test("App Studio positively allowlists images with no recording preview or role assignment", () => {
-  assert.match(appFormSource, /accept=\{\["image\/"\]\}/);
-  assert.match(appFormSource, /accept="image\/jpeg,image\/png,image\/webp"/);
-  assert.doesNotMatch(appFormSource, /LazyVideo|startsWith\("video\/"\)/);
-  assert.doesNotMatch(source, /APP_SCREEN_RECORDING/);
-  assert.match(source, /const APP_IMAGE_MIME_TYPES = new Set\(\["image\/jpeg", "image\/png", "image\/webp"\]\)/);
-  assert.match(source, /restoredAppImages\.filter\(isSupportedAppImage\)/);
-  assert.match(source, /files\.some\(\(file\) => !isSupportedAppImage\(file\)\)/);
-  assert.match(source, /target === "app" && !isSupportedAppImage\(storedAsset\)/);
-  assert.match(source, /role: "APP_PRIMARY_SCREEN"/);
-  assert.match(source, /App Studio currently accepts JPEG, PNG, or WebP/);
+test("App Studio allowlists screenshots and one screen recording with canonical roles", () => {
+  assert.match(appFormSource, /accept=\{\["image\/", "video\/"\]\}/);
+  assert.match(appFormSource, /video\/mp4,video\/quicktime/);
+  assert.match(appFormSource, /startsWith\("video\/"\)/);
+  assert.match(source, /APP_SCREEN_RECORDING/);
+  assert.match(source, /const APP_MEDIA_MIME_TYPES = new Set/);
+  assert.match(source, /restoredAppImages\.filter\(isSupportedAppAsset\)/);
+  assert.match(source, /files\.some\(\(file\) => !isSupportedAppAsset\(file\)\)/);
+  assert.match(source, /target === "app" && !isSupportedAppAsset\(storedAsset\)/);
+  assert.match(source, /file\.type\.startsWith\("video\/"\) \? "APP_SCREEN_RECORDING" : "APP_PRIMARY_SCREEN"/);
+  assert.match(source, /at most one screen recording/);
 });
 
 test("Generate exposes every required-field disabled reason", () => {
   assert.match(source, /Choose an avatar\./);
-  assert.match(source, /Write the required script\./);
+  assert.match(source, /!spokenScript\.trim\(\) && activeModeId !== "app"/);
+  assert.match(source, /appRecordingNeedsScript/);
+  assert.match(source, /Write a script for a recording-only app demo/);
   assert.match(source, /Upload at least one product image\./);
-  assert.match(source, /Upload at least one app screenshot\./);
+  assert.match(source, /Upload at least one app screenshot or screen recording\./);
   assert.match(source, /Confirm the analysis for every uploaded asset\./);
   assert.match(source, /disabled=\{requiredInputsMissing \|\| isSubmitting \|\| quoteUnavailable \|\| slotsUnavailable \|\| hasInsufficientQuotedCredits\}/);
 });

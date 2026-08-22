@@ -159,6 +159,17 @@ function baseDescriptor(family, selected, entry) {
 }
 
 const VERIFIED = {
+  "seedance-2.5-omni-reference": {
+    slots: {
+      referenceImages: slot("IMAGE", { supported: true, min: 0, max: 30, semanticRole: "VISUAL_REFERENCE" }),
+      referenceVideos: slot("VIDEO", { supported: true, min: 0, max: 10, semanticRole: "MOTION_REFERENCE" }),
+      referenceAudios: slot("AUDIO", { supported: true, min: 0, max: 10, semanticRole: "AUDIO_REFERENCE" }),
+    },
+    duration: { supported: true, values: [], min: 4, max: 15, unit: "SECONDS" },
+    aspectRatios: { supported: true, values: ["16:9", "9:16", "1:1", "4:3", "3:4", "21:9", "9:21"] },
+    resolutions: { supported: true, values: ["720p"], endpointFixed: true },
+    nativeAudio: { supported: true, controllable: true, default: true },
+  },
   "seedance-2-omni-reference-no-video-fast": {
     slots: {
       referenceImages: slot("IMAGE", { supported: true, min: 0, max: 9, semanticRole: "VISUAL_REFERENCE" }),
@@ -177,7 +188,7 @@ const VERIFIED = {
     },
     duration: { supported: true, values: [], min: 4, max: 15, unit: "SECONDS" },
     aspectRatios: { supported: true, values: ["16:9", "9:16", "1:1", "4:3", "3:4", "21:9"] },
-    quality: { supported: true, values: ["basic", "high"] },
+    quality: { supported: true, values: ["basic", "high"], fixed: "high" },
     nativeAudio: { supported: true, controllable: true, default: true },
   },
   "seedance-2-first-last-frame": {

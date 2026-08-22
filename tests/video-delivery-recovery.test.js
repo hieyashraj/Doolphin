@@ -167,14 +167,16 @@ test("source guards keep image routing before video work, signed composition, al
   assert.match(quality, /if \(whisperJob\) await submitVerificationJob\(whisperJob, \{ file: videoUrl \}, webhookUrl\)/);
   assert.match(quality, /submitVerificationJob\(visionJob, \{ prompt: visionPrompt, image: montageSignedUrl, json_mode: true \}, webhookUrl\)/);
   assert.match(quality, /const visionJob = jobs\.find/);
-  assert.match(quality, /generateSignedUrl\(\{ storageKey: screenAsset\.storageKey/);
-  assert.match(quality, /downloadSignedBuffer\(\{ storageKey: screenAsset\.storageKey, signedUrl: screenSignedUrl \}\)/);
+  assert.match(quality, /const appAssets = assets/);
+  assert.match(quality, /orderBy: \[\{ createdAt: "asc" \}, \{ id: "asc" \}\]/);
+  assert.match(quality, /generateSignedUrl\(\{ storageKey: appAsset\.storageKey/);
+  assert.match(quality, /downloadSignedBuffer\(\{ storageKey: appAsset\.storageKey, signedUrl \}\)/);
+  assert.match(quality, /brollInputs\.push\(\{ path: appPath, isVideo \}\)/);
   assert.match(quality, /baseVideoPath: currentVideoPath/);
-  assert.match(quality, /brollInputs: \[\{ path: screenPath, isVideo: true \}\]/);
-  assert.match(quality, /durationSeconds,\n\s+width: Number\(videoStream\.width\),\n\s+height: Number\(videoStream\.height\)/);
+  assert.match(quality, /composition: preset\.composition/);
+  assert.match(quality, /appAssetIds: appAssets\.map/);
   assert.doesNotMatch(quality, /mainVideoPath|brollVideoPath|insertTimeSeconds/);
-  assert.doesNotMatch(quality, /downloadMediaBufferSsrfSafe\(screenSignedUrl\)/);
-  assert.doesNotMatch(quality, /`\/storage\/\$\{screenAsset\.storageKey\}`/);
+  assert.doesNotMatch(quality, /`\/storage\/\$\{appAsset\.storageKey\}`/);
 
   const reconcile = fs.readFileSync(new URL("../src/app/api/internal/reconcile/route.js", import.meta.url), "utf8");
   assert.match(reconcile, /body: immutableDispatch\.providerPayloadJson/);

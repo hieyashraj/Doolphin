@@ -5,6 +5,10 @@ import { MODEL_ADAPTER_REVISION } from "./capabilityDescriptors.js";
  * bridges, request contracts, and clients use provider-neutral canonical names.
  */
 const MATRIX_MAPPINGS = Object.freeze({
+  "seedance-2.5-omni-reference": {
+    prompt: "prompt", referenceImages: "images_list", referenceVideos: "videos_list", referenceAudios: "audios_list",
+    aspectRatio: "aspect_ratio", duration: "duration", generateAudio: "generate_audio", seed: "seed", defaultSeed: -1,
+  },
   "seedance-2-omni-reference-no-video-fast": {
     prompt: "prompt", referenceImages: "images_list", referenceAudios: "audio_files",
     aspectRatio: "aspect_ratio", duration: "duration", generateAudio: "generate_audio",
@@ -252,7 +256,7 @@ export function createCuratedMuapiPayloadAdapter(descriptor) {
       append(payload, mapping.resolution, input.resolution);
       append(payload, mapping.quality, input.quality ?? descriptor.quality.fixed);
       append(payload, mapping.generateAudio, audioControl);
-      append(payload, mapping.seed, input.seed);
+      append(payload, mapping.seed, input.seed ?? mapping.defaultSeed);
       append(payload, mapping.storyboard, has(scenes) ? mapStoryboard(descriptor, scenes) : undefined);
       Object.assign(payload, mapModelParameters(descriptor, mapping, input.modelParameters) || {});
       return payload;

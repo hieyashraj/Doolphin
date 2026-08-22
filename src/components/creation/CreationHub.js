@@ -26,11 +26,13 @@ import AppStudioForm from "./AppStudioForm";
 import ProgressTimeline from "./ProgressTimeline";
 import { PRESETS_LIBRARY } from "@/lib/presetsData";
 import CreationDetailModal from "./CreationDetailModal";
-import { getGenerationModel, listGenerationModels } from "@/lib/generation/modelRegistry";
+import { getGenerationModel, listAppStudioGenerationModels, listGenerationModels } from "@/lib/generation/modelRegistry";
 import toast from "react-hot-toast";
 import LazyVideo from "@/components/LazyVideo";
 import { useAppAccount } from "@/components/AppAccountProvider";
 import { IN_FLIGHT_VARIANT_STATUSES, VIDEO_GENERATION_TYPES, videoSlotsForPlan } from "@/lib/generation/concurrencyLimit";
+import { APP_STUDIO_PRESETS, getAppStudioPreset } from "@/lib/app-studio/config";
+import { formatCreationElapsed } from "@/lib/generation/recoveryDisplay";
 
 const PRESET_MODES = [
   {
@@ -77,8 +79,8 @@ const DRAFT_STORAGE_KEY = "doolphin_studio_drafts_v1";
 const DRAFT_STORAGE_VERSION = 1;
 const DRAFT_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 30;
 
-const APP_IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
-const isSupportedAppImage = (asset) => APP_IMAGE_MIME_TYPES.has(String(asset?.detectedMimeType || asset?.mimeType || asset?.type || "").toLowerCase());
+const APP_MEDIA_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "video/mp4", "video/quicktime"]);
+const isSupportedAppAsset = (asset) => APP_MEDIA_MIME_TYPES.has(String(asset?.detectedMimeType || asset?.mimeType || asset?.type || "").toLowerCase());
 
 async function readJsonResponse(response, label) {
   const contentType = response.headers.get("content-type") || "";
@@ -89,6 +91,7 @@ async function readJsonResponse(response, label) {
 }
 
 const compatibleModelsForStudio = (studioMode = "video_maker") => {
+  if (studioMode === "app") return listAppStudioGenerationModels();
   const modelStudio = MODEL_STUDIOS[studioMode];
   return modelStudio ? BUNDLED_MODELS.filter((model) => model.studios?.includes(modelStudio)) : [];
 };
@@ -107,6 +110,7 @@ const blankDraft = (studioMode = "video_maker") => {
     productImages: [],
     appImages: [],
     productGroupName: "",
+    appPresetId: APP_STUDIO_PRESETS[0].id,
     spokenScript: "",
     additionalInstructions: "",
     draftAvatar: null
@@ -143,6 +147,7 @@ const serializeDraft = (draft) => ({
   productImages: serializableAssets(draft.productImages),
   appImages: serializableAssets(draft.appImages),
   productGroupName: asString(draft.productGroupName, 80),
+  appPresetId: getAppStudioPreset(draft.appPresetId).id,
   spokenScript: asString(draft.spokenScript, 300),
   additionalInstructions: asString(draft.additionalInstructions),
   draftAvatar: draft.draftAvatar && typeof draft.draftAvatar === "object" ? draft.draftAvatar : null
@@ -173,8 +178,9 @@ const restoreDraft = (savedDraft, studioMode = "video_maker") => {
     numVideos: Number.isInteger(savedDraft.numVideos) && savedDraft.numVideos > 0 && savedDraft.numVideos <= 4 ? savedDraft.numVideos : fallback.numVideos,
     uploadedImages: serializableAssets(savedDraft.uploadedImages),
     productImages: serializableAssets(savedDraft.productImages),
-    appImages: studioMode === "app" ? restoredAppImages.filter(isSupportedAppImage) : restoredAppImages,
+    appImages: studioMode === "app" ? restoredAppImages.filter(isSupportedAppAsset) : restoredAppImages,
     productGroupName: asString(savedDraft.productGroupName, 80),
+    appPresetId: getAppStudioPreset(savedDraft.appPresetId).id,
     spokenScript: asString(savedDraft.spokenScript, 300),
     additionalInstructions: asString(savedDraft.additionalInstructions),
     draftAvatar: savedDraft.draftAvatar && typeof savedDraft.draftAvatar === "object" ? savedDraft.draftAvatar : null
@@ -315,6 +321,7 @@ export default function CreationHub({
   const [productImages, setProductImages] = useState([]);
   const [appImages, setAppImages] = useState([]);
   const [productGroupName, setProductGroupName] = useState("");
+  const [appPresetId, setAppPresetId] = useState(initialDraft.appPresetId);
   const [spokenScript, setSpokenScript] = useState("");
   const [additionalInstructions, setAdditionalInstructions] = useState("");
   const [draftAvatar, setDraftAvatar] = useState(selectedAvatar || null);
@@ -391,7 +398,7 @@ export default function CreationHub({
   const currentDraft = () => ({
     sceneMotion, selectedModel, unavailableModelId: unavailableDraftModelId,
     duration, resolution, aspectRatio, numVideos,
-    uploadedImages, productImages, appImages, productGroupName,
+    uploadedImages, productImages, appImages, productGroupName, appPresetId,
     spokenScript, additionalInstructions, draftAvatar
   });
 
@@ -407,6 +414,7 @@ export default function CreationHub({
     setProductImages(draft.productImages);
     setAppImages(draft.appImages);
     setProductGroupName(draft.productGroupName);
+    setAppPresetId(getAppStudioPreset(draft.appPresetId).id);
     setSpokenScript(draft.spokenScript);
     setAdditionalInstructions(draft.additionalInstructions);
     setDraftAvatar(draft.draftAvatar);
@@ -468,7 +476,7 @@ export default function CreationHub({
     draftStorageReady, activeModeId, sceneMotion, selectedModel, unavailableDraftModelId,
     duration,
     resolution, aspectRatio, numVideos, uploadedImages, productImages,
-    appImages, productGroupName, spokenScript, additionalInstructions, draftAvatar
+    appImages, productGroupName, appPresetId, spokenScript, additionalInstructions, draftAvatar
   ]);
 
   useEffect(() => {
@@ -532,7 +540,13 @@ export default function CreationHub({
     return () => window.clearInterval(interval);
   }, [creations]);
 
-  const activePreset = PRESET_MODES.find((m) => m.id === activeModeId) || PRESET_MODES[0];
+  const activePreset = activeModeId === "app"
+    ? {
+        ...(PRESET_MODES.find((mode) => mode.id === "app") || PRESET_MODES[0]),
+        name: getAppStudioPreset(appPresetId).name,
+        subtitle: "App & SaaS Showcase",
+      }
+    : PRESET_MODES.find((mode) => mode.id === activeModeId) || PRESET_MODES[0];
   const activeModels = modelsByStudio?.[activeModeId] || [];
   // Rebind restored/bundled draft selections to the authenticated server
   // catalog. This is the same entitlement-filtered authority preflight uses.
@@ -551,7 +565,8 @@ export default function CreationHub({
   const pickerModels = unavailableDraftModelId ? [] : activeModels;
 
   const providerImageCount = () =>
-    1 + uploadedImages.length + productImages.length + appImages.length;
+    1 + uploadedImages.length + productImages.length + appImages.filter((asset) => !String(asset.mimeType || asset.detectedMimeType || "").startsWith("video/")).length;
+  const providerImageLimit = Math.max(1, Number(selectedModel?.maxReferences?.images || selectedModel?.maxImages) || 9);
 
   const updateUploadedAsset = (assetId, changes) => {
     const update = (list) => list.map((asset) => (asset.assetId === assetId ? { ...asset, ...changes } : asset));
@@ -619,8 +634,8 @@ export default function CreationHub({
   const uploadFiles = async (files, roleFactory) => {
     setSubmitError(null);
     const imageFiles = files.filter((file) => !file.type.startsWith("video/"));
-    if (providerImageCount() + imageFiles.length > 9) {
-      throw new Error("Seedance supports one avatar plus at most eight image inputs. Remove an image before uploading another.");
+    if (providerImageCount() + imageFiles.length > providerImageLimit) {
+      throw new Error(`This model supports at most ${providerImageLimit} image references, including the avatar. Remove an image before uploading another.`);
     }
     const uploaded = [];
     for (const [index, file] of files.entries()) {
@@ -672,11 +687,16 @@ export default function CreationHub({
   const handleAppUpload = async (event) => {
     try {
       const files = Array.from(event.target.files || []);
-      if (files.some((file) => !isSupportedAppImage(file))) {
-        throw new Error("App Studio currently accepts JPEG, PNG, or WebP screenshots only.");
+      if (files.some((file) => !isSupportedAppAsset(file))) {
+        throw new Error("App Studio accepts JPEG, PNG, WebP, MP4, or QuickTime app media.");
       }
-      const assets = await uploadFiles(files, (_file, index) => ({
-        role: "APP_PRIMARY_SCREEN",
+      const existingRecordingCount = appImages.filter((asset) => String(asset.mimeType || asset.detectedMimeType || "").startsWith("video/")).length;
+      const newRecordingCount = files.filter((file) => file.type.startsWith("video/")).length;
+      if (existingRecordingCount + newRecordingCount > 1) {
+        throw new Error("App Studio accepts at most one screen recording per generation.");
+      }
+      const assets = await uploadFiles(files, (file, index) => ({
+        role: file.type.startsWith("video/") ? "APP_SCREEN_RECORDING" : "APP_PRIMARY_SCREEN",
         alias: `app_asset_${appImages.length + index + 1}`,
         groupId: "app_flow_1"
       }));
@@ -712,13 +732,18 @@ export default function CreationHub({
       setSubmitError("That saved asset is no longer available for generation.");
       return;
     }
-    if (target === "app" && !isSupportedAppImage(storedAsset)) {
-      setSubmitError("App Studio currently accepts JPEG, PNG, or WebP screenshot assets only.");
+    if (target === "app" && !isSupportedAppAsset(storedAsset)) {
+      setSubmitError("App Studio accepts JPEG, PNG, WebP, MP4, or QuickTime app media.");
+      return;
+    }
+    const isAppVideo = target === "app" && String(storedAsset.detectedMimeType || storedAsset.mimeType || "").startsWith("video/");
+    if (isAppVideo && appImages.some((asset) => String(asset.detectedMimeType || asset.mimeType || "").startsWith("video/"))) {
+      setSubmitError("App Studio accepts at most one screen recording per generation.");
       return;
     }
     const imageAsset = !storedAsset.mimeType?.startsWith("video/");
-    if (imageAsset && providerImageCount() >= 9) {
-      setSubmitError("Seedance supports one avatar plus at most eight image inputs. Remove an image before adding another.");
+    if (imageAsset && providerImageCount() >= providerImageLimit) {
+      setSubmitError(`This model supports at most ${providerImageLimit} image references, including the avatar. Remove an image before adding another.`);
       return;
     }
     const existing = target === "product" ? productImages : target === "app" ? appImages : uploadedImages;
@@ -733,7 +758,7 @@ export default function CreationHub({
           groupId: groupId || storedAsset.analysis?.suggestedName || `unconfirmed_${storedAsset.assetId}`
         }
       : target === "app"
-        ? { role: "APP_PRIMARY_SCREEN", alias: `app_asset_${index + 1}`, groupId: "app_flow_1" }
+        ? { role: isAppVideo ? "APP_SCREEN_RECORDING" : "APP_PRIMARY_SCREEN", alias: `app_asset_${index + 1}`, groupId: "app_flow_1" }
         : { role: "STYLE_REFERENCE", alias: `style_reference_${index + 1}`, groupId: null };
     
     // Ensure default fallback structure for unconfirmed library analysis
@@ -798,6 +823,8 @@ export default function CreationHub({
   const modelSelectionRequired = Boolean(isLoadingModels || modelLoadError || unavailableDraftModelId || !selectedModelIsCompatible);
   const avatarUrl = draftAvatar?.imageUrl || draftAvatar?.image || draftAvatar?.avatar_url;
   const hasRequiredMedia = activeModeId === "video_maker" || (activeModeId === "product" ? productImages.length > 0 : appImages.length > 0);
+  const appHasScreenshot = appImages.some((asset) => asset.role === "APP_PRIMARY_SCREEN");
+  const appRecordingNeedsScript = activeModeId === "app" && appImages.length > 0 && !appHasScreenshot && !spokenScript.trim();
   const hasUnconfirmedAssets = assetsNeedingReview.some((asset) => !asset.analysisConfirmed);
 
   const buildCanonicalRequest = () => {
@@ -809,6 +836,7 @@ export default function CreationHub({
     return {
       version: "1",
       studio: STUDIO_IDS[activeModeId],
+      presetId: activeModeId === "app" ? appPresetId : activeModeId,
       modelId: selectedModel?.id,
       modelLocked: true,
       script: { text: spokenScript.trim(), language: "auto", maxCharacters: 300 },
@@ -855,8 +883,9 @@ export default function CreationHub({
       ? `Your saved model “${unavailableDraftModelId}” is no longer available. Choose a replacement model.`
       : `No compatible AI model is currently available for ${activePreset.name}.`] : []),
     ...(!avatarUrl ? ["Choose an avatar."] : []),
-    ...(!spokenScript.trim() ? ["Write the required script."] : []),
-    ...(!hasRequiredMedia ? [activeModeId === "product" ? "Upload at least one product image." : "Upload at least one app screenshot."] : []),
+    ...(!spokenScript.trim() && activeModeId !== "app" ? ["Write the required script."] : []),
+    ...(appRecordingNeedsScript ? ["Write a script for a recording-only app demo, or add a confirmed screenshot for an automatic draft."] : []),
+    ...(!hasRequiredMedia ? [activeModeId === "product" ? "Upload at least one product image." : "Upload at least one app screenshot or screen recording."] : []),
     ...(hasUnconfirmedAssets ? ["Confirm the analysis for every uploaded asset."] : [])
   ];
   const requiredInputsMissing = requiredInputReasons.length > 0;
@@ -1059,6 +1088,7 @@ export default function CreationHub({
 
     if (creation.generationType === "APP_STUDIO" || creation.presetId === "app") {
       switchStudio("app");
+      setAppPresetId(getAppStudioPreset(creation.presetId).id);
     } else if (creation.generationType === "PRODUCT_STUDIO" || creation.presetId === "product") {
       switchStudio("product");
     } else {
@@ -1091,16 +1121,7 @@ export default function CreationHub({
   const isCancelled = (status) => String(status || "").toLowerCase() === "cancelled";
   const isInProgress = (status) => !isDelivered(status) && !["failed", "quarantined", "timed_out", "cancelled"].includes(String(status || "").toLowerCase());
   const stageLabel = (stage) => String(stage || "queued").replace(/[_-]+/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
-  const elapsedLabel = (creation) => {
-    const now = Date.now();
-    const deadline = creation.timeoutAt ? new Date(creation.timeoutAt).getTime() : null;
-    if ((Number.isFinite(deadline) && now > deadline) || (!deadline && creation.createdAt && now - new Date(creation.createdAt).getTime() > 60 * 60_000)) {
-      return "Recovery delayed";
-    }
-    const started = creation.createdAt;
-    const elapsedSeconds = started ? Math.max(0, Math.floor((now - new Date(started).getTime()) / 1000)) : 0;
-    return elapsedSeconds < 60 ? "Just started" : `${Math.floor(elapsedSeconds / 60)}m elapsed`;
-  };
+  const elapsedLabel = formatCreationElapsed;
 
   return (
     <div className="flex h-full w-full flex-col overflow-y-auto bg-[#FAF8ED] text-[#111111] md:flex-row md:overflow-hidden">
@@ -1204,6 +1225,7 @@ export default function CreationHub({
               onOpenActorModal={onOpenAvatarModal}
               spokenScript={spokenScript}
               setSpokenScript={setSpokenScript}
+              scriptRequired={appImages.length > 0 && !appHasScreenshot}
               additionalInstructions={additionalInstructions}
               setAdditionalInstructions={setAdditionalInstructions}
               uploadedImages={uploadedImages}
@@ -1486,8 +1508,8 @@ export default function CreationHub({
             >
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="text-base font-serif font-bold text-[#111111]">Choose Preset Studio</h3>
-                  <p className="text-xs text-[#55534E]">Select a creative workflow preset for your video</p>
+                  <h3 className="text-base font-serif font-bold text-[#111111]">{activeModeId === "app" ? "Choose App Studio preset" : "Choose Preset Studio"}</h3>
+                  <p className="text-xs text-[#55534E]">{activeModeId === "app" ? "Choose the generation direction and exact app composition strategy." : "Select a creative workflow preset for your video"}</p>
                 </div>
                 <button
                   onClick={() => setIsPresetModalOpen(false)}
@@ -1499,7 +1521,20 @@ export default function CreationHub({
 
               {/* Presets Grid */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                {PRESET_MODES.map((mode) => (
+                {activeModeId === "app" ? APP_STUDIO_PRESETS.map((preset) => (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    onClick={() => {
+                      setAppPresetId(preset.id);
+                      setIsPresetModalOpen(false);
+                    }}
+                    className={`min-h-32 rounded-2xl border p-4 text-left transition-all cursor-pointer ${appPresetId === preset.id ? "border-[#111111] ring-2 ring-[#111111]" : "border-[#111111]/15 hover:border-[#111111]/30"}`}
+                  >
+                    <h4 className="text-sm font-bold">{preset.name}</h4>
+                    <p className="mt-2 text-xs leading-relaxed text-[#55534E]">{preset.direction}</p>
+                  </button>
+                )) : PRESET_MODES.map((mode) => (
                   <button
                     key={mode.id}
                     onClick={() => {

@@ -1,9 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { resolveTrustedApplicationOrigin } from "../../src/lib/models/bridges/applicationOrigin.js";
-import { resolveProviderAssetUrl } from "../../src/lib/models/bridges/studioWorkflowBridge.js";
+import { mapValidatedStudioWorkflowToNormalizedInvocation, resolveProviderAssetUrl } from "../../src/lib/models/bridges/studioWorkflowBridge.js";
 import { prepareExecutionPlan } from "../../src/lib/models/execution/prepareExecutionPlan.js";
 import { clearExactModelMemoryCache } from "../../src/lib/models/providerCatalog.js";
+import { getGenerationModel } from "../../src/lib/generation/modelRegistry.js";
 
 test("Application Origin Precedence: APP_BASE_URL HTTPS wins over NEXTAUTH_URL", () => {
   const origin = resolveTrustedApplicationOrigin({
@@ -145,6 +146,47 @@ test("Asset URL Resolution: Relative avatar + explicit resolved origin becomes c
   });
   const resolved = resolveProviderAssetUrl(relativeAvatar, { applicationOrigin: origin });
   assert.equal(resolved, "https://staging.doolphin.app/avatars/Andrew%20E1.png");
+});
+
+test("App Studio bridge: actor and screenshot remain distinct provider-neutral references", () => {
+  const model = getGenerationModel("muapi.seedance-2-omni-reference");
+  const normalized = mapValidatedStudioWorkflowToNormalizedInvocation({
+    request: {
+      settings: { durationSeconds: 5, aspectRatio: "9:16", resolution: "720p" },
+      assets: [
+        { role: "ACTOR_REFERENCE", url: "https://cdn.example/avatar.png" },
+        { role: "APP_PRIMARY_SCREEN", assetId: "screen-1", alias: "Dashboard", url: "https://cdn.example/dashboard.png" },
+      ],
+    },
+    model,
+    compiledPrompt: "Show the dashboard.",
+    providerImageUrls: ["https://cdn.example/avatar.png", "https://cdn.example/dashboard.png"],
+  });
+
+  assert.deepEqual(normalized.referenceImages, [
+    "https://cdn.example/avatar.png",
+    "https://cdn.example/dashboard.png",
+  ]);
+  assert.equal(normalized.sourceImage, undefined);
+});
+
+test("App Studio bridge: a screen recording maps to provider-neutral referenceVideos", () => {
+  const model = getGenerationModel("muapi.seedance-2-omni-reference");
+  const normalized = mapValidatedStudioWorkflowToNormalizedInvocation({
+    request: {
+      settings: { durationSeconds: 5, aspectRatio: "9:16", resolution: "720p" },
+      assets: [
+        { role: "APP_SCREEN_RECORDING", assetId: "recording-1", alias: "Onboarding", url: "https://cdn.example/onboarding.mp4" },
+      ],
+    },
+    model,
+    compiledPrompt: "Continue the onboarding walk-through.",
+    providerImageUrls: [],
+    providerVideoUrls: ["https://cdn.example/onboarding.mp4"],
+  });
+
+  assert.deepEqual(normalized.referenceVideos, ["https://cdn.example/onboarding.mp4"]);
+  assert.equal(normalized.sourceVideo, undefined);
 });
 
 test("Preflight Output Count Harness: prepareExecutionPlan receives outputCount 1 and 2 correctly", async () => {
