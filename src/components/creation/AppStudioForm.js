@@ -92,10 +92,10 @@ export default function AppStudioForm({
         </button>
       </div>
 
-      {/* Write your script * */}
+      {/* Write your script */}
       <div className="space-y-1.5">
         <label className="block text-base font-semibold text-[#111111]">
-          Write your script <span className="text-red-500">*</span>
+          Write your script <span className="text-[#77746D] text-sm font-normal">(optional)</span>
         </label>
         <div className="relative">
           <textarea
@@ -103,8 +103,7 @@ export default function AppStudioForm({
             onChange={(e) => setSpokenScript(e.target.value)}
             maxLength={300}
             rows={3}
-            required
-            placeholder="Write the exact script for your app demo (max 300 chars). Spoken verbatim."
+            placeholder="Write the exact script for your app demo (max 300 chars). Leave blank for an app-informed draft."
             className="w-full bg-[#F2EFE5] focus:bg-white p-3.5 text-sm font-medium text-[#111111] placeholder-[#8C887B] border border-[#111111]/15 focus:border-[#111111] focus:outline-none focus:ring-2 focus:ring-[#111111] caret-[#111111] transition-all resize-none rounded-xl"
           />
           <div className="absolute bottom-2.5 right-3 text-xs text-[#77746D] font-mono">

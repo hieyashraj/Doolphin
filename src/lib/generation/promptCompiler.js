@@ -1,4 +1,5 @@
 const PRODUCT_ROLES = new Set(["PRIMARY_PRODUCT", "PRODUCT_PACKAGING", "PRODUCT_USAGE_REFERENCE"]);
+import { getAppStudioPreset } from "../app-studio/config.js";
 
 function describeAsset(asset, imageIndex, studio) {
   const tag = `@image${imageIndex}`;
@@ -27,11 +28,12 @@ function defaultShotPlan(request) {
     return `The selected avatar naturally introduces and handles ${featured.map((group) => `"${group}"`).join(" and ")}. ${explicitlyNamed.length ? "Only the explicitly named product group is mandatory." : "No group was excluded, so every selected product group must receive clear screen time."} Use natural interaction shots and clean close-up moments suitable for exact uploaded product B-roll. ${delivery === "VOICEOVER" ? "Deliver the script as voiceover while the avatar demonstrates silently." : "The avatar delivers the on-camera portions."}`;
   }
   if (request.studio === "APP_STUDIO") {
+    const preset = getAppStudioPreset(request.presetId);
     const screens = request.assets.filter((asset) => asset.role === "APP_PRIMARY_SCREEN");
     const deviceTypes = [...new Set(screens.map((asset) => asset.analysis?.deviceType).filter(Boolean))];
     const deviceType = deviceTypes.length > 1 ? "mixed" : (deviceTypes[0] || "mobile");
     const device = deviceType === "mixed" ? "phone and laptop/desktop as appropriate to each confirmed screen" : ["desktop", "browser", "laptop"].includes(deviceType) ? "laptop or desktop" : "phone";
-    return `Prioritize the selected avatar naturally holding or using a ${device}. ${delivery === "VOICEOVER" ? "Use voiceover over the demonstration; do not animate unrelated lip speech." : "The avatar speaks authentically."} Then create a clean demonstration beat where exact app UI B-roll can be inserted, followed by an avatar CTA when timing permits.`;
+    return `${preset.direction} Prioritize the selected avatar naturally holding or using a ${device}. ${delivery === "VOICEOVER" ? "Use voiceover over the demonstration; do not animate unrelated lip speech." : "The avatar speaks authentically."} Create a clean demonstration beat where exact app UI B-roll can be inserted; the final compositor preserves app pixels whenever readable UI is shown.`;
   }
   if (delivery === "VOICEOVER") return "Natural handheld UGC framing with the selected avatar as the sole person, while the exact script is delivered as voiceover over purposeful creator and B-roll shots.";
   return "Natural handheld UGC framing. The selected avatar speaks directly to camera with believable expression and restrained camera motion.";
@@ -66,6 +68,10 @@ export function compileCanonicalPrompt(request) {
 
   if (request.instructions.raw) {
     sections.push(`User direction: ${request.instructions.raw}`);
+  }
+  if (request.studio === "APP_STUDIO") {
+    const preset = getAppStudioPreset(request.presetId);
+    sections.push(`APP STUDIO PRESET: ${preset.name}. Composition strategy: ${preset.composition}.`);
   }
   sections.push(
     `Delivery mode: ${request.instructions.confirmedDelivery}.`,

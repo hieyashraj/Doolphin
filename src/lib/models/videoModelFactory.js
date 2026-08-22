@@ -33,7 +33,7 @@ const VIDEO_MODES = Object.freeze(["text-to-video", "image-to-video", "video-ext
 const VIDEO_STUDIOS = Object.freeze(["video-studio", "product-studio", "app-studio"]);
 
 /** Aspect ratios Doolphin's studios offer. Sent only when the caller picks one. */
-export const STUDIO_ASPECT_RATIOS = Object.freeze(["9:16", "16:9", "1:1", "4:3", "3:4"]);
+export const STUDIO_ASPECT_RATIOS = Object.freeze(["9:16", "16:9", "1:1", "4:3", "3:4", "21:9", "9:21"]);
 
 function buildInputSchema(mode) {
   const properties = {
@@ -65,6 +65,39 @@ function makeTransformer(entry) {
     if (!prompt) throw new Error(`[${entry.providerModelId}] prompt is required`);
 
     const payload = { prompt };
+    const images = Array.isArray(normalizedInput.extraInputs?.images) ? normalizedInput.extraInputs.images.map(String) : [];
+    const videos = Array.isArray(normalizedInput.extraInputs?.videos) ? normalizedInput.extraInputs.videos.map(String) : [];
+    const audios = Array.isArray(normalizedInput.extraInputs?.audios) ? normalizedInput.extraInputs.audios.map(String) : [];
+
+    // App Studio's two curated Omni Reference models are multi-reference
+    // workflows, not generic single-image I2V. Their real provider contracts
+    // differ, so map them here rather than losing actor/app/reference roles.
+    if (entry.providerModelId === "seedance-2.5-omni-reference") {
+      if (images.length < 2) throw new Error("[seedance-2.5-omni-reference] App Studio needs actor and app image references");
+      if (images.length > 30 || videos.length > 10 || audios.length > 10) throw new Error("[seedance-2.5-omni-reference] reference limit exceeded");
+      return {
+        prompt,
+        images_list: images,
+        ...(videos.length ? { videos_list: videos } : {}),
+        ...(audios.length ? { audios_list: audios } : {}),
+        duration: Number(normalizedInput.duration || 5),
+        aspect_ratio: normalizedInput.aspectRatio || "9:16",
+        seed: normalizedInput.seed ?? -1,
+      };
+    }
+    if (entry.providerModelId === "seedance-2-omni-reference") {
+      if (images.length < 2) throw new Error("[seedance-2-omni-reference] App Studio needs actor and app image references");
+      if (images.length > 9 || videos.length > 3 || audios.length > 3) throw new Error("[seedance-2-omni-reference] reference limit exceeded");
+      return {
+        prompt,
+        images_list: images,
+        ...(videos.length ? { video_files: videos } : {}),
+        ...(audios.length ? { audio_files: audios } : {}),
+        duration: Number(normalizedInput.duration || 5),
+        aspect_ratio: normalizedInput.aspectRatio || "9:16",
+        quality: "high",
+      };
+    }
 
     // The reference the mode structurally requires. Fail closed when absent:
     // submitting an image-to-video job with no image would be billed and return
@@ -80,7 +113,10 @@ function makeTransformer(entry) {
       payload.image_url = String(image);
     }
     if (entry.mode === "video-extend") {
-      const video = normalizedInput.videoUrl || normalizedInput.video_url || null;
+      // `sourceVideo` is the provider-neutral invocation field.  The two
+      // aliases remain for compatibility with direct callers, but the studio
+      // bridge must always use the neutral name so Zod preserves it.
+      const video = normalizedInput.sourceVideo || normalizedInput.videoUrl || normalizedInput.video_url || null;
       if (!video) throw new Error(`[${entry.providerModelId}] this model needs a source video`);
       payload.video_url = String(video);
     }

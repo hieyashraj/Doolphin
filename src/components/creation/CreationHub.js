@@ -26,11 +26,12 @@ import AppStudioForm from "./AppStudioForm";
 import ProgressTimeline from "./ProgressTimeline";
 import { PRESETS_LIBRARY } from "@/lib/presetsData";
 import CreationDetailModal from "./CreationDetailModal";
-import { listGenerationModels } from "@/lib/generation/modelRegistry";
+import { listAppStudioGenerationModels, listGenerationModels } from "@/lib/generation/modelRegistry";
 import toast from "react-hot-toast";
 import LazyVideo from "@/components/LazyVideo";
 import { useAppAccount } from "@/components/AppAccountProvider";
 import { IN_FLIGHT_VARIANT_STATUSES, VIDEO_GENERATION_TYPES, videoSlotsForPlan } from "@/lib/generation/concurrencyLimit";
+import { APP_STUDIO_PRESETS, getAppStudioPreset } from "@/lib/app-studio/config";
 
 const PRESET_MODES = [
   {
@@ -207,9 +208,27 @@ export default function CreationHub({
   const [productImages, setProductImages] = useState([]);
   const [appImages, setAppImages] = useState([]);
   const [productGroupName, setProductGroupName] = useState("");
+  const [appPresetId, setAppPresetId] = useState(APP_STUDIO_PRESETS[0].id);
   const [spokenScript, setSpokenScript] = useState("");
   const [additionalInstructions, setAdditionalInstructions] = useState("");
   const [draftAvatar, setDraftAvatar] = useState(selectedAvatar || null);
+
+  const appStudioModels = useMemo(() => listAppStudioGenerationModels({
+    hasScreenshot: appImages.some((asset) => !asset.mimeType?.startsWith("video/")),
+    hasRecording: appImages.some((asset) => asset.mimeType?.startsWith("video/")),
+  }), [appImages]);
+  // Switching to App Studio (or replacing a screenshot with a recording) can
+  // make a previously selected model incompatible. Move to a compatible model
+  // immediately instead of deferring an opaque preflight error until the user
+  // presses Generate.
+  useEffect(() => {
+    if (activeModeId !== "app" || appStudioModels.some((model) => model.id === selectedModel?.id)) return;
+    const nextModel = appStudioModels[0];
+    if (!nextModel) return;
+    setSelectedModel(nextModel);
+    setResolution(nextModel.resolutions[0]);
+    setAspectRatio(nextModel.aspectRatios[0]);
+  }, [activeModeId, appStudioModels, selectedModel?.id]);
 
   useEffect(() => {
     if (selectedAvatar) setDraftAvatar(selectedAvatar);
@@ -407,7 +426,13 @@ export default function CreationHub({
     return () => window.clearInterval(interval);
   }, [creations]);
 
-  const activePreset = PRESET_MODES.find((m) => m.id === activeModeId) || PRESET_MODES[0];
+  const activePreset = activeModeId === "app"
+    ? {
+        ...(PRESET_MODES.find((m) => m.id === "app") || PRESET_MODES[0]),
+        name: getAppStudioPreset(appPresetId).name,
+        subtitle: "App & SaaS Showcase",
+      }
+    : PRESET_MODES.find((m) => m.id === activeModeId) || PRESET_MODES[0];
 
   const providerImageCount = () =>
     1 + uploadedImages.length + productImages.length + appImages.filter((asset) => !asset.mimeType?.startsWith("video/")).length;
@@ -647,6 +672,7 @@ export default function CreationHub({
     return {
       version: "1",
       studio: STUDIO_IDS[activeModeId],
+      presetId: activeModeId === "app" ? appPresetId : activeModeId,
       modelId: selectedModel.id,
       modelLocked: true,
       script: { text: spokenScript.trim(), language: "auto", maxCharacters: 300 },
@@ -1024,7 +1050,7 @@ export default function CreationHub({
               setNumVideos={setNumVideos}
               selectedModel={selectedModel}
               setSelectedModel={selectModel}
-              modelsList={MODELS}
+              modelsList={appStudioModels}
             />
           )}
 
@@ -1244,8 +1270,8 @@ export default function CreationHub({
             >
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="text-base font-serif font-bold text-[#111111]">Choose Preset Studio</h3>
-                  <p className="text-xs text-[#55534E]">Select a creative workflow preset for your video</p>
+                  <h3 className="text-base font-serif font-bold text-[#111111]">{activeModeId === "app" ? "Choose App Studio preset" : "Choose Preset Studio"}</h3>
+                  <p className="text-xs text-[#55534E]">{activeModeId === "app" ? "This changes both the generation direction and the exact app composition strategy." : "Select a creative workflow preset for your video"}</p>
                 </div>
                 <button
                   onClick={() => setIsPresetModalOpen(false)}
@@ -1257,7 +1283,16 @@ export default function CreationHub({
 
               {/* Presets Grid */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                {PRESET_MODES.map((mode) => (
+                {activeModeId === "app" ? APP_STUDIO_PRESETS.map((preset) => (
+                  <button
+                    key={preset.id}
+                    onClick={() => { setAppPresetId(preset.id); setIsPresetModalOpen(false); }}
+                    className={`p-4 rounded-2xl border text-left transition-all cursor-pointer min-h-32 ${appPresetId === preset.id ? "border-[#111111] ring-2 ring-[#111111]" : "border-[#111111]/15 hover:border-[#111111]/30"}`}
+                  >
+                    <h4 className="text-sm font-bold">{preset.name}</h4>
+                    <p className="mt-2 text-xs leading-relaxed text-[#55534E]">{preset.direction}</p>
+                  </button>
+                )) : PRESET_MODES.map((mode) => (
                   <button
                     key={mode.id}
                     onClick={() => {

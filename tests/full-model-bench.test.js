@@ -8,7 +8,7 @@ import {
   toClientModel,
   STUDIO_ASPECT_RATIOS,
 } from "../src/lib/models/videoModelFactory.js";
-import { listGenerationModels, getGenerationModel, GENERATION_MODELS } from "../src/lib/generation/modelRegistry.js";
+import { listAppStudioGenerationModels, listGenerationModels, getGenerationModel, GENERATION_MODELS } from "../src/lib/generation/modelRegistry.js";
 import { calculateRequiredCredits, PRICING_REVISION } from "../src/lib/entitlements/pricing.js";
 
 const VIDEO_MODES = ["text-to-video", "image-to-video", "video-extend"];
@@ -120,6 +120,22 @@ test("payload: an image-to-video model fails closed without a source image", () 
 test("payload: a video-extend model fails closed without a source video", () => {
   const definition = GENERATED_MODEL_DEFINITIONS.find((d) => d.productPolicy.generationMode === "video-extend");
   assert.throws(() => definition.toProviderPayload({ prompt: "x" }), /needs a source video/);
+  assert.deepEqual(
+    definition.toProviderPayload({ prompt: "x", sourceVideo: "https://cdn.example/app-recording.mp4" }),
+    { prompt: "x", video_url: "https://cdn.example/app-recording.mp4" }
+  );
+});
+
+test("bench: App Studio only offers a model that can consume the selected app media", () => {
+  const screenshotModels = listAppStudioGenerationModels({ hasScreenshot: true });
+  const recordingModels = listAppStudioGenerationModels({ hasRecording: true });
+  const mixedModels = listAppStudioGenerationModels({ hasScreenshot: true, hasRecording: true });
+
+  assert.ok(screenshotModels.length > 0);
+  assert.ok(recordingModels.length > 0);
+  assert.ok(screenshotModels.every((model) => model.id.startsWith("muapi.seedance-2")));
+  assert.ok(recordingModels.every((model) => model.id.startsWith("muapi.seedance-2")));
+  assert.ok(mixedModels.every((model) => model.id.startsWith("muapi.seedance-2")));
 });
 
 test("payload: invalid prompt, duration and aspect ratio are all refused", () => {

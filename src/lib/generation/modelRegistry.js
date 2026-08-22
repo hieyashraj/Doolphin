@@ -1,4 +1,5 @@
 import { GENERATED_MODEL_DEFINITIONS, STUDIO_ASPECT_RATIOS } from "../models/videoModelFactory.js";
+import { APP_STUDIO_MODELS } from "../app-studio/config.js";
 
 /**
  * THE MODEL BENCH THE STUDIO UI AND THE REQUEST CONTRACT SHARE.
@@ -60,6 +61,30 @@ const HAND_VERIFIED = Object.freeze({
     resolutions: ["480p"],
     minDuration: 4,
     maxDuration: 30,
+    supportsVideoReferences: true,
+  },
+  "seedance-2.5-omni-reference": {
+    id: "muapi.seedance-2.5-omni-reference",
+    resolutions: ["720p"],
+    aspectRatios: ["16:9", "9:16", "1:1", "4:3", "3:4", "21:9", "9:21"],
+    minDuration: 4,
+    maxDuration: 15,
+    maxImages: 30,
+    maxVideoReferences: 10,
+    maxAudioReferences: 10,
+    supportsNativeAudio: true,
+    supportsVideoReferences: true,
+  },
+  "seedance-2-omni-reference": {
+    id: "muapi.seedance-2-omni-reference",
+    resolutions: ["720p"],
+    aspectRatios: ["16:9", "9:16", "1:1", "4:3", "3:4", "21:9"],
+    minDuration: 4,
+    maxDuration: 15,
+    maxImages: 9,
+    maxVideoReferences: 3,
+    maxAudioReferences: 3,
+    supportsNativeAudio: true,
     supportsVideoReferences: true,
   },
 });
@@ -130,4 +155,32 @@ export function listGenerationModels() {
     requiresImage: model.requiresImage,
     requiresVideo: model.requiresVideo,
   }));
+}
+
+/**
+ * Models App Studio can genuinely execute with the app media currently
+ * attached to the draft. Text-only models are deliberately excluded: they
+ * cannot receive the user's app UI and would create a paid, unrelated video.
+ */
+export function listAppStudioGenerationModels({ hasScreenshot = false, hasRecording = false } = {}) {
+  // `hasScreenshot` and `hasRecording` are intentionally accepted so callers
+  // can remain capability-aware. Both curated Omni models accept the normal
+  // actor + app image path and an optional screen recording, so neither media
+  // type changes the available product choices.
+  void hasScreenshot; void hasRecording;
+  return APP_STUDIO_MODELS.map((appModel) => {
+    const model = getGenerationModel(appModel.id);
+    return {
+      ...model,
+      name: appModel.name,
+      description: appModel.description,
+      resolutions: appModel.resolutions,
+      aspectRatios: appModel.aspectRatios,
+      minDuration: appModel.minDuration,
+      maxDuration: appModel.maxDuration,
+      maxImages: appModel.maxImages,
+      requiresImage: true,
+      requiresVideo: false,
+    };
+  }).filter(Boolean);
 }

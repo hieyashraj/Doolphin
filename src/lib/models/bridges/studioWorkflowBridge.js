@@ -84,6 +84,40 @@ export function mapValidatedStudioWorkflowToNormalizedInvocation({
       images.push(resolved);
     }
   }
+  const videos = [];
+  for (const asset of request.assets || []) {
+    if (asset?.role !== "APP_SCREEN_RECORDING" || !asset.url) continue;
+    const resolved = resolveProviderAssetUrl(asset.url, { applicationOrigin });
+    if (!resolved) {
+      throw new Error(`[ModelPlatformBridge] Cannot resolve screen recording '${asset.alias || asset.assetId}' to an absolute provider-fetchable URL without an explicit applicationOrigin`);
+    }
+    videos.push(resolved);
+  }
+
+  // A generic image-to-video transformer accepts one explicit source image.
+  // The old bridge supplied the complete reference list only, which meant the
+  // first item (normally the avatar) became the source and an App Studio
+  // screenshot was ignored.  Preserve the full list for multi-reference
+  // models, while explicitly choosing the studio's primary deliverable for
+  // single-source models.
+  const primaryImageAsset = request.assets?.find((asset) => asset?.role === "APP_PRIMARY_SCREEN")
+    || request.assets?.find((asset) => asset?.role === "PRIMARY_PRODUCT")
+    || request.assets?.find((asset) => asset?.role === "STYLE_REFERENCE")
+    || null;
+  const sourceVideoAsset = request.assets?.find((asset) => asset?.role === "APP_SCREEN_RECORDING") || null;
+  const imageUrl = primaryImageAsset?.url
+    ? resolveProviderAssetUrl(primaryImageAsset.url, { applicationOrigin })
+    : null;
+  const sourceVideo = sourceVideoAsset?.url
+    ? resolveProviderAssetUrl(sourceVideoAsset.url, { applicationOrigin })
+    : null;
+
+  if (primaryImageAsset?.url && !imageUrl) {
+    throw new Error(`[ModelPlatformBridge] Cannot resolve primary image asset '${primaryImageAsset.alias || primaryImageAsset.assetId}' to an absolute provider-fetchable URL without an explicit applicationOrigin`);
+  }
+  if (sourceVideoAsset?.url && !sourceVideo) {
+    throw new Error(`[ModelPlatformBridge] Cannot resolve screen recording '${sourceVideoAsset.alias || sourceVideoAsset.assetId}' to an absolute provider-fetchable URL without an explicit applicationOrigin`);
+  }
 
   return {
     prompt: promptStr.trim(),
@@ -91,9 +125,12 @@ export function mapValidatedStudioWorkflowToNormalizedInvocation({
     aspectRatio,
     generateAudio,
     ...(resolution ? { resolution } : {}),
+    ...(imageUrl ? { imageUrl } : {}),
+    ...(sourceVideo ? { sourceVideo } : {}),
     earliestSignedAssetExpiryMs: earliestSignedAssetExpiryMs ? Number(earliestSignedAssetExpiryMs) : null,
     extraInputs: {
       images,
+      videos,
     },
   };
 }

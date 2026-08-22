@@ -13,6 +13,7 @@ import { resolveTrustedApplicationOrigin } from "@/lib/models/bridges/applicatio
 import { prepareExecutionPlan } from "@/lib/models/execution/prepareExecutionPlan.js";
 import { assertModelAllowedForPlan } from "@/lib/entitlements/modelAccess";
 import { assertProviderAssetsAreFetchable } from "@/lib/generation/assetReachability.js";
+import { buildAppStudioAutoScript } from "@/lib/app-studio/config.js";
 
 function safeModelSnapshot(model) {
   return {
@@ -95,6 +96,19 @@ async function handlePreflight(req) {
     }
   }
 
+  // An empty App Studio script is an explicit product choice. Derive a short,
+  // reviewable script from the persisted app analysis before validation and
+  // retain it in the quoted request snapshot for every downstream stage.
+  if (body?.studio === "APP_STUDIO" && !String(body?.script?.text || "").trim()) {
+    const appAsset = body.assets?.find((asset) => asset.role === "APP_PRIMARY_SCREEN");
+    body.script = {
+      ...(body.script || {}),
+      text: buildAppStudioAutoScript({ appAnalysis: appAsset?.analysis, presetId: body.presetId }),
+      language: body.script?.language || "auto",
+      maxCharacters: 300,
+    };
+  }
+
   const validation = normalizeAndValidateGenerationRequest(body);
   if (!validation.valid) {
     return NextResponse.json({
@@ -166,7 +180,16 @@ async function handlePreflight(req) {
       // the user's avatar and uploaded assets. Verify real reachability here
       // and fail closed, so an unreachable asset costs an error message
       // instead of a wasted paid generation plus a refund plus a lost user.
-      const reachability = await assertProviderAssetsAreFetchable(normalizedInput.extraInputs?.images || []);
+      // Video-extend is a valid App Studio route when the user attached a
+      // screen recording. Check it with the same paid-call safety gate as
+      // image references; otherwise MuAPI can silently ignore an unreachable
+      // recording and still bill the generation.
+      const providerAssets = [
+        ...(normalizedInput.extraInputs?.images || []),
+        ...(normalizedInput.extraInputs?.videos || []),
+        ...(normalizedInput.sourceVideo ? [normalizedInput.sourceVideo] : []),
+      ];
+      const reachability = await assertProviderAssetsAreFetchable(providerAssets);
       if (!reachability.ok) {
         return NextResponse.json({
           success: false,

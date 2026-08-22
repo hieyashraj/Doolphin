@@ -2,6 +2,7 @@ import crypto from "crypto";
 import { z } from "zod";
 import { getGenerationModel } from "./modelRegistry.js";
 import { calculateAuthoritativeGenerationQuote } from "./modelCostRegistry.js";
+import { APP_STUDIO_MAX_DURATION, getAppStudioModel, getAppStudioPreset } from "../app-studio/config.js";
 
 export const STUDIO_TYPES = ["VIDEO_STUDIO", "PRODUCT_STUDIO", "APP_STUDIO"];
 export const DELIVERY_TYPES = ["AVATAR_DIALOGUE", "VOICEOVER", "MIXED"];
@@ -39,9 +40,10 @@ export const generationRequestV1Schema = z.object({
   version: z.literal("1").default("1"),
   studio: z.enum(STUDIO_TYPES),
   modelId: z.string().min(1),
+  presetId: z.string().max(80).optional(),
   modelLocked: z.literal(true).default(true),
   script: z.object({
-    text: z.string().trim().min(1).max(300),
+    text: z.string().trim().max(300),
     language: z.string().default("auto"),
     maxCharacters: z.literal(300).default(300),
   }),
@@ -146,6 +148,18 @@ export function normalizeAndValidateGenerationRequest(input) {
     return { valid: false, errors };
   }
   request.modelId = model.id;
+
+  if (request.studio !== "APP_STUDIO" && !request.script.text) {
+    errors.push(validationError("SCRIPT_REQUIRED", "Write a script before generating this video."));
+  }
+  if (request.studio === "APP_STUDIO") {
+    const appModel = getAppStudioModel(request.modelId);
+    if (!appModel) errors.push(validationError("APP_STUDIO_MODEL_REQUIRED", "Choose Seedance 2.5 or Seedance 2.0 for App Studio."));
+    request.presetId = getAppStudioPreset(request.presetId).id;
+    if (request.settings.durationMode === "EXPLICIT" && Number(request.settings.durationSeconds) > APP_STUDIO_MAX_DURATION) {
+      errors.push(validationError("APP_STUDIO_DURATION_EXCEEDED", `App Studio supports a maximum ${APP_STUDIO_MAX_DURATION}-second video.`));
+    }
+  }
 
   request.assets.sort((left, right) => Number(right.role === "ACTOR_REFERENCE") - Number(left.role === "ACTOR_REFERENCE"));
   const actors = request.assets.filter((asset) => asset.role === "ACTOR_REFERENCE");
